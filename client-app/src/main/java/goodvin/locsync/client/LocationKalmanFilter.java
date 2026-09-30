@@ -30,6 +30,10 @@ public class LocationKalmanFilter {
     private static final double REANCHOR_M = 10_000.0;
     private static final double MIN_POS_SIGMA = 1.0;
     private static final double UNKNOWN_VEL_SIGMA = 50.0; // wide prior when speed is unknown (m/s)
+    // Android reports accuracy as the 68% radius; for a circular 2D Gaussian that is
+    // sqrt(-2 ln 0.32) ≈ 1.51 sigma (a 1-sigma circle holds only ~39%).
+    private static final double RADIUS68_PER_SIGMA = 1.5096;
+    private static final double MIN_SPEED_FOR_HEADING = 0.1; // m/s; below this heading is undefined
 
     private final double sigmaA;            // process acceleration noise (m/s^2)
     private final double defaultSpeedSigma; // fallback velocity measurement noise (m/s)
@@ -230,6 +234,36 @@ public class LocationKalmanFilter {
 
     public double getAccuracy() {
         return Math.max(MIN_POS_SIGMA, Math.sqrt((P[0][0] + P[1][1]) / 2.0));
+    }
+
+    /** Horizontal accuracy as the 68% radius, matching {@code Location.getAccuracy()} semantics. */
+    public double getAccuracy68() {
+        return Math.max(MIN_POS_SIGMA, RADIUS68_PER_SIGMA * Math.sqrt((P[0][0] + P[1][1]) / 2.0));
+    }
+
+    /** 1-sigma (≈68%) speed accuracy: velocity variance projected onto the direction of travel. */
+    public double getSpeedAccuracy() {
+        double speed = getSpeed();
+        if (speed < MIN_SPEED_FOR_HEADING) {
+            return Math.sqrt((P[2][2] + P[3][3]) / 2.0);
+        }
+        double ue = ve / speed, un = vn / speed;
+        return Math.sqrt(Math.max(0, projectVelVar(ue, un)));
+    }
+
+    /** 1-sigma (≈68%) bearing accuracy in degrees, from the cross-track velocity variance. */
+    public double getBearingAccuracyDeg() {
+        double speed = getSpeed();
+        if (speed < MIN_SPEED_FOR_HEADING) {
+            return 180.0;
+        }
+        double we = vn / speed, wn = -ve / speed; // unit vector perpendicular to travel
+        double crossSigma = Math.sqrt(Math.max(0, projectVelVar(we, wn)));
+        return Math.min(180.0, Math.toDegrees(Math.atan2(crossSigma, speed)));
+    }
+
+    private double projectVelVar(double ue, double un) {
+        return ue * ue * P[2][2] + 2 * ue * un * P[2][3] + un * un * P[3][3];
     }
 
     public double getVe() {

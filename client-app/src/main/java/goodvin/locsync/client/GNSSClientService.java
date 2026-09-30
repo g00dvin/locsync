@@ -85,6 +85,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private long lastPredictElapsedMs = 0;
     private long lastFedFixTimestampMs = Long.MIN_VALUE;  // LocationUpdate.timestamp last fed to the filter (dedup keepalive resends)
     private volatile double lastAltitude = 0;
+    private FilterConfig filterConfig = new FilterConfig();  // re-read from Preferences on every fix
+    // Last injected output, for the Monitor screen's filter card (NaN = nothing injected yet).
+    private double outAccuracy = Double.NaN, outSpeedAcc = Double.NaN, outBearingAcc = Double.NaN;
     private final Runnable smoothingTick = this::smoothingTick;
 
     private volatile DatagramSocket udpSocket;
@@ -245,6 +248,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         mainHandler.post(helloTick);
 
         lastPredictElapsedMs = 0;
+        filterConfig = Preferences.filterConfig(this);
         mainHandler.post(smoothingTick);
 
         lastTickWallMs = 0;
@@ -267,6 +271,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         lastFixElapsedMs = 0;
         lastPredictElapsedMs = 0;
         kalman.reset();
+        outAccuracy = outSpeedAcc = outBearingAcc = Double.NaN;
         connectionManager.clearLearnedServerAddress();
         lastBroadcastSatelliteCount = -1;
         broadcastSatelliteStatusToWidget(0);
@@ -443,6 +448,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                         return;
                     }
                     lastFedFixTimestampMs = fixTs;
+                    filterConfig = Preferences.filterConfig(this);
 
                     long nowElapsed = SystemClock.elapsedRealtime();
                     boolean resumingAfterGap =
@@ -503,11 +509,25 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         loc.setLatitude(kalman.getLatitude());
         loc.setLongitude(kalman.getLongitude());
         loc.setAltitude(lastAltitude);
-        loc.setAccuracy((float) kalman.getAccuracy());
         double speed = kalman.getSpeed();
-        if (speed >= STOP_SPEED_MPS) {
+        boolean moving = speed >= STOP_SPEED_MPS;
+        if (filterConfig.reportUncertainty) {
+            outAccuracy = kalman.getAccuracy68();
+            outSpeedAcc = kalman.getSpeedAccuracy();
+            outBearingAcc = moving ? kalman.getBearingAccuracyDeg() : Double.NaN;
+        } else {
+            outAccuracy = kalman.getAccuracy();
+            outSpeedAcc = Double.NaN;
+            outBearingAcc = Double.NaN;
+        }
+        loc.setAccuracy((float) outAccuracy);
+        if (moving) {
             loc.setSpeed((float) speed);
             loc.setBearing((float) kalman.getBearingDeg());
+            if (filterConfig.reportUncertainty) {
+                loc.setSpeedAccuracyMetersPerSecond((float) outSpeedAcc);
+                loc.setBearingAccuracyDegrees((float) outBearingAcc);
+            }
         }
         loc.setTime(System.currentTimeMillis());
         loc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
@@ -566,7 +586,30 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         } catch (Exception e) {
             Log.w(TAG, "metrics sampling failed", e);
         }
+        broadcastFilterStats();
         mainHandler.postDelayed(metricsTick, METRICS_INTERVAL_MS);
+    }
+
+    /**
+     * Sends the filter's live state to the Monitor screen as ready-to-show label/value rows, so new
+     * diagnostics only need to be added here.
+     */
+    private void broadcastFilterStats() {
+        java.util.ArrayList<String> labels = new java.util.ArrayList<>();
+        java.util.ArrayList<String> values = new java.util.ArrayList<>();
+        addStat(labels, values, R.string.filter_out_accuracy, outAccuracy, "±%.1f m");
+        addStat(labels, values, R.string.filter_out_speed_acc, outSpeedAcc, "±%.2f m/s");
+        addStat(labels, values, R.string.filter_out_bearing_acc, outBearingAcc, "±%.1f°");
+        sendBroadcast(new Intent("goodvin.locsync.FILTER_STATS")
+                .setPackage(getPackageName())
+                .putExtra("labels", labels.toArray(new String[0]))
+                .putExtra("values", values.toArray(new String[0])));
+    }
+
+    private void addStat(java.util.List<String> labels, java.util.List<String> values,
+                         int labelRes, double v, String format) {
+        labels.add(getString(labelRes));
+        values.add(Double.isNaN(v) ? "—" : String.format(java.util.Locale.US, format, v));
     }
 
     private void broadcastMockLocationStatus(String message, boolean error) {

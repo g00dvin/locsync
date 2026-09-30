@@ -40,6 +40,7 @@
 
     <!-- Additional redesign copy (sub-lines, section labels, monitor readouts) -->
     <string name="nav_connect">Connect</string>
+    <string name="section_filter">Smoothing filter</string>
     <string name="section_location">Location information</string>
     <string name="signal_used_total" translatable="false">%1$d/%2$d</string>
     <string name="signal_sats" translatable="false">%d</string>

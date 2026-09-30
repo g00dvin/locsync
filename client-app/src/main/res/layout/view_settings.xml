@@ -28,6 +28,12 @@
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowStaticJitter" />
         </LinearLayout>
 
+        <!-- Smoothing (Kalman filter feeding the mock provider) -->
+        <TextView style="@style/LsGroupLabel" android:text="@string/group_smoothing" />
+        <LinearLayout style="@style/LsGroupCard">
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowReportUncertainty" />
+        </LinearLayout>
+
         <!-- Diagnostics -->
         <TextView style="@style/LsGroupLabel" android:text="@string/group_diagnostics" />
         <LinearLayout style="@style/LsGroupCard">

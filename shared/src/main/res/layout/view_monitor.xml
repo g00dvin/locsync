@@ -108,6 +108,34 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- 1b. Smoothing filter state (client only; shown once the service reports it) -->
+        <LinearLayout
+            android:id="@+id/monFilterCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="12dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:letterSpacing="0.10"
+                android:text="@string/section_filter"
+                android:textAllCaps="true"
+                android:textColor="@color/ls_accent_300"
+                android:textSize="10sp" />
+
+            <LinearLayout
+                android:id="@+id/monFilterRows"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="vertical" />
+        </LinearLayout>
+
         <!-- 2. Link health -->
         <TextView
             android:layout_width="wrap_content"

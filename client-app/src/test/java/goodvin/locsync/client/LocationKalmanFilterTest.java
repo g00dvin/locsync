@@ -154,4 +154,35 @@ public class LocationKalmanFilterTest {
         assertEquals(0.0, f.getBearingDeg(), 5.0); // ~north
         assertTrue(f.getSpeed() > 8.0 && f.getSpeed() < 12.0);
     }
+
+    // Android's Location.getAccuracy() is a 68% radius; for a circular 2D Gaussian that is ~1.51σ,
+    // so the reported radius must be wider than the legacy 1σ value by that factor.
+    @Test
+    public void accuracy68IsWiderThanOneSigma() {
+        LocationKalmanFilter f = newFilter();
+        f.update(59.0, 30.0, 10.0, 90.0, 5.0, 1.0, 5.0);
+        assertEquals(1.5096 * f.getAccuracy(), f.getAccuracy68(), 1e-6);
+    }
+
+    // Speed accuracy follows the velocity variance along the travel direction; bearing accuracy
+    // shrinks as speed grows (same cross-track velocity error is a smaller angle when fast).
+    @Test
+    public void speedAndBearingAccuracyFromVelocityCovariance() {
+        LocationKalmanFilter slow = newFilter();
+        slow.update(59.0, 30.0, 2.0, 90.0, 5.0, 0.5, 0.0);
+        LocationKalmanFilter fast = newFilter();
+        fast.update(59.0, 30.0, 20.0, 90.0, 5.0, 0.5, 0.0);
+        assertEquals(0.5, fast.getSpeedAccuracy(), 1e-6);
+        assertTrue("bearing acc should drop with speed: " + slow.getBearingAccuracyDeg()
+                        + " vs " + fast.getBearingAccuracyDeg(),
+                fast.getBearingAccuracyDeg() < slow.getBearingAccuracyDeg());
+        assertEquals(Math.toDegrees(Math.atan2(0.5, 20.0)), fast.getBearingAccuracyDeg(), 1e-6);
+    }
+
+    @Test
+    public void bearingAccuracyUndefinedWhenStopped() {
+        LocationKalmanFilter f = newFilter();
+        f.update(59.0, 30.0, 0.0, 0.0, 5.0, 0.5, 0.0);
+        assertEquals(180.0, f.getBearingAccuracyDeg(), 1e-9);
+    }
 }

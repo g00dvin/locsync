@@ -202,6 +202,15 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    private final BroadcastReceiver filterStatsReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if ("goodvin.locsync.FILTER_STATS".equals(intent.getAction()) && liveMonitoring) {
+                renderFilterStats(intent.getStringArrayExtra("labels"), intent.getStringArrayExtra("values"));
+            }
+        }
+    };
+
     @Override
     protected void attachBaseContext(Context base) {
         android.content.res.Configuration config =
@@ -251,6 +260,7 @@ public class MainActivity extends AppCompatActivity {
         unregisterReceiver(locationReceiver);
         unregisterReceiver(mockLocationStatusReceiver);
         unregisterReceiver(metricsReceiver);
+        unregisterReceiver(filterStatsReceiver);
         uiHandler.removeCallbacksAndMessages(null);
     }
 
@@ -411,6 +421,11 @@ public class MainActivity extends AppCompatActivity {
                 Preferences.staticJitterEnabled(this),
                 checked -> Preferences.setStaticJitterEnabled(this, checked));
 
+        // Smoothing
+        bindToggle(R.id.rowReportUncertainty, getString(R.string.filter_report_uncertainty),
+                getString(R.string.filter_report_uncertainty_sub), Preferences.filterReportUncertainty(this),
+                checked -> Preferences.setFilterReportUncertainty(this, checked));
+
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,
                 Preferences.debugLoggingEnabled(this),
@@ -457,6 +472,7 @@ public class MainActivity extends AppCompatActivity {
         registerReceiver(locationReceiver, new IntentFilter("goodvin.locsync.LOCATION_UPDATE"), RECEIVER_NOT_EXPORTED);
         registerReceiver(mockLocationStatusReceiver, new IntentFilter("goodvin.locsync.MOCK_LOCATION_STATUS"), RECEIVER_NOT_EXPORTED);
         registerReceiver(metricsReceiver, new IntentFilter("goodvin.locsync.METRICS"), RECEIVER_NOT_EXPORTED);
+        registerReceiver(filterStatsReceiver, new IntentFilter("goodvin.locsync.FILTER_STATS"), RECEIVER_NOT_EXPORTED);
     }
 
     // --- power / state ---
@@ -632,6 +648,29 @@ public class MainActivity extends AppCompatActivity {
         sparkAgeVal.setText(fmt0(mAgeMean));
         sparkPktVal.setText(fmt1(mPktRecv));
         sparkSatVal.setText(String.valueOf(lastSatellites));
+    }
+
+    /** Fills the Monitor filter card with the rows the service sent (reusing cells when possible). */
+    private void renderFilterStats(String[] labels, String[] values) {
+        if (labels == null || values == null || labels.length != values.length) return;
+        android.view.ViewGroup rows = findViewById(R.id.monFilterRows);
+        if (rows.getChildCount() != labels.length) {
+            rows.removeAllViews();
+            android.view.LayoutInflater inflater = getLayoutInflater();
+            for (int i = 0; i < labels.length; i++) {
+                View cell = inflater.inflate(R.layout.ls_kv_cell, rows, false);
+                cell.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+                rows.addView(cell);
+            }
+        }
+        for (int i = 0; i < labels.length; i++) {
+            View cell = rows.getChildAt(i);
+            setText(cell, R.id.kvKey, labels[i]);
+            setText(cell, R.id.kvValue, values[i]);
+        }
+        findViewById(R.id.monFilterCard).setVisibility(View.VISIBLE);
     }
 
     private void renderLog() {

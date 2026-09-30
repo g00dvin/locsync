@@ -98,4 +98,11 @@
     <string name="a11y_autostart">Autostart via accessibility service</string>
     <string name="a11y_autostart_on">Enabled — the system starts the app on boot and restarts it if killed.</string>
     <string name="a11y_autostart_off">Disabled. Tap to open accessibility settings and enable “LocSync Client autostart”. Most reliable option on head units.</string>
+
+    <string name="group_smoothing">Smoothing</string>
+    <string name="filter_report_uncertainty">Honest accuracy (68%)</string>
+    <string name="filter_report_uncertainty_sub">Report accuracy as Android expects (68% radius) and add speed/bearing accuracy. Off: legacy 1σ value.</string>
+    <string name="filter_out_accuracy">Output accuracy</string>
+    <string name="filter_out_speed_acc">Speed accuracy</string>
+    <string name="filter_out_bearing_acc">Bearing accuracy</string>
 </resources>
