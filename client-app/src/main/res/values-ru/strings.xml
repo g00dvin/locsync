@@ -98,4 +98,13 @@
     <string name="filter_out_accuracy">Точность на выходе</string>
     <string name="filter_out_speed_acc">Точность скорости</string>
     <string name="filter_out_bearing_acc">Точность курса</string>
+
+    <string name="filter_latency_comp">Компенсация задержки</string>
+    <string name="filter_latency_comp_sub">Сдвигать каждый фикс вперёд на его возраст, чтобы значок не отставал от машины.</string>
+    <string name="filter_extra_latency">Доп. задержка, мс</string>
+    <string name="filter_turn_model">Модель поворота</string>
+    <string name="filter_turn_model_sub">На поворотах прогнозировать по дуге, а не по прямой (меньше срезания углов и заносов значка).</string>
+    <string name="filter_latency">Задержка фикса</string>
+    <string name="filter_horizon">Горизонт прогноза</string>
+    <string name="filter_turn_rate">Скорость поворота</string>
 </resources>

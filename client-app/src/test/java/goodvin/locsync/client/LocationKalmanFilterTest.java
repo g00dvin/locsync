@@ -185,4 +185,82 @@ public class LocationKalmanFilterTest {
         f.update(59.0, 30.0, 0.0, 0.0, 5.0, 0.5, 0.0);
         assertEquals(180.0, f.getBearingAccuracyDeg(), 1e-9);
     }
+
+    // Latency compensation relies on extrapolate(): it must project the state forward exactly like
+    // predict() would, but without changing the filter itself.
+    @Test
+    public void extrapolateProjectsWithoutMutating() {
+        LocationKalmanFilter f = newFilter();
+        f.update(59.0, 30.0, 10.0, 90.0, 5.0, 1.0, 5.0); // east 10 m/s
+        double lon0 = f.getLongitude();
+        LocationKalmanFilter.Estimate est = f.extrapolate(1.0);
+        double expDLon = 10.0 / (111320.0 * Math.cos(Math.toRadians(59.0)));
+        assertEquals(lon0 + expDLon, est.longitude, 1e-7);
+        assertEquals(lon0, f.getLongitude(), 1e-12);
+        assertTrue(est.accuracy > f.getAccuracy());
+        assertEquals(f.getLatitude(), f.extrapolate(0).latitude, 1e-12);
+    }
+
+    // Drive a right-hand circle (bearing +18°/s at 10 m/s) and check the turn model learns the rate
+    // and predicts along the arc rather than off along the tangent.
+    @Test
+    public void turnModelFollowsArc() {
+        double speed = 10.0, rateDeg = 18.0;
+        LocationKalmanFilter turn = newFilter();
+        LocationKalmanFilter straight = newFilter();
+        straight.setTurnModel(false);
+        double r = speed / Math.toRadians(rateDeg);
+        double[] truth = new double[2];
+        for (int i = 0; i <= 10; i++) {
+            double brg = rateDeg * i;
+            // circle centred east of the start; heading north initially, turning clockwise
+            double th = Math.toRadians(brg);
+            double e = r - r * Math.cos(th), n = r * Math.sin(th);
+            double lat = 59.0 + n / M_PER_DEG_LAT;
+            double lon = 30.0 + e / (M_PER_DEG_LAT * Math.cos(Math.toRadians(59.0)));
+            for (LocationKalmanFilter f : new LocationKalmanFilter[]{turn, straight}) {
+                if (i > 0) f.predict(1.0);
+                f.update(lat, lon, speed, brg % 360, 3.0, 0.3, 2.0);
+            }
+            double thNext = Math.toRadians(brg + rateDeg);
+            truth[0] = r - r * Math.cos(thNext);
+            truth[1] = r * Math.sin(thNext);
+        }
+        assertEquals(rateDeg, turn.getTurnRateDegPerSec(), 3.0);
+        assertEquals(0.0, straight.getTurnRateDegPerSec(), 1e-9);
+        double errTurn = predErr(turn.extrapolate(1.0), truth);
+        double errStraight = predErr(straight.extrapolate(1.0), truth);
+        assertTrue("turn model should predict closer to the arc: " + errTurn + " vs " + errStraight,
+                errTurn < errStraight * 0.6);
+    }
+
+    @Test
+    public void turnRateDecaysWhenStopped() {
+        LocationKalmanFilter f = newFilter();
+        f.update(59.0, 30.0, 10.0, 0.0, 3.0, 0.3, 2.0);
+        f.predict(1.0);
+        f.update(59.0 + 10 / M_PER_DEG_LAT, 30.0, 10.0, 20.0, 3.0, 0.3, 2.0);
+        assertTrue(Math.abs(f.getTurnRateDegPerSec()) > 1.0);
+        f.predict(1.0);
+        f.update(59.0 + 10 / M_PER_DEG_LAT, 30.0, 0.0, 0.0, 3.0, 0.3, 2.0);
+        f.predict(1.0);
+        f.update(59.0 + 10 / M_PER_DEG_LAT, 30.0, 0.0, 0.0, 3.0, 0.3, 2.0);
+        assertEquals(0.0, f.getTurnRateDegPerSec(), 1e-9);
+    }
+
+    // A 180° heading flip within a second is noise, not a turn: ω must not jump to the cap.
+    @Test
+    public void implausibleHeadingFlipIsNotATurn() {
+        LocationKalmanFilter f = newFilter();
+        f.update(59.0, 30.0, 10.0, 0.0, 3.0, 0.3, 2.0);
+        f.predict(1.0);
+        f.update(59.0 + 10 / M_PER_DEG_LAT, 30.0, 10.0, 180.0, 3.0, 0.3, 2.0);
+        assertEquals(0.0, f.getTurnRateDegPerSec(), 1e-9);
+    }
+
+    private static double predErr(LocationKalmanFilter.Estimate est, double[] truthEn) {
+        double n = (est.latitude - 59.0) * M_PER_DEG_LAT;
+        double e = (est.longitude - 30.0) * M_PER_DEG_LAT * Math.cos(Math.toRadians(59.0));
+        return Math.hypot(e - truthEn[0], n - truthEn[1]);
+    }
 }

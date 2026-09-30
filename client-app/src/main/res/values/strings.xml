@@ -105,4 +105,13 @@
     <string name="filter_out_accuracy">Output accuracy</string>
     <string name="filter_out_speed_acc">Speed accuracy</string>
     <string name="filter_out_bearing_acc">Bearing accuracy</string>
+
+    <string name="filter_latency_comp">Latency compensation</string>
+    <string name="filter_latency_comp_sub">Move each fix forward by its age so the icon keeps up with the car instead of trailing it.</string>
+    <string name="filter_extra_latency">Extra latency, ms</string>
+    <string name="filter_turn_model">Turn model</string>
+    <string name="filter_turn_model_sub">Predict along an arc while turning instead of a straight line (less corner cutting and overshoot).</string>
+    <string name="filter_latency">Fix latency</string>
+    <string name="filter_horizon">Prediction horizon</string>
+    <string name="filter_turn_rate">Turn rate</string>
 </resources>

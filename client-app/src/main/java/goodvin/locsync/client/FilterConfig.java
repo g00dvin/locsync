@@ -24,4 +24,10 @@ package goodvin.locsync.client;
 public final class FilterConfig {
     /** Report the filter's uncertainty in Android's 68% convention, incl. speed/bearing accuracy. */
     public boolean reportUncertainty = true;
+    /** Extrapolate each fix by its age (plus {@link #extraLatencyMs}) so the output isn't late. */
+    public boolean latencyCompensation = true;
+    /** Extra delay (ms) on top of the reported fix age, e.g. provider/transport latency. */
+    public double extraLatencyMs = 0;
+    /** Coordinated-turn motion model (predict along an arc) instead of straight lines. */
+    public boolean turnModel = true;
 }
