@@ -38,6 +38,7 @@
     <string name="warn_background_location">⚠ Не включён постоянный доступ к местоположению. Нажмите, чтобы открыть разрешения.</string>
 
     <string name="nav_connect">Подключение</string>
+    <string name="section_filter">Фильтр сглаживания</string>
     <string name="section_location">Информация о местоположении</string>
     <string name="live_monitoring">Мониторинг в реальном времени</string>
     <string name="lh_packets">Пакеты/с</string>

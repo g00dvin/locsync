@@ -202,6 +202,15 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    private final BroadcastReceiver filterStatsReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if ("goodvin.locsync.FILTER_STATS".equals(intent.getAction()) && liveMonitoring) {
+                renderFilterStats(intent.getStringArrayExtra("labels"), intent.getStringArrayExtra("values"));
+            }
+        }
+    };
+
     @Override
     protected void attachBaseContext(Context base) {
         android.content.res.Configuration config =
@@ -251,6 +260,7 @@ public class MainActivity extends AppCompatActivity {
         unregisterReceiver(locationReceiver);
         unregisterReceiver(mockLocationStatusReceiver);
         unregisterReceiver(metricsReceiver);
+        unregisterReceiver(filterStatsReceiver);
         uiHandler.removeCallbacksAndMessages(null);
     }
 
@@ -411,6 +421,38 @@ public class MainActivity extends AppCompatActivity {
                 Preferences.staticJitterEnabled(this),
                 checked -> Preferences.setStaticJitterEnabled(this, checked));
 
+        // Smoothing
+        bindToggle(R.id.rowReportUncertainty, getString(R.string.filter_report_uncertainty),
+                getString(R.string.filter_report_uncertainty_sub), Preferences.filterReportUncertainty(this),
+                checked -> Preferences.setFilterReportUncertainty(this, checked));
+        bindToggle(R.id.rowLatencyComp, getString(R.string.filter_latency_comp),
+                getString(R.string.filter_latency_comp_sub), Preferences.filterLatencyCompensation(this),
+                checked -> Preferences.setFilterLatencyCompensation(this, checked));
+        bindNumberInput(R.id.rowExtraLatency, getString(R.string.filter_extra_latency),
+                Preferences.filterExtraLatencyMs(this), 0, 1000,
+                v -> Preferences.setFilterExtraLatencyMs(this, (float) v));
+        bindToggle(R.id.rowTurnModel, getString(R.string.filter_turn_model),
+                getString(R.string.filter_turn_model_sub), Preferences.filterTurnModel(this),
+                checked -> Preferences.setFilterTurnModel(this, checked));
+        bindToggle(R.id.rowGating, getString(R.string.filter_gating),
+                getString(R.string.filter_gating_sub), Preferences.filterGating(this),
+                checked -> Preferences.setFilterGating(this, checked));
+        bindNumberInput(R.id.rowGateThreshold, getString(R.string.filter_gate_threshold),
+                Preferences.filterGateThreshold(this), 4, 100,
+                v -> Preferences.setFilterGateThreshold(this, (float) v));
+        bindToggle(R.id.rowStandstillHold, getString(R.string.filter_standstill),
+                getString(R.string.filter_standstill_sub), Preferences.filterStandstillHold(this),
+                checked -> Preferences.setFilterStandstillHold(this, checked));
+        bindNumberInput(R.id.rowStandstillSpeed, getString(R.string.filter_standstill_speed),
+                Preferences.filterStandstillSpeed(this), 0.1, 3,
+                v -> Preferences.setFilterStandstillSpeed(this, (float) v));
+        bindToggle(R.id.rowAdaptiveNoise, getString(R.string.filter_adaptive_noise),
+                getString(R.string.filter_adaptive_noise_sub), Preferences.filterAdaptiveNoise(this),
+                checked -> Preferences.setFilterAdaptiveNoise(this, checked));
+        bindNumberInput(R.id.rowProcessNoise, getString(R.string.filter_process_noise_base),
+                Preferences.filterProcessNoise(this), 0.2, 10,
+                v -> Preferences.setFilterProcessNoise(this, (float) v));
+
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,
                 Preferences.debugLoggingEnabled(this),
@@ -457,6 +499,7 @@ public class MainActivity extends AppCompatActivity {
         registerReceiver(locationReceiver, new IntentFilter("goodvin.locsync.LOCATION_UPDATE"), RECEIVER_NOT_EXPORTED);
         registerReceiver(mockLocationStatusReceiver, new IntentFilter("goodvin.locsync.MOCK_LOCATION_STATUS"), RECEIVER_NOT_EXPORTED);
         registerReceiver(metricsReceiver, new IntentFilter("goodvin.locsync.METRICS"), RECEIVER_NOT_EXPORTED);
+        registerReceiver(filterStatsReceiver, new IntentFilter("goodvin.locsync.FILTER_STATS"), RECEIVER_NOT_EXPORTED);
     }
 
     // --- power / state ---
@@ -632,6 +675,29 @@ public class MainActivity extends AppCompatActivity {
         sparkAgeVal.setText(fmt0(mAgeMean));
         sparkPktVal.setText(fmt1(mPktRecv));
         sparkSatVal.setText(String.valueOf(lastSatellites));
+    }
+
+    /** Fills the Monitor filter card with the rows the service sent (reusing cells when possible). */
+    private void renderFilterStats(String[] labels, String[] values) {
+        if (labels == null || values == null || labels.length != values.length) return;
+        android.view.ViewGroup rows = findViewById(R.id.monFilterRows);
+        if (rows.getChildCount() != labels.length) {
+            rows.removeAllViews();
+            android.view.LayoutInflater inflater = getLayoutInflater();
+            for (int i = 0; i < labels.length; i++) {
+                View cell = inflater.inflate(R.layout.ls_kv_cell, rows, false);
+                cell.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+                rows.addView(cell);
+            }
+        }
+        for (int i = 0; i < labels.length; i++) {
+            View cell = rows.getChildAt(i);
+            setText(cell, R.id.kvKey, labels[i]);
+            setText(cell, R.id.kvValue, values[i]);
+        }
+        findViewById(R.id.monFilterCard).setVisibility(View.VISIBLE);
     }
 
     private void renderLog() {
@@ -873,6 +939,42 @@ public class MainActivity extends AppCompatActivity {
             sw.setChecked(next);
             onChange.accept(next);
         });
+    }
+
+    /**
+     * Numeric setting: saves every valid edit immediately (the service re-reads settings on each
+     * fix); out-of-range or unparsable input is flagged and not saved.
+     */
+    private void bindNumberInput(int rowId, String label, double value, double min, double max,
+                                 java.util.function.DoubleConsumer onChange) {
+        View row = findViewById(rowId);
+        setText(row, R.id.row_label, String.format(Locale.US, "%s (%s–%s)", label, fmtNum(min), fmtNum(max)));
+        EditText input = row.findViewById(R.id.row_input);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
+                | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        input.setText(fmtNum(value));
+        input.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                double v;
+                try {
+                    v = Double.parseDouble(s.toString().trim().replace(',', '.'));
+                } catch (NumberFormatException e) {
+                    v = Double.NaN;
+                }
+                if (Double.isNaN(v) || v < min || v > max) {
+                    input.setError(String.format(Locale.US, "%s–%s", fmtNum(min), fmtNum(max)));
+                } else {
+                    input.setError(null);
+                    onChange.accept(v);
+                }
+            }
+        });
+    }
+
+    private static String fmtNum(double v) {
+        return v == Math.rint(v) ? String.valueOf((long) v) : String.format(Locale.US, "%.2f", v);
     }
 
     private void bindAction(int rowId, String label, String sub, boolean chevron, Runnable click) {

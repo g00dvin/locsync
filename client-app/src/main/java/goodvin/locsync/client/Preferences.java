@@ -137,6 +137,117 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_METRICS_ENABLED, false);
     }
 
+    private static final String PREF_FILTER_REPORT_UNCERTAINTY = "filterReportUncertainty";
+
+    public static void setFilterReportUncertainty(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_REPORT_UNCERTAINTY, enabled).apply();
+    }
+
+    public static boolean filterReportUncertainty(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_REPORT_UNCERTAINTY, true);
+    }
+
+    private static final String PREF_FILTER_LATENCY_COMP = "filterLatencyCompensation";
+    private static final String PREF_FILTER_EXTRA_LATENCY_MS = "filterExtraLatencyMs";
+    private static final String PREF_FILTER_TURN_MODEL = "filterTurnModel";
+
+    public static void setFilterLatencyCompensation(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_LATENCY_COMP, enabled).apply();
+    }
+
+    public static boolean filterLatencyCompensation(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_LATENCY_COMP, true);
+    }
+
+    public static void setFilterExtraLatencyMs(Context context, float ms) {
+        getPrefs(context).edit().putFloat(PREF_FILTER_EXTRA_LATENCY_MS, ms).apply();
+    }
+
+    public static float filterExtraLatencyMs(Context context) {
+        return getPrefs(context).getFloat(PREF_FILTER_EXTRA_LATENCY_MS, 0f);
+    }
+
+    public static void setFilterTurnModel(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_TURN_MODEL, enabled).apply();
+    }
+
+    public static boolean filterTurnModel(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_TURN_MODEL, true);
+    }
+
+    private static final String PREF_FILTER_GATING = "filterGating";
+    private static final String PREF_FILTER_GATE_THRESHOLD = "filterGateThreshold";
+
+    public static void setFilterGating(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_GATING, enabled).apply();
+    }
+
+    public static boolean filterGating(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_GATING, true);
+    }
+
+    public static void setFilterGateThreshold(Context context, float threshold) {
+        getPrefs(context).edit().putFloat(PREF_FILTER_GATE_THRESHOLD, threshold).apply();
+    }
+
+    public static float filterGateThreshold(Context context) {
+        return getPrefs(context).getFloat(PREF_FILTER_GATE_THRESHOLD, 9.21f);
+    }
+
+    private static final String PREF_FILTER_STANDSTILL_HOLD = "filterStandstillHold";
+    private static final String PREF_FILTER_STANDSTILL_SPEED = "filterStandstillSpeed";
+
+    public static void setFilterStandstillHold(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_STANDSTILL_HOLD, enabled).apply();
+    }
+
+    public static boolean filterStandstillHold(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_STANDSTILL_HOLD, true);
+    }
+
+    public static void setFilterStandstillSpeed(Context context, float speed) {
+        getPrefs(context).edit().putFloat(PREF_FILTER_STANDSTILL_SPEED, speed).apply();
+    }
+
+    public static float filterStandstillSpeed(Context context) {
+        return getPrefs(context).getFloat(PREF_FILTER_STANDSTILL_SPEED, 0.5f);
+    }
+
+    private static final String PREF_FILTER_PROCESS_NOISE = "filterProcessNoise";
+    private static final String PREF_FILTER_ADAPTIVE_NOISE = "filterAdaptiveNoise";
+
+    public static void setFilterProcessNoise(Context context, float sigmaA) {
+        getPrefs(context).edit().putFloat(PREF_FILTER_PROCESS_NOISE, sigmaA).apply();
+    }
+
+    public static float filterProcessNoise(Context context) {
+        return getPrefs(context).getFloat(PREF_FILTER_PROCESS_NOISE, 2.0f);
+    }
+
+    public static void setFilterAdaptiveNoise(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_ADAPTIVE_NOISE, enabled).apply();
+    }
+
+    public static boolean filterAdaptiveNoise(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_ADAPTIVE_NOISE, true);
+    }
+
+    /** Current smoothing options; cheap enough to re-read on every fix so changes apply live. */
+    public static FilterConfig filterConfig(Context context) {
+        FilterConfig c = new FilterConfig();
+        c.reportUncertainty = filterReportUncertainty(context);
+        c.latencyCompensation = filterLatencyCompensation(context);
+        c.extraLatencyMs = filterExtraLatencyMs(context);
+        c.turnModel = filterTurnModel(context);
+        c.gating = filterGating(context);
+        c.gateThreshold = filterGateThreshold(context);
+        c.standstillHold = filterStandstillHold(context);
+        c.standstillSpeed = filterStandstillSpeed(context);
+        c.processNoise = filterProcessNoise(context);
+        c.adaptiveNoise = filterAdaptiveNoise(context);
+        return c;
+    }
+
     private static SharedPreferences getPrefs(Context context) {
         final Context deviceContext = context.getApplicationContext().createDeviceProtectedStorageContext();
         return deviceContext.getSharedPreferences(context.getPackageName() + "_preferences", Context.MODE_PRIVATE);

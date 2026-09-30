@@ -91,4 +91,40 @@
     <string name="a11y_autostart">Автозапуск через спец. возможности</string>
     <string name="a11y_autostart_on">Включено — система запускает приложение при загрузке и перезапускает, если его выгрузили.</string>
     <string name="a11y_autostart_off">Выключено. Нажмите, чтобы открыть настройки спец. возможностей и включить «Автозапуск LocSync Client». Самый надёжный вариант на магнитолах.</string>
+
+    <string name="group_smoothing">Сглаживание</string>
+    <string name="filter_report_uncertainty">Честная точность (68%)</string>
+    <string name="filter_report_uncertainty_sub">Отдавать точность так, как её понимает Android (радиус 68%), плюс точность скорости и курса. Выкл.: прежнее значение 1σ.</string>
+    <string name="filter_out_accuracy">Точность на выходе</string>
+    <string name="filter_out_speed_acc">Точность скорости</string>
+    <string name="filter_out_bearing_acc">Точность курса</string>
+
+    <string name="filter_latency_comp">Компенсация задержки</string>
+    <string name="filter_latency_comp_sub">Сдвигать каждый фикс вперёд на его возраст, чтобы значок не отставал от машины.</string>
+    <string name="filter_extra_latency">Доп. задержка, мс</string>
+    <string name="filter_turn_model">Модель поворота</string>
+    <string name="filter_turn_model_sub">На поворотах прогнозировать по дуге, а не по прямой (меньше срезания углов и заносов значка).</string>
+    <string name="filter_latency">Задержка фикса</string>
+    <string name="filter_horizon">Горизонт прогноза</string>
+    <string name="filter_turn_rate">Скорость поворота</string>
+
+    <string name="filter_gating">Отсев выбросов</string>
+    <string name="filter_gating_sub">Уменьшать вес фиксов, которые скачут в сторону от прогноза (отражения между домами). После 5 подряд фильтр перепривязывается.</string>
+    <string name="filter_gate_threshold">Порог выброса, χ² (меньше = строже)</string>
+    <string name="filter_nis">Последняя невязка (χ²)</string>
+    <string name="filter_outliers">Выбросов ослаблено</string>
+    <string name="filter_reinits">Перепривязок фильтра</string>
+
+    <string name="filter_standstill">Удерживать позицию на стоянке</string>
+    <string name="filter_standstill_sub">Когда машина стоит, обнулять скорость и сильно меньше доверять координатам, чтобы значок не «плыл» и навигатор не перестраивал маршрут на светофоре.</string>
+    <string name="filter_standstill_speed">Порог остановки, м/с</string>
+    <string name="filter_motion">Движение</string>
+    <string name="filter_motion_stopped">Стоим (удержание)</string>
+    <string name="filter_motion_moving">Едем</string>
+
+    <string name="filter_adaptive_noise">Адаптивное сглаживание</string>
+    <string name="filter_adaptive_noise_sub">Сильнее сглаживать на прямой и быстрее реагировать в поворотах или когда фиксы расходятся с прогнозом.</string>
+    <string name="filter_process_noise_base">Базовый шум процесса σa, м/с² (меньше = плавнее)</string>
+    <string name="filter_nis_avg">Средняя невязка (идеал ≈2)</string>
+    <string name="filter_process_noise">Шум процесса σa</string>
 </resources>

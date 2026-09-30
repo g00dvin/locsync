@@ -28,6 +28,26 @@
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowStaticJitter" />
         </LinearLayout>
 
+        <!-- Smoothing (Kalman filter feeding the mock provider) -->
+        <TextView style="@style/LsGroupLabel" android:text="@string/group_smoothing" />
+        <LinearLayout style="@style/LsGroupCard">
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowReportUncertainty" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowLatencyComp" />
+            <include layout="@layout/row_setting_input" android:id="@+id/rowExtraLatency" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowTurnModel" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowGating" />
+            <include layout="@layout/row_setting_input" android:id="@+id/rowGateThreshold" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowStandstillHold" />
+            <include layout="@layout/row_setting_input" android:id="@+id/rowStandstillSpeed" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowAdaptiveNoise" />
+            <include layout="@layout/row_setting_input" android:id="@+id/rowProcessNoise" />
+        </LinearLayout>
+
         <!-- Diagnostics -->
         <TextView style="@style/LsGroupLabel" android:text="@string/group_diagnostics" />
         <LinearLayout style="@style/LsGroupCard">

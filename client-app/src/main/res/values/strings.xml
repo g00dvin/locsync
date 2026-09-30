@@ -98,4 +98,40 @@
     <string name="a11y_autostart">Autostart via accessibility service</string>
     <string name="a11y_autostart_on">Enabled — the system starts the app on boot and restarts it if killed.</string>
     <string name="a11y_autostart_off">Disabled. Tap to open accessibility settings and enable “LocSync Client autostart”. Most reliable option on head units.</string>
+
+    <string name="group_smoothing">Smoothing</string>
+    <string name="filter_report_uncertainty">Honest accuracy (68%)</string>
+    <string name="filter_report_uncertainty_sub">Report accuracy as Android expects (68% radius) and add speed/bearing accuracy. Off: legacy 1σ value.</string>
+    <string name="filter_out_accuracy">Output accuracy</string>
+    <string name="filter_out_speed_acc">Speed accuracy</string>
+    <string name="filter_out_bearing_acc">Bearing accuracy</string>
+
+    <string name="filter_latency_comp">Latency compensation</string>
+    <string name="filter_latency_comp_sub">Move each fix forward by its age so the icon keeps up with the car instead of trailing it.</string>
+    <string name="filter_extra_latency">Extra latency, ms</string>
+    <string name="filter_turn_model">Turn model</string>
+    <string name="filter_turn_model_sub">Predict along an arc while turning instead of a straight line (less corner cutting and overshoot).</string>
+    <string name="filter_latency">Fix latency</string>
+    <string name="filter_horizon">Prediction horizon</string>
+    <string name="filter_turn_rate">Turn rate</string>
+
+    <string name="filter_gating">Outlier rejection</string>
+    <string name="filter_gating_sub">De-weight fixes that jump away from the prediction (reflections between buildings). After 5 in a row the filter re-anchors.</string>
+    <string name="filter_gate_threshold">Outlier threshold, χ² (lower = stricter)</string>
+    <string name="filter_nis">Last innovation (χ²)</string>
+    <string name="filter_outliers">Outliers de-weighted</string>
+    <string name="filter_reinits">Filter re-anchors</string>
+
+    <string name="filter_standstill">Hold position at standstill</string>
+    <string name="filter_standstill_sub">When the car is stopped, pin speed to zero and trust position much less, so the icon doesn\'t wander and the navigator doesn\'t re-route at lights.</string>
+    <string name="filter_standstill_speed">Standstill speed, m/s</string>
+    <string name="filter_motion">Motion</string>
+    <string name="filter_motion_stopped">Stopped (holding)</string>
+    <string name="filter_motion_moving">Moving</string>
+
+    <string name="filter_adaptive_noise">Adaptive smoothing</string>
+    <string name="filter_adaptive_noise_sub">Smooth harder on straights and follow faster in turns or when fixes keep disagreeing with the prediction.</string>
+    <string name="filter_process_noise_base">Base process noise σa, m/s² (lower = smoother)</string>
+    <string name="filter_nis_avg">Innovation average (≈2 is ideal)</string>
+    <string name="filter_process_noise">Process noise σa</string>
 </resources>
