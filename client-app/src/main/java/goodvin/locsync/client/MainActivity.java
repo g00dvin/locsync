@@ -434,6 +434,12 @@ public class MainActivity extends AppCompatActivity {
         bindToggle(R.id.rowTurnModel, getString(R.string.filter_turn_model),
                 getString(R.string.filter_turn_model_sub), Preferences.filterTurnModel(this),
                 checked -> Preferences.setFilterTurnModel(this, checked));
+        bindToggle(R.id.rowGating, getString(R.string.filter_gating),
+                getString(R.string.filter_gating_sub), Preferences.filterGating(this),
+                checked -> Preferences.setFilterGating(this, checked));
+        bindNumberInput(R.id.rowGateThreshold, getString(R.string.filter_gate_threshold),
+                Preferences.filterGateThreshold(this), 4, 100,
+                v -> Preferences.setFilterGateThreshold(this, (float) v));
 
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,

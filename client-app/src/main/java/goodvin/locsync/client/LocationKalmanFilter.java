@@ -28,6 +28,11 @@ package goodvin.locsync.client;
  * not part of the state: it is estimated from the heading change between fixes and smoothed,
  * which keeps the filter linear (a plain KF with a time-varying transition matrix).
  *
+ * <p>Outliers (multipath jumps in urban canyons) are handled with a Mahalanobis gate on the
+ * position innovation: a fix whose normalised innovation squared exceeds the χ² threshold is not
+ * dropped but de-weighted (its noise inflated until it sits on the gate), so a genuine jump is
+ * still followed — and after several consecutive outliers the filter re-anchors on the fixes.
+ *
  * <p>The state refers to the time of the last fix; {@link #extrapolate(double)} projects it to the
  * output time without touching the filter, which is how the caller compensates fix latency.
  */
@@ -50,9 +55,19 @@ public class LocationKalmanFilter {
     private static final double MAX_TURN_RATE = 0.8;    // rad/s
     private static final double MAX_TURN_DT = 3.0;      // s; older heading is too stale to difference
 
+    // After this many consecutive gated fixes the filter, not the fixes, is presumed wrong.
+    private static final int REINIT_AFTER_OUTLIERS = 5;
+
     private double sigmaA;                  // process acceleration noise (m/s^2)
     private final double defaultSpeedSigma; // fallback velocity measurement noise (m/s)
     private boolean turnModel = true;
+    private boolean gating = true;
+    private double gateThreshold = 9.21;    // χ² with 2 dof at 99%
+
+    // Innovation diagnostics (counters survive reset(): they describe the whole session).
+    private double lastNis = Double.NaN;
+    private int consecutiveOutliers = 0;
+    private long outlierCount = 0, reinitCount = 0;
 
     private boolean initialized = false;
     private double lat0, lon0, mPerDegLon;
@@ -96,12 +111,21 @@ public class LocationKalmanFilter {
         }
     }
 
+    /** Mahalanobis gating of position fixes; {@code threshold} is χ² with 2 degrees of freedom. */
+    public void setGating(boolean enabled, double threshold) {
+        gating = enabled;
+        if (threshold > 0) {
+            gateThreshold = threshold;
+        }
+    }
+
     public boolean isInitialized() {
         return initialized;
     }
 
     public void reset() {
         initialized = false;
+        consecutiveOutliers = 0;
         omega = 0;
         prevHeading = Double.NaN;
         sincePrevHeading = 0;
@@ -148,8 +172,30 @@ public class LocationKalmanFilter {
         double em = (lon - lon0) * mPerDegLon;
         double nm = (lat - lat0) * M_PER_DEG_LAT;
         double sp = posSigma(accuracy);
-        scalarUpdate(0, em, sp * sp);
-        scalarUpdate(1, nm, sp * sp);
+        double r = sp * sp;
+
+        // Normalised innovation squared of the 2D position: d² = νᵀ S⁻¹ ν, S = P_pos + R.
+        double ne = em - x[0], nn = nm - x[1];
+        double s00 = P[0][0] + r, s11 = P[1][1] + r, s01 = P[0][1];
+        double det = s00 * s11 - s01 * s01;
+        lastNis = det > 0 ? (ne * ne * s11 - 2 * ne * nn * s01 + nn * nn * s00) / det : 0;
+        if (gating && lastNis > gateThreshold) {
+            outlierCount++;
+            if (++consecutiveOutliers >= REINIT_AFTER_OUTLIERS) {
+                // The fixes agree with each other but not with us: we diverged (or the car really
+                // jumped, e.g. after a ferry). Start over from this fix.
+                reinitCount++;
+                reset();
+                update(lat, lon, speed, bearingDeg, accuracy, speedAccuracy, bearingAccuracyDeg, hasSpeed, hasBearing);
+                return;
+            }
+            // Inflating R by d²/τ puts the fix exactly on the gate: it still pulls, but gently.
+            r *= lastNis / gateThreshold;
+        } else {
+            consecutiveOutliers = 0;
+        }
+        scalarUpdate(0, em, r);
+        scalarUpdate(1, nm, r);
 
         if (applyVel) {
             double br = Math.toRadians(bearingDeg);
@@ -393,6 +439,21 @@ public class LocationKalmanFilter {
     /** 1-sigma (≈68%) bearing accuracy in degrees, from the cross-track velocity variance. */
     public double getBearingAccuracyDeg() {
         return bearingAccuracyDeg(x, P);
+    }
+
+    /** Normalised innovation squared of the last position fix (χ², 2 dof; ~2 on average). */
+    public double getLastNis() {
+        return lastNis;
+    }
+
+    /** Fixes de-weighted by the gate this session. */
+    public long getOutlierCount() {
+        return outlierCount;
+    }
+
+    /** Times the filter re-anchored after consecutive outliers this session. */
+    public long getReinitCount() {
+        return reinitCount;
     }
 
     public double getVe() {

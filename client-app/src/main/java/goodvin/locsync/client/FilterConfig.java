@@ -30,4 +30,8 @@ public final class FilterConfig {
     public double extraLatencyMs = 0;
     /** Coordinated-turn motion model (predict along an arc) instead of straight lines. */
     public boolean turnModel = true;
+    /** De-weight fixes whose position innovation fails a χ² gate (multipath outliers). */
+    public boolean gating = true;
+    /** Gate threshold: χ² with 2 degrees of freedom (9.21 = 99%). */
+    public double gateThreshold = 9.21;
 }

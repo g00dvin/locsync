@@ -458,6 +458,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     lastFedFixTimestampMs = fixTs;
                     filterConfig = Preferences.filterConfig(this);
                     kalman.setTurnModel(filterConfig.turnModel);
+                    kalman.setGating(filterConfig.gating, filterConfig.gateThreshold);
 
                     long nowElapsed = SystemClock.elapsedRealtime();
                     // When the fix was taken, on our clock: it is already ageS old on arrival (phone-side
@@ -628,6 +629,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         addStat(labels, values, R.string.filter_turn_rate,
                 kalman.isInitialized() && filterConfig.turnModel ? kalman.getTurnRateDegPerSec() : Double.NaN,
                 "%+.1f°/s");
+        addStat(labels, values, R.string.filter_nis, kalman.getLastNis(), "%.1f");
+        addStat(labels, values, R.string.filter_outliers, kalman.getOutlierCount(), "%.0f");
+        addStat(labels, values, R.string.filter_reinits, kalman.getReinitCount(), "%.0f");
         sendBroadcast(new Intent("goodvin.locsync.FILTER_STATS")
                 .setPackage(getPackageName())
                 .putExtra("labels", labels.toArray(new String[0]))

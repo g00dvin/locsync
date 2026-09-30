@@ -175,6 +175,25 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_FILTER_TURN_MODEL, true);
     }
 
+    private static final String PREF_FILTER_GATING = "filterGating";
+    private static final String PREF_FILTER_GATE_THRESHOLD = "filterGateThreshold";
+
+    public static void setFilterGating(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_GATING, enabled).apply();
+    }
+
+    public static boolean filterGating(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_GATING, true);
+    }
+
+    public static void setFilterGateThreshold(Context context, float threshold) {
+        getPrefs(context).edit().putFloat(PREF_FILTER_GATE_THRESHOLD, threshold).apply();
+    }
+
+    public static float filterGateThreshold(Context context) {
+        return getPrefs(context).getFloat(PREF_FILTER_GATE_THRESHOLD, 9.21f);
+    }
+
     /** Current smoothing options; cheap enough to re-read on every fix so changes apply live. */
     public static FilterConfig filterConfig(Context context) {
         FilterConfig c = new FilterConfig();
@@ -182,6 +201,8 @@ public class Preferences {
         c.latencyCompensation = filterLatencyCompensation(context);
         c.extraLatencyMs = filterExtraLatencyMs(context);
         c.turnModel = filterTurnModel(context);
+        c.gating = filterGating(context);
+        c.gateThreshold = filterGateThreshold(context);
         return c;
     }
 

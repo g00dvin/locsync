@@ -114,4 +114,11 @@
     <string name="filter_latency">Fix latency</string>
     <string name="filter_horizon">Prediction horizon</string>
     <string name="filter_turn_rate">Turn rate</string>
+
+    <string name="filter_gating">Outlier rejection</string>
+    <string name="filter_gating_sub">De-weight fixes that jump away from the prediction (reflections between buildings). After 5 in a row the filter re-anchors.</string>
+    <string name="filter_gate_threshold">Outlier threshold, χ² (lower = stricter)</string>
+    <string name="filter_nis">Last innovation (χ²)</string>
+    <string name="filter_outliers">Outliers de-weighted</string>
+    <string name="filter_reinits">Filter re-anchors</string>
 </resources>
