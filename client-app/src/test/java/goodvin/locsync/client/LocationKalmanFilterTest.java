@@ -263,4 +263,45 @@ public class LocationKalmanFilterTest {
         double e = (est.longitude - 30.0) * M_PER_DEG_LAT * Math.cos(Math.toRadians(59.0));
         return Math.hypot(e - truthEn[0], n - truthEn[1]);
     }
+
+    // A single multipath jump of ~100 m must be de-weighted, not followed.
+    @Test
+    public void gatingDeweightsSingleJump() {
+        LocationKalmanFilter gated = newFilter();
+        LocationKalmanFilter open = newFilter();
+        open.setGating(false, 0);
+        for (LocationKalmanFilter f : new LocationKalmanFilter[]{gated, open}) {
+            f.update(59.0, 30.0, 0.0, 0.0, 5.0, 0.3, 0.0);
+            for (int i = 0; i < 5; i++) {
+                f.predict(1.0);
+                f.update(59.0, 30.0, 0.0, 0.0, 5.0, 0.3, 0.0);
+            }
+            f.predict(1.0);
+            f.update(59.0 + 100 / M_PER_DEG_LAT, 30.0, 0.0, 0.0, 5.0, 0.3, 0.0);
+        }
+        double jumpGated = (gated.getLatitude() - 59.0) * M_PER_DEG_LAT;
+        double jumpOpen = (open.getLatitude() - 59.0) * M_PER_DEG_LAT;
+        assertTrue("gated filter should barely move: " + jumpGated + " vs " + jumpOpen,
+                jumpGated < jumpOpen / 3);
+        assertEquals(1, gated.getOutlierCount());
+        assertTrue(gated.getLastNis() > 9.21);
+    }
+
+    // If the car really moved (fixes consistently elsewhere), the filter must re-anchor.
+    @Test
+    public void gatingReanchorsAfterConsecutiveOutliers() {
+        LocationKalmanFilter f = newFilter();
+        f.update(59.0, 30.0, 0.0, 0.0, 3.0, 0.3, 0.0);
+        for (int i = 0; i < 5; i++) {
+            f.predict(1.0);
+            f.update(59.0, 30.0, 0.0, 0.0, 3.0, 0.3, 0.0);
+        }
+        double newLat = 59.0 + 500 / M_PER_DEG_LAT;
+        for (int i = 0; i < 5; i++) {
+            f.predict(1.0);
+            f.update(newLat, 30.0, 0.0, 0.0, 3.0, 0.3, 0.0);
+        }
+        assertEquals(1, f.getReinitCount());
+        assertEquals(newLat, f.getLatitude(), 1e-7);
+    }
 }

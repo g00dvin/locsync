@@ -107,4 +107,11 @@
     <string name="filter_latency">Задержка фикса</string>
     <string name="filter_horizon">Горизонт прогноза</string>
     <string name="filter_turn_rate">Скорость поворота</string>
+
+    <string name="filter_gating">Отсев выбросов</string>
+    <string name="filter_gating_sub">Уменьшать вес фиксов, которые скачут в сторону от прогноза (отражения между домами). После 5 подряд фильтр перепривязывается.</string>
+    <string name="filter_gate_threshold">Порог выброса, χ² (меньше = строже)</string>
+    <string name="filter_nis">Последняя невязка (χ²)</string>
+    <string name="filter_outliers">Выбросов ослаблено</string>
+    <string name="filter_reinits">Перепривязок фильтра</string>
 </resources>
