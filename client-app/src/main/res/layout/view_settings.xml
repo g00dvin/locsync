@@ -43,6 +43,9 @@
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowStandstillHold" />
             <include layout="@layout/row_setting_input" android:id="@+id/rowStandstillSpeed" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowAdaptiveNoise" />
+            <include layout="@layout/row_setting_input" android:id="@+id/rowProcessNoise" />
         </LinearLayout>
 
         <!-- Diagnostics -->

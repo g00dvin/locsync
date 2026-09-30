@@ -337,4 +337,41 @@ public class LocationKalmanFilterTest {
         f.update(59.0, 30.0, 0.0, 0.0, 5.0, 0.0, 0.0, false, false);
         assertTrue(!f.isStationary());
     }
+
+    @Test
+    public void adaptiveNoiseRisesInTurnsOnly() {
+        LocationKalmanFilter f = newFilter();
+        f.setStandstill(false, 0);
+        f.update(59.0, 30.0, 15.0, 0.0, 3.0, 0.3, 2.0);
+        f.predict(1.0);
+        f.update(59.0 + 15 / M_PER_DEG_LAT, 30.0, 15.0, 0.0, 3.0, 0.3, 2.0);
+        assertEquals(2.0, f.getProcessNoise(), 0.2); // straight: stays near base
+        f.predict(1.0);
+        f.update(59.0 + 30 / M_PER_DEG_LAT, 30.0, 15.0, 20.0, 3.0, 0.3, 2.0); // 20°/s turn
+        assertTrue("turn should raise σa: " + f.getProcessNoise(), f.getProcessNoise() > 2.5);
+
+        LocationKalmanFilter fixed = newFilter();
+        fixed.setProcessNoise(2.0, false);
+        fixed.update(59.0, 30.0, 15.0, 0.0, 3.0, 0.3, 2.0);
+        fixed.predict(1.0);
+        fixed.update(59.0 + 15 / M_PER_DEG_LAT, 30.0, 15.0, 20.0, 3.0, 0.3, 2.0);
+        assertEquals(2.0, fixed.getProcessNoise(), 1e-12);
+    }
+
+    // Fixes persistently disagreeing with the model (NIS well above 2) must loosen it, capped.
+    @Test
+    public void adaptiveNoiseFollowsInnovation() {
+        LocationKalmanFilter f = new LocationKalmanFilter(0.5, 1.0);
+        f.setStandstill(false, 0);
+        f.setGating(false, 0);
+        f.update(59.0, 30.0, 0.0, 0.0, 2.0, 0.0, 0.0, false, false);
+        for (int i = 1; i <= 15; i++) {
+            f.predict(1.0);
+            double zig = (i % 2 == 0 ? 1 : -1) * 12.0; // ±12 m zig-zag vs σ=2 m fixes
+            f.update(59.0 + zig / M_PER_DEG_LAT, 30.0, 0.0, 0.0, 2.0, 0.0, 0.0, false, false);
+        }
+        assertTrue("NIS mean should be high: " + f.getNisAverage(), f.getNisAverage() > 3.0);
+        assertTrue(f.getProcessNoise() > 0.5);
+        assertTrue(f.getProcessNoise() <= 0.5 * 3.0 + 1e-9);
+    }
 }

@@ -213,6 +213,25 @@ public class Preferences {
         return getPrefs(context).getFloat(PREF_FILTER_STANDSTILL_SPEED, 0.5f);
     }
 
+    private static final String PREF_FILTER_PROCESS_NOISE = "filterProcessNoise";
+    private static final String PREF_FILTER_ADAPTIVE_NOISE = "filterAdaptiveNoise";
+
+    public static void setFilterProcessNoise(Context context, float sigmaA) {
+        getPrefs(context).edit().putFloat(PREF_FILTER_PROCESS_NOISE, sigmaA).apply();
+    }
+
+    public static float filterProcessNoise(Context context) {
+        return getPrefs(context).getFloat(PREF_FILTER_PROCESS_NOISE, 2.0f);
+    }
+
+    public static void setFilterAdaptiveNoise(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_ADAPTIVE_NOISE, enabled).apply();
+    }
+
+    public static boolean filterAdaptiveNoise(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_ADAPTIVE_NOISE, true);
+    }
+
     /** Current smoothing options; cheap enough to re-read on every fix so changes apply live. */
     public static FilterConfig filterConfig(Context context) {
         FilterConfig c = new FilterConfig();
@@ -224,6 +243,8 @@ public class Preferences {
         c.gateThreshold = filterGateThreshold(context);
         c.standstillHold = filterStandstillHold(context);
         c.standstillSpeed = filterStandstillSpeed(context);
+        c.processNoise = filterProcessNoise(context);
+        c.adaptiveNoise = filterAdaptiveNoise(context);
         return c;
     }
 

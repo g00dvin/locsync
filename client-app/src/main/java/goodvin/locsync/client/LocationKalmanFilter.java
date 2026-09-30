@@ -37,6 +37,11 @@ package goodvin.locsync.client;
  * "wanders" and navigation apps re-route at traffic lights. When the Doppler speed says we are
  * stopped, the filter applies a zero-velocity update and heavily de-weights the position (ZUPT).
  *
+ * <p>Adaptive process noise: one fixed σa is a compromise — too stiff in turns, too jittery on
+ * straights. With adaptation on, σa grows with the lateral acceleration of the current turn
+ * (v·|ω|) and with a running average of the innovation (fixes persistently disagreeing with the
+ * model means the model is too confident); it never drops below the configured base.
+ *
  * <p>The state refers to the time of the last fix; {@link #extrapolate(double)} projects it to the
  * output time without touching the filter, which is how the caller compensates fix latency.
  */
@@ -68,7 +73,18 @@ public class LocationKalmanFilter {
     private static final double STANDSTILL_POS_VAR_SCALE = 25.0;
     private static final double STANDSTILL_MAX_SPEED_ACC = 1.0; // m/s; distrust "stopped" if worse
 
-    private double sigmaA;                  // process acceleration noise (m/s^2)
+    // Adaptive process noise. NIS of a consistent 2D update averages 2; its running mean above that
+    // scales σa by sqrt(mean/2), capped. Lateral acceleration adds in quadrature.
+    private static final double NIS_EXPECTED = 2.0;
+    private static final double NIS_EMA_ALPHA = 0.2;
+    private static final double MAX_NIS_SCALE = 3.0;
+    private static final double TURN_ACCEL_GAIN = 1.0;
+    private static final double MAX_LATERAL_ACCEL = 8.0; // m/s², ~0.8 g: beyond this it isn't a car
+
+    private double sigmaA;                  // base process acceleration noise (m/s^2)
+    private boolean adaptiveNoise = true;
+    private double sigmaAEff;               // σa actually used by the motion model
+    private double nisEma = NIS_EXPECTED;
     private final double defaultSpeedSigma; // fallback velocity measurement noise (m/s)
     private boolean turnModel = true;
     private boolean gating = true;
@@ -113,7 +129,17 @@ public class LocationKalmanFilter {
 
     public LocationKalmanFilter(double sigmaA, double defaultSpeedSigma) {
         this.sigmaA = sigmaA;
+        this.sigmaAEff = sigmaA;
         this.defaultSpeedSigma = defaultSpeedSigma;
+    }
+
+    /** Base process noise σa (m/s²) and whether it adapts to turns and innovation. */
+    public void setProcessNoise(double base, boolean adaptive) {
+        if (base > 0) {
+            sigmaA = base;
+        }
+        adaptiveNoise = adaptive;
+        updateProcessNoise();
     }
 
     /** Enables the coordinated-turn motion model; when off, the filter is constant-velocity. */
@@ -154,6 +180,8 @@ public class LocationKalmanFilter {
 
     public void reset() {
         initialized = false;
+        nisEma = NIS_EXPECTED;
+        sigmaAEff = sigmaA;
         stationary = false;
         consecutiveOutliers = 0;
         omega = 0;
@@ -230,6 +258,9 @@ public class LocationKalmanFilter {
         } else {
             consecutiveOutliers = 0;
         }
+        // Outliers are the gate's job; don't let them also loosen the motion model.
+        double nisSample = gating ? Math.min(lastNis, gateThreshold) : lastNis;
+        nisEma += NIS_EMA_ALPHA * (nisSample - nisEma);
         scalarUpdate(0, em, r);
         scalarUpdate(1, nm, r);
 
@@ -239,6 +270,7 @@ public class LocationKalmanFilter {
             omega = 0;
             prevHeading = Double.NaN;
             sincePrevHeading = 0;
+            updateProcessNoise();
             return;
         }
         if (applyVel) {
@@ -250,6 +282,17 @@ public class LocationKalmanFilter {
             scalarUpdate(3, vnm, sv * sv);
         }
         updateTurnRate(applyVel, speed, bearingDeg);
+        updateProcessNoise();
+    }
+
+    private void updateProcessNoise() {
+        if (!adaptiveNoise || stationary) {
+            sigmaAEff = sigmaA;
+            return;
+        }
+        double lateral = TURN_ACCEL_GAIN * Math.min(MAX_LATERAL_ACCEL, Math.hypot(x[2], x[3]) * Math.abs(omega));
+        double scale = Math.max(1.0, Math.min(MAX_NIS_SCALE, Math.sqrt(nisEma / NIS_EXPECTED)));
+        sigmaAEff = Math.hypot(sigmaA, lateral) * scale;
     }
 
     /** Advances the filter state by dt seconds (motion model + process noise). */
@@ -317,7 +360,7 @@ public class LocationKalmanFilter {
                 cov[i][j] = sum;
             }
         }
-        double s2 = sigmaA * sigmaA;
+        double s2 = sigmaAEff * sigmaAEff;
         double dt2 = dt * dt, dt3 = dt2 * dt, dt4 = dt3 * dt;
         double qpp = s2 * dt4 / 4.0, qpv = s2 * dt3 / 2.0, qvv = s2 * dt2;
         cov[0][0] += qpp; cov[0][2] += qpv; cov[2][0] += qpv; cov[2][2] += qvv;
@@ -488,6 +531,16 @@ public class LocationKalmanFilter {
     /** Normalised innovation squared of the last position fix (χ², 2 dof; ~2 on average). */
     public double getLastNis() {
         return lastNis;
+    }
+
+    /** Process noise σa (m/s²) currently used by the motion model. */
+    public double getProcessNoise() {
+        return sigmaAEff;
+    }
+
+    /** Running mean of the position NIS (≈2 when the model and the fixes agree). */
+    public double getNisAverage() {
+        return nisEma;
     }
 
     /** Fixes de-weighted by the gate this session. */
