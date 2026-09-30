@@ -33,6 +33,10 @@ package goodvin.locsync.client;
  * dropped but de-weighted (its noise inflated until it sits on the gate), so a genuine jump is
  * still followed — and after several consecutive outliers the filter re-anchors on the fixes.
  *
+ * <p>Standstill: GNSS errors at rest are strongly time-correlated, so a parked car's position
+ * "wanders" and navigation apps re-route at traffic lights. When the Doppler speed says we are
+ * stopped, the filter applies a zero-velocity update and heavily de-weights the position (ZUPT).
+ *
  * <p>The state refers to the time of the last fix; {@link #extrapolate(double)} projects it to the
  * output time without touching the filter, which is how the caller compensates fix latency.
  */
@@ -58,11 +62,20 @@ public class LocationKalmanFilter {
     // After this many consecutive gated fixes the filter, not the fixes, is presumed wrong.
     private static final int REINIT_AFTER_OUTLIERS = 5;
 
+    // Standstill (ZUPT): velocity is pinned to zero with this sigma and position noise is scaled up
+    // by the factor below (σ ×5), so correlated at-rest wander barely moves the estimate.
+    private static final double ZUPT_SIGMA = 0.05;             // m/s
+    private static final double STANDSTILL_POS_VAR_SCALE = 25.0;
+    private static final double STANDSTILL_MAX_SPEED_ACC = 1.0; // m/s; distrust "stopped" if worse
+
     private double sigmaA;                  // process acceleration noise (m/s^2)
     private final double defaultSpeedSigma; // fallback velocity measurement noise (m/s)
     private boolean turnModel = true;
     private boolean gating = true;
     private double gateThreshold = 9.21;    // χ² with 2 dof at 99%
+    private boolean standstillHold = true;
+    private double standstillSpeed = 0.5;   // m/s
+    private boolean stationary = false;
 
     // Innovation diagnostics (counters survive reset(): they describe the whole session).
     private double lastNis = Double.NaN;
@@ -119,12 +132,29 @@ public class LocationKalmanFilter {
         }
     }
 
+    /** Zero-velocity update + position de-weighting while the measured speed is below {@code speed}. */
+    public void setStandstill(boolean enabled, double speed) {
+        standstillHold = enabled;
+        if (speed > 0) {
+            standstillSpeed = speed;
+        }
+        if (!enabled) {
+            stationary = false;
+        }
+    }
+
+    /** Whether the last fix was treated as standstill. */
+    public boolean isStationary() {
+        return stationary;
+    }
+
     public boolean isInitialized() {
         return initialized;
     }
 
     public void reset() {
         initialized = false;
+        stationary = false;
         consecutiveOutliers = 0;
         omega = 0;
         prevHeading = Double.NaN;
@@ -173,6 +203,12 @@ public class LocationKalmanFilter {
         double nm = (lat - lat0) * M_PER_DEG_LAT;
         double sp = posSigma(accuracy);
         double r = sp * sp;
+        // Only a real Doppler speed can say "stopped" (no speed, e.g. in a tunnel, is not zero).
+        stationary = standstillHold && hasSpeed && speed < standstillSpeed
+                && (speedAccuracy <= 0 || speedAccuracy <= STANDSTILL_MAX_SPEED_ACC);
+        if (stationary) {
+            r *= STANDSTILL_POS_VAR_SCALE;
+        }
 
         // Normalised innovation squared of the 2D position: d² = νᵀ S⁻¹ ν, S = P_pos + R.
         double ne = em - x[0], nn = nm - x[1];
@@ -197,6 +233,14 @@ public class LocationKalmanFilter {
         scalarUpdate(0, em, r);
         scalarUpdate(1, nm, r);
 
+        if (stationary) {
+            scalarUpdate(2, 0, ZUPT_SIGMA * ZUPT_SIGMA);
+            scalarUpdate(3, 0, ZUPT_SIGMA * ZUPT_SIGMA);
+            omega = 0;
+            prevHeading = Double.NaN;
+            sincePrevHeading = 0;
+            return;
+        }
         if (applyVel) {
             double br = Math.toRadians(bearingDeg);
             double vem = speed * Math.sin(br);

@@ -114,4 +114,11 @@
     <string name="filter_nis">Последняя невязка (χ²)</string>
     <string name="filter_outliers">Выбросов ослаблено</string>
     <string name="filter_reinits">Перепривязок фильтра</string>
+
+    <string name="filter_standstill">Удерживать позицию на стоянке</string>
+    <string name="filter_standstill_sub">Когда машина стоит, обнулять скорость и сильно меньше доверять координатам, чтобы значок не «плыл» и навигатор не перестраивал маршрут на светофоре.</string>
+    <string name="filter_standstill_speed">Порог остановки, м/с</string>
+    <string name="filter_motion">Движение</string>
+    <string name="filter_motion_stopped">Стоим (удержание)</string>
+    <string name="filter_motion_moving">Едем</string>
 </resources>

@@ -34,4 +34,8 @@ public final class FilterConfig {
     public boolean gating = true;
     /** Gate threshold: χ² with 2 degrees of freedom (9.21 = 99%). */
     public double gateThreshold = 9.21;
+    /** Zero-velocity update and position hold while the measured speed is below the threshold. */
+    public boolean standstillHold = true;
+    /** Speed (m/s) below which the car counts as stopped; also hides speed/bearing in the output. */
+    public double standstillSpeed = 0.5;
 }

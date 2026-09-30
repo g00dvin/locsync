@@ -194,6 +194,25 @@ public class Preferences {
         return getPrefs(context).getFloat(PREF_FILTER_GATE_THRESHOLD, 9.21f);
     }
 
+    private static final String PREF_FILTER_STANDSTILL_HOLD = "filterStandstillHold";
+    private static final String PREF_FILTER_STANDSTILL_SPEED = "filterStandstillSpeed";
+
+    public static void setFilterStandstillHold(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_STANDSTILL_HOLD, enabled).apply();
+    }
+
+    public static boolean filterStandstillHold(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_STANDSTILL_HOLD, true);
+    }
+
+    public static void setFilterStandstillSpeed(Context context, float speed) {
+        getPrefs(context).edit().putFloat(PREF_FILTER_STANDSTILL_SPEED, speed).apply();
+    }
+
+    public static float filterStandstillSpeed(Context context) {
+        return getPrefs(context).getFloat(PREF_FILTER_STANDSTILL_SPEED, 0.5f);
+    }
+
     /** Current smoothing options; cheap enough to re-read on every fix so changes apply live. */
     public static FilterConfig filterConfig(Context context) {
         FilterConfig c = new FilterConfig();
@@ -203,6 +222,8 @@ public class Preferences {
         c.turnModel = filterTurnModel(context);
         c.gating = filterGating(context);
         c.gateThreshold = filterGateThreshold(context);
+        c.standstillHold = filterStandstillHold(context);
+        c.standstillSpeed = filterStandstillSpeed(context);
         return c;
     }
 

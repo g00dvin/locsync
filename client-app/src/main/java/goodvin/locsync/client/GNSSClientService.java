@@ -79,7 +79,6 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
     private final LocationKalmanFilter kalman = new LocationKalmanFilter(2.0, 1.0);
     private static final long OUTPUT_INTERVAL_MS = 100;   // 10 Hz
-    private static final float STOP_SPEED_MPS = 0.5f;
     private static final long GPS_LOSS_CAP_MS = 2500;
     private volatile long lastFixElapsedMs = 0;           // SystemClock.elapsedRealtime of last real fix
     // Head-unit elapsedRealtime the filter state refers to: the fix time, i.e. arrival minus the
@@ -459,6 +458,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     filterConfig = Preferences.filterConfig(this);
                     kalman.setTurnModel(filterConfig.turnModel);
                     kalman.setGating(filterConfig.gating, filterConfig.gateThreshold);
+                    kalman.setStandstill(filterConfig.standstillHold, filterConfig.standstillSpeed);
 
                     long nowElapsed = SystemClock.elapsedRealtime();
                     // When the fix was taken, on our clock: it is already ageS old on arrival (phone-side
@@ -534,7 +534,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         loc.setLongitude(est.longitude);
         loc.setAltitude(lastAltitude);
         double speed = est.speed;
-        boolean moving = speed >= STOP_SPEED_MPS;
+        boolean moving = speed >= filterConfig.standstillSpeed;
         if (filterConfig.reportUncertainty) {
             outAccuracy = est.accuracy68;
             outSpeedAcc = est.speedAccuracy;
@@ -629,6 +629,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         addStat(labels, values, R.string.filter_turn_rate,
                 kalman.isInitialized() && filterConfig.turnModel ? kalman.getTurnRateDegPerSec() : Double.NaN,
                 "%+.1f°/s");
+        labels.add(getString(R.string.filter_motion));
+        values.add(!kalman.isInitialized() ? "—" : getString(kalman.isStationary()
+                ? R.string.filter_motion_stopped : R.string.filter_motion_moving));
         addStat(labels, values, R.string.filter_nis, kalman.getLastNis(), "%.1f");
         addStat(labels, values, R.string.filter_outliers, kalman.getOutlierCount(), "%.0f");
         addStat(labels, values, R.string.filter_reinits, kalman.getReinitCount(), "%.0f");

@@ -121,4 +121,11 @@
     <string name="filter_nis">Last innovation (χ²)</string>
     <string name="filter_outliers">Outliers de-weighted</string>
     <string name="filter_reinits">Filter re-anchors</string>
+
+    <string name="filter_standstill">Hold position at standstill</string>
+    <string name="filter_standstill_sub">When the car is stopped, pin speed to zero and trust position much less, so the icon doesn\'t wander and the navigator doesn\'t re-route at lights.</string>
+    <string name="filter_standstill_speed">Standstill speed, m/s</string>
+    <string name="filter_motion">Motion</string>
+    <string name="filter_motion_stopped">Stopped (holding)</string>
+    <string name="filter_motion_moving">Moving</string>
 </resources>

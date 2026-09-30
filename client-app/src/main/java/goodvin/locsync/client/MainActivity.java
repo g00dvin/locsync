@@ -440,6 +440,12 @@ public class MainActivity extends AppCompatActivity {
         bindNumberInput(R.id.rowGateThreshold, getString(R.string.filter_gate_threshold),
                 Preferences.filterGateThreshold(this), 4, 100,
                 v -> Preferences.setFilterGateThreshold(this, (float) v));
+        bindToggle(R.id.rowStandstillHold, getString(R.string.filter_standstill),
+                getString(R.string.filter_standstill_sub), Preferences.filterStandstillHold(this),
+                checked -> Preferences.setFilterStandstillHold(this, checked));
+        bindNumberInput(R.id.rowStandstillSpeed, getString(R.string.filter_standstill_speed),
+                Preferences.filterStandstillSpeed(this), 0.1, 3,
+                v -> Preferences.setFilterStandstillSpeed(this, (float) v));
 
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,
