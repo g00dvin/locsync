@@ -271,6 +271,7 @@ public class LocationKalmanFilterTest {
         LocationKalmanFilter open = newFilter();
         open.setGating(false, 0);
         for (LocationKalmanFilter f : new LocationKalmanFilter[]{gated, open}) {
+            f.setStandstill(false, 0); // isolate the gate from the standstill hold
             f.update(59.0, 30.0, 0.0, 0.0, 5.0, 0.3, 0.0);
             for (int i = 0; i < 5; i++) {
                 f.predict(1.0);
@@ -303,5 +304,37 @@ public class LocationKalmanFilterTest {
         }
         assertEquals(1, f.getReinitCount());
         assertEquals(newLat, f.getLatitude(), 1e-7);
+    }
+
+    // Parked car with slowly wandering (correlated) fixes: the hold must keep the estimate much
+    // closer to where it stopped than a plain filter, and keep velocity ~0.
+    @Test
+    public void standstillHoldResistsWander() {
+        LocationKalmanFilter held = newFilter();
+        LocationKalmanFilter plain = newFilter();
+        plain.setStandstill(false, 0);
+        for (LocationKalmanFilter f : new LocationKalmanFilter[]{held, plain}) {
+            f.update(59.0, 30.0, 0.0, 0.0, 5.0, 0.2, 0.0);
+            for (int i = 1; i <= 20; i++) {
+                f.predict(1.0);
+                f.update(59.0 + i * 0.5 / M_PER_DEG_LAT, 30.0, 0.1, 0.0, 5.0, 0.2, 0.0); // drifts 0.5 m/s north
+            }
+        }
+        assertTrue(held.isStationary());
+        assertTrue(!plain.isStationary());
+        double driftHeld = (held.getLatitude() - 59.0) * M_PER_DEG_LAT;
+        double driftPlain = (plain.getLatitude() - 59.0) * M_PER_DEG_LAT;
+        assertTrue("hold should resist wander: " + driftHeld + " vs " + driftPlain, driftHeld < driftPlain / 2);
+        assertTrue(held.getSpeed() < 0.1);
+    }
+
+    // No Doppler speed (tunnel) must never count as "stopped".
+    @Test
+    public void unknownSpeedIsNotStandstill() {
+        LocationKalmanFilter f = newFilter();
+        f.update(59.0, 30.0, 0.0, 0.0, 5.0, 0.0, 0.0, false, false);
+        f.predict(1.0);
+        f.update(59.0, 30.0, 0.0, 0.0, 5.0, 0.0, 0.0, false, false);
+        assertTrue(!f.isStationary());
     }
 }

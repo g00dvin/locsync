@@ -40,6 +40,9 @@
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowGating" />
             <include layout="@layout/row_setting_input" android:id="@+id/rowGateThreshold" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowStandstillHold" />
+            <include layout="@layout/row_setting_input" android:id="@+id/rowStandstillSpeed" />
         </LinearLayout>
 
         <!-- Diagnostics -->
