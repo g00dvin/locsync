@@ -20,6 +20,7 @@ package goodvin.locsync.client;
 import android.Manifest;
 import android.animation.ObjectAnimator;
 import android.annotation.SuppressLint;
+import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -259,6 +260,7 @@ public class MainActivity extends AppCompatActivity {
         // Recompute from the service rather than assuming a state; also re-check mock-app selection.
         refreshPermissions();
         refreshState();
+        refreshA11yAutostartRow();
     }
 
     // --- binding ---
@@ -403,6 +405,8 @@ public class MainActivity extends AppCompatActivity {
                         AutostartScheduler.cancel(this);
                     }
                 });
+        bindActionChevron(R.id.rowA11yAutostart, getString(R.string.a11y_autostart), null,
+                this::openAccessibilitySettings);
         bindToggle(R.id.rowStaticJitter, getString(R.string.static_jitter), null,
                 Preferences.staticJitterEnabled(this),
                 checked -> Preferences.setStaticJitterEnabled(this, checked));
@@ -429,6 +433,23 @@ public class MainActivity extends AppCompatActivity {
                 getString(R.string.license_view),
                 () -> startActivity(new Intent(Intent.ACTION_VIEW,
                         Uri.parse("https://www.gnu.org/licenses/gpl-3.0.html"))));
+    }
+
+    private void refreshA11yAutostartRow() {
+        View row = findViewById(R.id.rowA11yAutostart);
+        TextView sub = row.findViewById(R.id.row_sub);
+        sub.setText(AutostartAccessibilityService.isEnabled(this)
+                ? R.string.a11y_autostart_on : R.string.a11y_autostart_off);
+        sub.setVisibility(View.VISIBLE);
+    }
+
+    private void openAccessibilitySettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+        } catch (ActivityNotFoundException e) {
+            // Some head-unit ROMs strip the accessibility screen; fall back to the settings root.
+            startActivity(new Intent(Settings.ACTION_SETTINGS));
+        }
     }
 
     private void registerReceivers() {

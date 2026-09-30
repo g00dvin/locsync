@@ -18,6 +18,8 @@
 package goodvin.locsync.client;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
@@ -46,5 +48,26 @@ public class AutostartPolicyTest {
     @Test
     public void wifiEnabledNotRunning_starts() {
         assertEquals(Decision.START, AutostartPolicy.decide(true, true, false));
+    }
+
+    private static final String FULL = "goodvin.locsync.client/goodvin.locsync.client.AutostartAccessibilityService";
+    private static final String SHORT = "goodvin.locsync.client/.AutostartAccessibilityService";
+
+    @Test
+    public void a11yListed_emptyOrNull_isFalse() {
+        assertFalse(AutostartPolicy.isAccessibilityServiceListed(null, FULL, SHORT));
+        assertFalse(AutostartPolicy.isAccessibilityServiceListed("", FULL, SHORT));
+    }
+
+    @Test
+    public void a11yListed_matchesFullOrShortAmongOthers() {
+        assertTrue(AutostartPolicy.isAccessibilityServiceListed("com.other/.Svc:" + FULL, FULL, SHORT));
+        assertTrue(AutostartPolicy.isAccessibilityServiceListed(SHORT + ":com.other/.Svc", FULL, SHORT));
+    }
+
+    @Test
+    public void a11yListed_otherServicesOnly_isFalse() {
+        assertFalse(AutostartPolicy.isAccessibilityServiceListed(
+                "com.other/.Svc:goodvin.locsync.client/.OtherService", FULL, SHORT));
     }
 }
