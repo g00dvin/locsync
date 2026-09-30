@@ -459,6 +459,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     kalman.setTurnModel(filterConfig.turnModel);
                     kalman.setGating(filterConfig.gating, filterConfig.gateThreshold);
                     kalman.setStandstill(filterConfig.standstillHold, filterConfig.standstillSpeed);
+                    kalman.setProcessNoise(filterConfig.processNoise, filterConfig.adaptiveNoise);
 
                     long nowElapsed = SystemClock.elapsedRealtime();
                     // When the fix was taken, on our clock: it is already ageS old on arrival (phone-side
@@ -633,6 +634,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         values.add(!kalman.isInitialized() ? "—" : getString(kalman.isStationary()
                 ? R.string.filter_motion_stopped : R.string.filter_motion_moving));
         addStat(labels, values, R.string.filter_nis, kalman.getLastNis(), "%.1f");
+        addStat(labels, values, R.string.filter_nis_avg,
+                kalman.isInitialized() ? kalman.getNisAverage() : Double.NaN, "%.1f");
+        addStat(labels, values, R.string.filter_process_noise,
+                kalman.isInitialized() ? kalman.getProcessNoise() : Double.NaN, "%.2f m/s²");
         addStat(labels, values, R.string.filter_outliers, kalman.getOutlierCount(), "%.0f");
         addStat(labels, values, R.string.filter_reinits, kalman.getReinitCount(), "%.0f");
         sendBroadcast(new Intent("goodvin.locsync.FILTER_STATS")

@@ -128,4 +128,10 @@
     <string name="filter_motion">Motion</string>
     <string name="filter_motion_stopped">Stopped (holding)</string>
     <string name="filter_motion_moving">Moving</string>
+
+    <string name="filter_adaptive_noise">Adaptive smoothing</string>
+    <string name="filter_adaptive_noise_sub">Smooth harder on straights and follow faster in turns or when fixes keep disagreeing with the prediction.</string>
+    <string name="filter_process_noise_base">Base process noise σa, m/s² (lower = smoother)</string>
+    <string name="filter_nis_avg">Innovation average (≈2 is ideal)</string>
+    <string name="filter_process_noise">Process noise σa</string>
 </resources>

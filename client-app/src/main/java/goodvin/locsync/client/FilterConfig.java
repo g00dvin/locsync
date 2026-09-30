@@ -38,4 +38,8 @@ public final class FilterConfig {
     public boolean standstillHold = true;
     /** Speed (m/s) below which the car counts as stopped; also hides speed/bearing in the output. */
     public double standstillSpeed = 0.5;
+    /** Base process noise σa (m/s²): how much the car is expected to accelerate between fixes. */
+    public double processNoise = 2.0;
+    /** Raise σa in turns and when fixes keep disagreeing with the prediction. */
+    public boolean adaptiveNoise = true;
 }

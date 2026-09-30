@@ -446,6 +446,12 @@ public class MainActivity extends AppCompatActivity {
         bindNumberInput(R.id.rowStandstillSpeed, getString(R.string.filter_standstill_speed),
                 Preferences.filterStandstillSpeed(this), 0.1, 3,
                 v -> Preferences.setFilterStandstillSpeed(this, (float) v));
+        bindToggle(R.id.rowAdaptiveNoise, getString(R.string.filter_adaptive_noise),
+                getString(R.string.filter_adaptive_noise_sub), Preferences.filterAdaptiveNoise(this),
+                checked -> Preferences.setFilterAdaptiveNoise(this, checked));
+        bindNumberInput(R.id.rowProcessNoise, getString(R.string.filter_process_noise_base),
+                Preferences.filterProcessNoise(this), 0.2, 10,
+                v -> Preferences.setFilterProcessNoise(this, (float) v));
 
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,
