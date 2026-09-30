@@ -82,12 +82,17 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private static final float STOP_SPEED_MPS = 0.5f;
     private static final long GPS_LOSS_CAP_MS = 2500;
     private volatile long lastFixElapsedMs = 0;           // SystemClock.elapsedRealtime of last real fix
-    private long lastPredictElapsedMs = 0;
+    // Head-unit elapsedRealtime the filter state refers to: the fix time, i.e. arrival minus the
+    // fix's age when latency compensation is on. Output ticks extrapolate from here to "now".
+    private long stateElapsedMs = 0;
+    private static final long MAX_LATENCY_MS = 3000;        // ignore absurd ages (clock glitches)
+    private static final double MAX_HORIZON_S = 3.0;        // never extrapolate further than this
     private long lastFedFixTimestampMs = Long.MIN_VALUE;  // LocationUpdate.timestamp last fed to the filter (dedup keepalive resends)
     private volatile double lastAltitude = 0;
     private FilterConfig filterConfig = new FilterConfig();  // re-read from Preferences on every fix
     // Last injected output, for the Monitor screen's filter card (NaN = nothing injected yet).
     private double outAccuracy = Double.NaN, outSpeedAcc = Double.NaN, outBearingAcc = Double.NaN;
+    private double lastLatencyMs = Double.NaN, lastHorizonMs = Double.NaN;
     private final Runnable smoothingTick = this::smoothingTick;
 
     private volatile DatagramSocket udpSocket;
@@ -247,7 +252,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         executor.execute(this::receiveLoop);
         mainHandler.post(helloTick);
 
-        lastPredictElapsedMs = 0;
+        stateElapsedMs = 0;
         filterConfig = Preferences.filterConfig(this);
         mainHandler.post(smoothingTick);
 
@@ -269,9 +274,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             udpSocket = null;
         }
         lastFixElapsedMs = 0;
-        lastPredictElapsedMs = 0;
+        stateElapsedMs = 0;
         kalman.reset();
         outAccuracy = outSpeedAcc = outBearingAcc = Double.NaN;
+        lastLatencyMs = lastHorizonMs = Double.NaN;
         connectionManager.clearLearnedServerAddress();
         lastBroadcastSatelliteCount = -1;
         broadcastSatelliteStatusToWidget(0);
@@ -439,6 +445,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             final boolean hasBrg = locationUpdate.hasBearing();
             final long fixTs = locationUpdate.getTimestamp();
             final double alt = locationUpdate.getAltitude();
+            final float ageS = locationUpdate.getLocationAge();
             mainHandler.post(() -> {
                 try {
                     // Skip keepalive resends of a fix already fed to the filter. The server re-sends the
@@ -447,26 +454,42 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     if (fixTs == lastFedFixTimestampMs) {
                         return;
                     }
+                    long prevFixTs = lastFedFixTimestampMs;
                     lastFedFixTimestampMs = fixTs;
                     filterConfig = Preferences.filterConfig(this);
+                    kalman.setTurnModel(filterConfig.turnModel);
 
                     long nowElapsed = SystemClock.elapsedRealtime();
+                    // When the fix was taken, on our clock: it is already ageS old on arrival (phone-side
+                    // fix age), plus any user-configured extra latency (provider/transport delay).
+                    long latencyMs = 0;
+                    if (filterConfig.latencyCompensation) {
+                        latencyMs = Math.round(Math.max(0, ageS) * 1000 + filterConfig.extraLatencyMs);
+                        latencyMs = Math.max(0, Math.min(latencyMs, MAX_LATENCY_MS));
+                    }
+                    long measElapsed = nowElapsed - latencyMs;
+                    lastLatencyMs = latencyMs;
+
                     boolean resumingAfterGap =
                             lastFixElapsedMs == 0 || (nowElapsed - lastFixElapsedMs) > GPS_LOSS_CAP_MS;
                     if (resumingAfterGap) {
                         // Fresh start, or the first real fix after a GPS gap (e.g. tunnel exit): re-anchor so
                         // the estimate snaps to the new position instead of lurching from stale state.
                         kalman.reset();
-                        lastPredictElapsedMs = 0;
-                    } else if (kalman.isInitialized() && lastPredictElapsedMs > 0) {
-                        // Cap dt so a long GPS gap can't feed a huge predict step (bounds process-noise growth).
-                        double dt = Math.min((nowElapsed - lastPredictElapsedMs) / 1000.0, 5.0);
-                        kalman.predict(dt);
+                    } else if (kalman.isInitialized() && stateElapsedMs > 0) {
+                        // Step the state from the previous fix time to this one. The phone's fix timestamps
+                        // give the exact interval; fall back to our clock if they look wrong. Cap dt so a
+                        // long GPS gap can't feed a huge predict step (bounds process-noise growth).
+                        double dt = (fixTs - prevFixTs) / 1000.0;
+                        if (!(dt > 0 && dt <= 5.0)) {
+                            dt = (measElapsed - stateElapsedMs) / 1000.0;
+                        }
+                        kalman.predict(Math.max(0, Math.min(dt, 5.0)));
                     }
                     kalman.update(lat, lon, spd, brg, acc, spdAcc, brgAcc, hasSpd, hasBrg);
                     lastAltitude = alt;
                     lastFixElapsedMs = nowElapsed;
-                    lastPredictElapsedMs = nowElapsed;
+                    stateElapsedMs = measElapsed;
                 } catch (Exception e) {
                     Log.e(TAG, "Error updating Kalman filter", e);
                 }
@@ -493,37 +516,37 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         boolean gpsLost = lastFixElapsedMs == 0 || (nowElapsed - lastFixElapsedMs) > GPS_LOSS_CAP_MS;
 
         if (kalman.isInitialized() && !gpsLost) {
-            if (lastPredictElapsedMs > 0) {
-                kalman.predict((nowElapsed - lastPredictElapsedMs) / 1000.0);
-            }
-            lastPredictElapsedMs = nowElapsed;
-            injectSmoothed(nowElapsed);
+            // Project the fix-time state to now (covers both the time since the last fix and, with
+            // latency compensation, the fix's own age) without disturbing the filter.
+            double horizonS = Math.max(0, Math.min((nowElapsed - stateElapsedMs) / 1000.0, MAX_HORIZON_S));
+            lastHorizonMs = horizonS * 1000.0;
+            injectSmoothed(kalman.extrapolate(horizonS));
         }
         // When GPS is lost, we simply stop advancing/injecting (freeze) until fixes resume.
 
         mainHandler.postDelayed(smoothingTick, OUTPUT_INTERVAL_MS);
     }
 
-    private void injectSmoothed(long nowElapsed) {
+    private void injectSmoothed(LocationKalmanFilter.Estimate est) {
         Location loc = new Location(LocationManager.GPS_PROVIDER);
-        loc.setLatitude(kalman.getLatitude());
-        loc.setLongitude(kalman.getLongitude());
+        loc.setLatitude(est.latitude);
+        loc.setLongitude(est.longitude);
         loc.setAltitude(lastAltitude);
-        double speed = kalman.getSpeed();
+        double speed = est.speed;
         boolean moving = speed >= STOP_SPEED_MPS;
         if (filterConfig.reportUncertainty) {
-            outAccuracy = kalman.getAccuracy68();
-            outSpeedAcc = kalman.getSpeedAccuracy();
-            outBearingAcc = moving ? kalman.getBearingAccuracyDeg() : Double.NaN;
+            outAccuracy = est.accuracy68;
+            outSpeedAcc = est.speedAccuracy;
+            outBearingAcc = moving ? est.bearingAccuracyDeg : Double.NaN;
         } else {
-            outAccuracy = kalman.getAccuracy();
+            outAccuracy = est.accuracy;
             outSpeedAcc = Double.NaN;
             outBearingAcc = Double.NaN;
         }
         loc.setAccuracy((float) outAccuracy);
         if (moving) {
             loc.setSpeed((float) speed);
-            loc.setBearing((float) kalman.getBearingDeg());
+            loc.setBearing((float) est.bearingDeg);
             if (filterConfig.reportUncertainty) {
                 loc.setSpeedAccuracyMetersPerSecond((float) outSpeedAcc);
                 loc.setBearingAccuracyDegrees((float) outBearingAcc);
@@ -600,6 +623,11 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         addStat(labels, values, R.string.filter_out_accuracy, outAccuracy, "±%.1f m");
         addStat(labels, values, R.string.filter_out_speed_acc, outSpeedAcc, "±%.2f m/s");
         addStat(labels, values, R.string.filter_out_bearing_acc, outBearingAcc, "±%.1f°");
+        addStat(labels, values, R.string.filter_latency, lastLatencyMs, "%.0f ms");
+        addStat(labels, values, R.string.filter_horizon, lastHorizonMs, "%.0f ms");
+        addStat(labels, values, R.string.filter_turn_rate,
+                kalman.isInitialized() && filterConfig.turnModel ? kalman.getTurnRateDegPerSec() : Double.NaN,
+                "%+.1f°/s");
         sendBroadcast(new Intent("goodvin.locsync.FILTER_STATS")
                 .setPackage(getPackageName())
                 .putExtra("labels", labels.toArray(new String[0]))

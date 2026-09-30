@@ -425,6 +425,15 @@ public class MainActivity extends AppCompatActivity {
         bindToggle(R.id.rowReportUncertainty, getString(R.string.filter_report_uncertainty),
                 getString(R.string.filter_report_uncertainty_sub), Preferences.filterReportUncertainty(this),
                 checked -> Preferences.setFilterReportUncertainty(this, checked));
+        bindToggle(R.id.rowLatencyComp, getString(R.string.filter_latency_comp),
+                getString(R.string.filter_latency_comp_sub), Preferences.filterLatencyCompensation(this),
+                checked -> Preferences.setFilterLatencyCompensation(this, checked));
+        bindNumberInput(R.id.rowExtraLatency, getString(R.string.filter_extra_latency),
+                Preferences.filterExtraLatencyMs(this), 0, 1000,
+                v -> Preferences.setFilterExtraLatencyMs(this, (float) v));
+        bindToggle(R.id.rowTurnModel, getString(R.string.filter_turn_model),
+                getString(R.string.filter_turn_model_sub), Preferences.filterTurnModel(this),
+                checked -> Preferences.setFilterTurnModel(this, checked));
 
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,
@@ -912,6 +921,42 @@ public class MainActivity extends AppCompatActivity {
             sw.setChecked(next);
             onChange.accept(next);
         });
+    }
+
+    /**
+     * Numeric setting: saves every valid edit immediately (the service re-reads settings on each
+     * fix); out-of-range or unparsable input is flagged and not saved.
+     */
+    private void bindNumberInput(int rowId, String label, double value, double min, double max,
+                                 java.util.function.DoubleConsumer onChange) {
+        View row = findViewById(rowId);
+        setText(row, R.id.row_label, String.format(Locale.US, "%s (%s–%s)", label, fmtNum(min), fmtNum(max)));
+        EditText input = row.findViewById(R.id.row_input);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
+                | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        input.setText(fmtNum(value));
+        input.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                double v;
+                try {
+                    v = Double.parseDouble(s.toString().trim().replace(',', '.'));
+                } catch (NumberFormatException e) {
+                    v = Double.NaN;
+                }
+                if (Double.isNaN(v) || v < min || v > max) {
+                    input.setError(String.format(Locale.US, "%s–%s", fmtNum(min), fmtNum(max)));
+                } else {
+                    input.setError(null);
+                    onChange.accept(v);
+                }
+            }
+        });
+    }
+
+    private static String fmtNum(double v) {
+        return v == Math.rint(v) ? String.valueOf((long) v) : String.format(Locale.US, "%.2f", v);
     }
 
     private void bindAction(int rowId, String label, String sub, boolean chevron, Runnable click) {

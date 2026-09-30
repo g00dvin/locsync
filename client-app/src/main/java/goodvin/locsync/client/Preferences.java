@@ -147,10 +147,41 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_FILTER_REPORT_UNCERTAINTY, true);
     }
 
+    private static final String PREF_FILTER_LATENCY_COMP = "filterLatencyCompensation";
+    private static final String PREF_FILTER_EXTRA_LATENCY_MS = "filterExtraLatencyMs";
+    private static final String PREF_FILTER_TURN_MODEL = "filterTurnModel";
+
+    public static void setFilterLatencyCompensation(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_LATENCY_COMP, enabled).apply();
+    }
+
+    public static boolean filterLatencyCompensation(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_LATENCY_COMP, true);
+    }
+
+    public static void setFilterExtraLatencyMs(Context context, float ms) {
+        getPrefs(context).edit().putFloat(PREF_FILTER_EXTRA_LATENCY_MS, ms).apply();
+    }
+
+    public static float filterExtraLatencyMs(Context context) {
+        return getPrefs(context).getFloat(PREF_FILTER_EXTRA_LATENCY_MS, 0f);
+    }
+
+    public static void setFilterTurnModel(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_TURN_MODEL, enabled).apply();
+    }
+
+    public static boolean filterTurnModel(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_TURN_MODEL, true);
+    }
+
     /** Current smoothing options; cheap enough to re-read on every fix so changes apply live. */
     public static FilterConfig filterConfig(Context context) {
         FilterConfig c = new FilterConfig();
         c.reportUncertainty = filterReportUncertainty(context);
+        c.latencyCompensation = filterLatencyCompensation(context);
+        c.extraLatencyMs = filterExtraLatencyMs(context);
+        c.turnModel = filterTurnModel(context);
         return c;
     }
 
