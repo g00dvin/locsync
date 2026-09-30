@@ -91,4 +91,11 @@
     <string name="a11y_autostart">Автозапуск через спец. возможности</string>
     <string name="a11y_autostart_on">Включено — система запускает приложение при загрузке и перезапускает, если его выгрузили.</string>
     <string name="a11y_autostart_off">Выключено. Нажмите, чтобы открыть настройки спец. возможностей и включить «Автозапуск LocSync Client». Самый надёжный вариант на магнитолах.</string>
+
+    <string name="group_smoothing">Сглаживание</string>
+    <string name="filter_report_uncertainty">Честная точность (68%)</string>
+    <string name="filter_report_uncertainty_sub">Отдавать точность так, как её понимает Android (радиус 68%), плюс точность скорости и курса. Выкл.: прежнее значение 1σ.</string>
+    <string name="filter_out_accuracy">Точность на выходе</string>
+    <string name="filter_out_speed_acc">Точность скорости</string>
+    <string name="filter_out_bearing_acc">Точность курса</string>
 </resources>

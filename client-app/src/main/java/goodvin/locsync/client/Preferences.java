@@ -137,6 +137,23 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_METRICS_ENABLED, false);
     }
 
+    private static final String PREF_FILTER_REPORT_UNCERTAINTY = "filterReportUncertainty";
+
+    public static void setFilterReportUncertainty(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_REPORT_UNCERTAINTY, enabled).apply();
+    }
+
+    public static boolean filterReportUncertainty(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_REPORT_UNCERTAINTY, true);
+    }
+
+    /** Current smoothing options; cheap enough to re-read on every fix so changes apply live. */
+    public static FilterConfig filterConfig(Context context) {
+        FilterConfig c = new FilterConfig();
+        c.reportUncertainty = filterReportUncertainty(context);
+        return c;
+    }
+
     private static SharedPreferences getPrefs(Context context) {
         final Context deviceContext = context.getApplicationContext().createDeviceProtectedStorageContext();
         return deviceContext.getSharedPreferences(context.getPackageName() + "_preferences", Context.MODE_PRIVATE);
