@@ -85,4 +85,10 @@
     <string name="notification_text_connected_no_age">Получение данных о местоположении</string>
     <string name="notification_text_location_format">Широта: %1$.6f, Долгота: %2$.6f</string>
     <string name="notification_channel_description">%s Служба местоположения</string>
+
+    <string name="a11y_service_label">Автозапуск LocSync Client</string>
+    <string name="a11y_service_description">Автоматически запускает LocSync Client при включении магнитолы и не даёт системе его выгрузить. Сервис не читает содержимое экрана и не отслеживает ваши действия.</string>
+    <string name="a11y_autostart">Автозапуск через спец. возможности</string>
+    <string name="a11y_autostart_on">Включено — система запускает приложение при загрузке и перезапускает, если его выгрузили.</string>
+    <string name="a11y_autostart_off">Выключено. Нажмите, чтобы открыть настройки спец. возможностей и включить «Автозапуск LocSync Client». Самый надёжный вариант на магнитолах.</string>
 </resources>

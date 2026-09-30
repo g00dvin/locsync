@@ -92,4 +92,10 @@
     <string name="metrics_panel_title">Performance Metrics</string>
     <string name="export_metrics">Export Metrics CSV</string>
     <string name="metrics_export_none">No metrics file yet — enable metrics and start the service</string>
+
+    <string name="a11y_service_label">LocSync Client autostart</string>
+    <string name="a11y_service_description">Starts LocSync Client automatically when the head unit boots and keeps it running. The service does not read screen content or track your actions.</string>
+    <string name="a11y_autostart">Autostart via accessibility service</string>
+    <string name="a11y_autostart_on">Enabled — the system starts the app on boot and restarts it if killed.</string>
+    <string name="a11y_autostart_off">Disabled. Tap to open accessibility settings and enable “LocSync Client autostart”. Most reliable option on head units.</string>
 </resources>

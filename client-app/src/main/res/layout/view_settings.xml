@@ -23,6 +23,8 @@
         <LinearLayout style="@style/LsGroupCard">
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowAutostart" />
             <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_action" android:id="@+id/rowA11yAutostart" />
+            <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowStaticJitter" />
         </LinearLayout>
 

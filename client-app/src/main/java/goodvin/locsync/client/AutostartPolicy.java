@@ -51,4 +51,23 @@ public final class AutostartPolicy {
         }
         return Decision.START;
     }
+
+    /**
+     * Parses {@code Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES} (a ':'-separated list of
+     * flattened component names, in either full or short form) and reports whether our service
+     * is in it.
+     */
+    public static boolean isAccessibilityServiceListed(String enabledServices,
+                                                       String fullName, String shortName) {
+        if (enabledServices == null || enabledServices.isEmpty()) {
+            return false;
+        }
+        for (String entry : enabledServices.split(":")) {
+            String name = entry.trim();
+            if (name.equalsIgnoreCase(fullName) || name.equalsIgnoreCase(shortName)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
