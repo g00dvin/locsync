@@ -69,9 +69,9 @@ import goodvin.locsync.proto.LocationProto;
 import goodvin.locsync.shared.AppLog;
 import goodvin.locsync.shared.LinkState;
 import goodvin.locsync.shared.LogExporter;
-import goodvin.locsync.shared.MetricsCsvWriter;
 import goodvin.locsync.shared.PowerOrbView;
 import goodvin.locsync.shared.SatelliteBarsView;
+import goodvin.locsync.shared.SettingsRows;
 import goodvin.locsync.shared.SparklineView;
 import goodvin.locsync.shared.VersionGetter;
 
@@ -383,7 +383,21 @@ public class MainActivity extends AppCompatActivity {
             boolean next = !fusedSwitch.isChecked();
             fusedSwitch.setChecked(next);
             Preferences.setFusedLocationEnabled(this, next);
+            GNSSServerService.reapplyLocationSettings();
         });
+        bindNumberInput(R.id.rowLocationInterval, getString(R.string.location_interval),
+                Preferences.locationIntervalMs(this), 100, 5000, v -> {
+                    Preferences.setLocationIntervalMs(this, (int) Math.round(v));
+                    GNSSServerService.reapplyLocationSettings();
+                });
+        bindToggle(R.id.rowBalancedPower, getString(R.string.location_balanced),
+                getString(R.string.location_balanced_sub), Preferences.balancedPower(this), checked -> {
+                    Preferences.setBalancedPower(this, checked);
+                    GNSSServerService.reapplyLocationSettings();
+                });
+        bindToggle(R.id.rowWaitAccurate, getString(R.string.location_wait_accurate),
+                getString(R.string.location_wait_accurate_sub), Preferences.waitForAccurate(this),
+                checked -> Preferences.setWaitForAccurate(this, checked));
 
         // Automation
         View rowBt = findViewById(R.id.rowBluetooth);
@@ -398,6 +412,12 @@ public class MainActivity extends AppCompatActivity {
             bluetoothSwitch.setChecked(next);
             Preferences.setBluetoothAutoStartEnabled(this, next);
         });
+        bindNumberInput(R.id.rowBtStopDelay, getString(R.string.bt_stop_delay),
+                Preferences.bluetoothStopDelaySeconds(this), 0, 600,
+                v -> Preferences.setBluetoothStopDelaySeconds(this, (int) Math.round(v)));
+        bindNumberInput(R.id.rowGpsIdleStop, getString(R.string.gps_idle_stop),
+                Preferences.gpsIdleStopSeconds(this), 5, 600,
+                v -> Preferences.setGpsIdleStopSeconds(this, (int) Math.round(v)));
         bindActionChevron(R.id.rowTriggerDevices, getString(R.string.trigger_devices),
                 triggerDevicesSummary(), this::showTriggerDevicesDialog);
 
@@ -409,6 +429,18 @@ public class MainActivity extends AppCompatActivity {
                 });
         bindToggle(R.id.rowMetrics, getString(R.string.metrics_enabled), null,
                 Preferences.metricsEnabled(this), checked -> Preferences.setMetricsEnabled(this, checked));
+        bindToggle(R.id.rowTrackRecording, getString(R.string.server_track_recording),
+                getString(R.string.server_track_recording_sub), Preferences.trackRecording(this),
+                checked -> {
+                    Preferences.setTrackRecording(this, checked);
+                    GNSSServerService.reapplyLocationSettings(); // starts/stops the GPS reference
+                });
+        bindToggle(R.id.rowGpsReference, getString(R.string.record_gps_reference),
+                getString(R.string.record_gps_reference_sub), Preferences.recordGpsReference(this),
+                checked -> {
+                    Preferences.setRecordGpsReference(this, checked);
+                    GNSSServerService.reapplyLocationSettings();
+                });
         bindActionChevron(R.id.rowExportAll, getString(R.string.export_all),
                 getString(R.string.export_all_sub), this::exportAllData);
         bindActionChevron(R.id.rowClearLogs, getString(R.string.clear_logs),
@@ -889,34 +921,18 @@ public class MainActivity extends AppCompatActivity {
         if (tv != null) tv.setText(text);
     }
 
+    private void bindNumberInput(int rowId, String label, double value, double min, double max,
+                                 java.util.function.DoubleConsumer onChange) {
+        SettingsRows.bindNumber(findViewById(rowId), label, value, min, max, onChange);
+    }
+
     private void bindToggle(int rowId, String label, String sub, boolean checked,
                             java.util.function.Consumer<Boolean> onChange) {
-        View row = findViewById(rowId);
-        setText(row, R.id.row_label, label);
-        TextView subView = row.findViewById(R.id.row_sub);
-        if (sub != null) {
-            subView.setText(sub);
-            subView.setVisibility(View.VISIBLE);
-        }
-        CompoundButton sw = row.findViewById(R.id.row_switch);
-        sw.setChecked(checked);
-        row.setOnClickListener(v -> {
-            boolean next = !sw.isChecked();
-            sw.setChecked(next);
-            onChange.accept(next);
-        });
+        SettingsRows.bindToggle(findViewById(rowId), label, sub, checked, onChange);
     }
 
     private void bindAction(int rowId, String label, String sub, boolean chevron, Runnable click) {
-        View row = findViewById(rowId);
-        setText(row, R.id.row_label, label);
-        TextView subView = row.findViewById(R.id.row_sub);
-        if (sub != null && !sub.isEmpty()) {
-            subView.setText(sub);
-            subView.setVisibility(View.VISIBLE);
-        }
-        if (chevron) row.findViewById(R.id.row_chevron).setVisibility(View.VISIBLE);
-        if (click != null) row.setOnClickListener(v -> click.run());
+        SettingsRows.bindAction(findViewById(rowId), label, sub, chevron, click);
     }
 
     private void bindActionChevron(int rowId, String label, String sub, Runnable click) {
@@ -924,16 +940,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bindActionButton(int rowId, String label, String sub, String buttonLabel, Runnable buttonClick) {
-        View row = findViewById(rowId);
-        if (!label.isEmpty()) setText(row, R.id.row_label, label);
-        TextView subView = row.findViewById(R.id.row_sub);
-        if (sub != null && !sub.isEmpty()) {
-            subView.setText(sub);
-            subView.setVisibility(View.VISIBLE);
-        }
-        TextView button = row.findViewById(R.id.row_button);
-        button.setText(buttonLabel);
-        button.setVisibility(View.VISIBLE);
-        button.setOnClickListener(v -> buttonClick.run());
+        SettingsRows.bindActionButton(findViewById(rowId), label, sub, buttonLabel, buttonClick);
     }
 }

@@ -22,6 +22,12 @@
         <TextView style="@style/LsGroupLabel" android:text="@string/group_location_provider" />
         <LinearLayout style="@style/LsGroupCard">
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowFusedLocation" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_input" android:id="@+id/rowLocationInterval" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowBalancedPower" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowWaitAccurate" />
         </LinearLayout>
 
         <!-- Automation -->
@@ -30,6 +36,10 @@
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowBluetooth" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowTriggerDevices" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_input" android:id="@+id/rowBtStopDelay" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_input" android:id="@+id/rowGpsIdleStop" />
         </LinearLayout>
 
         <!-- Diagnostics -->
@@ -38,6 +48,10 @@
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowDebug" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowMetrics" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowTrackRecording" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowGpsReference" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowExportAll" />
             <View style="@style/LsDivider" />

@@ -75,11 +75,16 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private static long lastUpdateTime;
     private int lastBroadcastSatelliteCount = -1;
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private volatile long lastResponseTime = 0;
+    private volatile long lastResponseTime = 0;     // elapsedRealtime of the last RESPONSE
 
     private final LocationKalmanFilter kalman = new LocationKalmanFilter(2.0, 1.0);
     private static final long OUTPUT_INTERVAL_MS = 100;   // 10 Hz
-    private static final long GPS_LOSS_CAP_MS = 2500;
+    private static final long GPS_LOSS_CAP_MS = 2500;           // at the usual 1 fix/s
+    // The server's update interval is configurable (up to 5 s), so "GPS lost" and the prediction
+    // horizon scale with the observed fix interval; a fixed 2.5 s froze the icon between slow fixes.
+    private static final double GPS_LOSS_INTERVALS = 2.5;
+    private static final long MAX_GPS_LOSS_CAP_MS = 12_500;
+    private double fixIntervalEmaMs = 1000;
     private volatile long lastFixElapsedMs = 0;           // SystemClock.elapsedRealtime of last real fix
     // Head-unit elapsedRealtime the filter state refers to: the fix time, i.e. arrival minus the
     // fix's age when latency compensation is on. Output ticks extrapolate from here to "now".
@@ -122,6 +127,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private static final long CONNECTED_TIMEOUT_MS = 3000;
     private static final String BROADCAST_ADDR = "255.255.255.255";
     private final Runnable helloTick = this::sendHelloTick;
+    private static final byte[] HELLO_PACKET = Protocol.buildPacket(Protocol.TYPE_HELLO, null); // never changes
 
     private static final String WIDGET_SATELLITE_STATUS_ACTION = "dezz.gnssshare.action.SATELLITE_STATUS";
     private static final String WIDGET_PACKAGE = "dezz.status.widget";
@@ -293,6 +299,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         stateElapsedMs = 0;
         kalman.reset();
         fixClock.reset();
+        fixIntervalEmaMs = 1000;
         releaseWifiLocks();
         outAccuracy = outSpeedAcc = outBearingAcc = Double.NaN;
         filtSpeedAcc = filtBearingAcc = inSpeedAcc = inBearingAcc = Double.NaN;
@@ -327,10 +334,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             final String dest = (target != null) ? target : BROADCAST_ADDR;
             executor.execute(() -> {
                 try {
-                    byte[] hello = Protocol.buildPacket(Protocol.TYPE_HELLO, null);
-                    sock.send(new DatagramPacket(hello, hello.length,
+                    sock.send(new DatagramPacket(HELLO_PACKET, HELLO_PACKET.length,
                             InetAddress.getByName(dest), Protocol.PORT));
-                    metrics.recordPacketSent(hello.length);
+                    metrics.recordPacketSent(HELLO_PACKET.length);
                 } catch (IOException e) {
                     Log.w(TAG, "Failed to send HELLO to " + dest, e);
                 }
@@ -339,7 +345,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         // Recency check: drop to CONNECTING if no RESPONSE within the window; in Auto mode also
         // forget the learned server so the next ticks broadcast to re-discover.
         if (connectionManager.isConnected()
-                && System.currentTimeMillis() - lastResponseTime > CONNECTED_TIMEOUT_MS) {
+                && SystemClock.elapsedRealtime() - lastResponseTime > CONNECTED_TIMEOUT_MS) {
             connectionManager.setState(ConnectionManager.ConnectionState.CONNECTING,
                     "Waiting for server...", connectionManager.getServerAddress());
             if (connectionManager.isAutoDiscover()) {
@@ -393,11 +399,12 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         metrics.recordPacketRecv(packet.getLength(), SystemClock.elapsedRealtime());
 
         try {
+            // Parse in place from the receive buffer (no copy); handled synchronously before the
+            // buffer is reused for the next datagram.
             LocationProto.ServerResponse response = LocationProto.ServerResponse.parseFrom(
-                    java.util.Arrays.copyOfRange(packet.getData(),
-                            header.payloadOffset, header.payloadOffset + header.payloadLength));
+                    java.nio.ByteBuffer.wrap(packet.getData(), header.payloadOffset, header.payloadLength));
 
-            lastResponseTime = System.currentTimeMillis();
+            lastResponseTime = SystemClock.elapsedRealtime();   // monotonic, immune to clock changes
             String srcAddr = packet.getAddress().getHostAddress();
             if (connectionManager.isAutoDiscover()) {
                 connectionManager.setLearnedServerAddress(srcAddr);
@@ -518,7 +525,11 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     lastLatencyMs = latencyMs;
 
                     boolean resumingAfterGap =
-                            lastFixElapsedMs == 0 || (nowElapsed - lastFixElapsedMs) > GPS_LOSS_CAP_MS;
+                            lastFixElapsedMs == 0 || (nowElapsed - lastFixElapsedMs) > gpsLossCapMs();
+                    long fixDt = fixTs - prevFixTs;
+                    if (!resumingAfterGap && prevFixTs != Long.MIN_VALUE && fixDt > 0 && fixDt <= MAX_GPS_LOSS_CAP_MS) {
+                        fixIntervalEmaMs += 0.2 * (fixDt - fixIntervalEmaMs);   // gaps don't count
+                    }
                     if (resumingAfterGap) {
                         // Fresh start, or the first real fix after a GPS gap (e.g. tunnel exit): re-anchor so
                         // the estimate snaps to the new position instead of lurching from stale state.
@@ -566,12 +577,14 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             return;
         }
         long nowElapsed = SystemClock.elapsedRealtime();
-        boolean gpsLost = lastFixElapsedMs == 0 || (nowElapsed - lastFixElapsedMs) > GPS_LOSS_CAP_MS;
+        long lossCapMs = gpsLossCapMs();
+        boolean gpsLost = lastFixElapsedMs == 0 || (nowElapsed - lastFixElapsedMs) > lossCapMs;
 
         if (kalman.isInitialized() && !gpsLost) {
             // Project the fix-time state to now (covers both the time since the last fix and, with
             // latency compensation, the fix's own age) without disturbing the filter.
-            double horizonS = Math.max(0, Math.min((nowElapsed - stateElapsedMs) / 1000.0, MAX_HORIZON_S));
+            double maxHorizonS = Math.max(MAX_HORIZON_S, lossCapMs / 1000.0 + 0.5);
+            double horizonS = Math.max(0, Math.min((nowElapsed - stateElapsedMs) / 1000.0, maxHorizonS));
             lastHorizonMs = horizonS * 1000.0;
             injectSmoothed(kalman.extrapolate(horizonS));
         }
@@ -584,6 +597,11 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             nextTickUptimeMs = nowUptime + OUTPUT_INTERVAL_MS; // fell behind (or first tick): resync
         }
         mainHandler.postAtTime(smoothingTick, nextTickUptimeMs);
+    }
+
+    /** How long without a new fix counts as GPS lost: 2.5 fix intervals, at least 2.5 s. */
+    private long gpsLossCapMs() {
+        return Math.max(GPS_LOSS_CAP_MS, Math.min(MAX_GPS_LOSS_CAP_MS, Math.round(GPS_LOSS_INTERVALS * fixIntervalEmaMs)));
     }
 
     private void injectSmoothed(LocationKalmanFilter.Estimate est) {

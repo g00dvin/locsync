@@ -70,9 +70,14 @@ public class GNSSServerService extends Service {
     private static final String CHANNEL_ID = "GNSSServerChannel";
     private static final int NOTIFICATION_ID = 1;
     private static final String PREF_IS_SERVICE_ENABLED = "isServiceEnabled";
-    private static final long BT_AUTO_STOP_DELAY_MS = 10000; // 10 seconds
     private static final long CLIENT_TIMEOUT_MS = 5000;   // no HELLO for this long => client gone
-    private static final long KEEPALIVE_INTERVAL_MS = 1000; // resend latest response at least this often
+    // Keepalive: the client needs a RESPONSE at least every ~3 s to stay "connected". Fixes already
+    // arrive every second, so the latest response is resent only after KEEPALIVE_IDLE_MS without
+    // one (no fix yet, GPS lost) instead of unconditionally every second, which doubled the traffic
+    // and made the client parse and discard a duplicate per fix.
+    private static final long KEEPALIVE_TICK_MS = 250;
+    private static final long KEEPALIVE_IDLE_MS = 1500;
+    private volatile long lastResponseSentElapsed = 0;
 
     private static boolean running = false;
     private static GNSSServerService instance = null;
@@ -81,7 +86,7 @@ public class GNSSServerService extends Service {
 
     private volatile DatagramSocket udpSocket;
     private volatile SocketAddress clientAddr = null;   // the single current client
-    private volatile long lastHeard = 0;                // last HELLO time from clientAddr
+    private volatile long lastHeard = 0;                // elapsedRealtime of the last HELLO from clientAddr
     private final Runnable keepaliveRunnable = this::keepaliveTick;
     private LocationManager locationManager = null;
     private FusedLocationProviderClient fusedLocationProviderClient = null;
@@ -128,6 +133,8 @@ public class GNSSServerService extends Service {
         }
     };
 
+    // Main thread only (fix and GNSS status callbacks run on mainHandler); hand built messages to
+    // other threads, never the builder.
     private final LocationProto.ServerResponse.Builder lastServerResponse = LocationProto.ServerResponse.newBuilder()
             .setStatus(LocationProto.Status.UNINITIALIZED);
 
@@ -139,6 +146,34 @@ public class GNSSServerService extends Service {
 
     private GnssStatus gnssStatus = null;
     private boolean isGnssActive = false;
+    private boolean hadAccurateFix = true;                 // see Preferences.waitForAccurate
+    private ServerTrackRecorder trackRecorder;             // non-null while "Record track" is on
+    private boolean gpsReferenceActive = false;
+    // Raw GPS alongside Fused, for the track only: shows how much Fused smooths and lags.
+    // An explicit class, not a lambda: before API 30 the other LocationListener callbacks are abstract.
+    private final LocationListener gpsReferenceListener = new LocationListener() {
+        @Override
+        public void onLocationChanged(@NonNull Location location) {
+            if (trackRecorder != null) {
+                trackRecorder.fix(SystemClock.elapsedRealtime(), "gps_ref", location, getSatelliteCount(),
+                        false, clientAddr != null);
+            }
+        }
+
+        @Override
+        public void onProviderEnabled(@NonNull String provider) {
+        }
+
+        @Override
+        public void onProviderDisabled(@NonNull String provider) {
+        }
+
+        @Override
+        @SuppressWarnings("deprecation")
+        public void onStatusChanged(String provider, int status, android.os.Bundle extras) {
+        }
+    };
+    private static final float ACCURATE_FIX_M = 20f;
     private WifiManager.MulticastLock multicastLock;
 
     @Override
@@ -281,7 +316,7 @@ public class GNSSServerService extends Service {
                 return;
             }
 
-            mainHandler.post(() -> mainHandler.postDelayed(keepaliveRunnable, KEEPALIVE_INTERVAL_MS));
+            mainHandler.post(() -> mainHandler.postDelayed(keepaliveRunnable, KEEPALIVE_TICK_MS));
             mainHandler.post(this::startMetricsSampler);
 
             byte[] buffer = new byte[Protocol.MAX_PACKET_BYTES];
@@ -318,7 +353,7 @@ public class GNSSServerService extends Service {
         if (header.type == Protocol.TYPE_HELLO) {
             boolean isNewClient = (clientAddr == null);
             clientAddr = packet.getSocketAddress();
-            lastHeard = System.currentTimeMillis();
+            lastHeard = SystemClock.elapsedRealtime();   // monotonic: wall-clock changes can't fake a timeout
             if (isNewClient) {
                 AppLog.i(TAG, "Client present: " + clientAddr);
                 mainHandler.post(this::startLocationUpdates);
@@ -396,6 +431,9 @@ public class GNSSServerService extends Service {
         } catch (Exception e) {
             Log.w(TAG, "metrics sampling failed", e);
         }
+        if (trackRecorder != null) {
+            trackRecorder.flush();
+        }
         mainHandler.postDelayed(metricsTick, METRICS_INTERVAL_MS);
     }
 
@@ -411,15 +449,20 @@ public class GNSSServerService extends Service {
 
             lastServerResponse.setStatus(LocationProto.Status.AWAITING_LOCATION);
 
-            // The fused/GPS chip delivers ~1 fix/s in practice (measured), and the client re-smooths to
-            // 10 Hz regardless — so requesting 5 Hz (200 ms) only burned battery for fixes that never came.
-            final int MIN_INTERVAL_MS = 1000;
+            // Default 1 s: most phones' GNSS delivers ~1 fix/s whatever is asked. Configurable because
+            // some deliver 2-5 Hz, and every extra fix lets the client see a turn sooner.
+            final int MIN_INTERVAL_MS = Math.max(100, Preferences.locationIntervalMs(this));
             final int MIN_DISTANCE_M = 0;
+            boolean waitAccurate = Preferences.waitForAccurate(this);
+            hadAccurateFix = !waitAccurate;
             if (fusedLocationProviderClient != null) {
                 LocationRequest request = new LocationRequest.Builder(MIN_INTERVAL_MS)
+                        .setMinUpdateIntervalMillis(MIN_INTERVAL_MS)
+                        .setMaxUpdateDelayMillis(0)                 // never batch: every fix at once
                         .setMinUpdateDistanceMeters(MIN_DISTANCE_M)
-                        .setWaitForAccurateLocation(false)
-                        .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+                        .setWaitForAccurateLocation(waitAccurate)
+                        .setPriority(Preferences.balancedPower(this)
+                                ? Priority.PRIORITY_BALANCED_POWER_ACCURACY : Priority.PRIORITY_HIGH_ACCURACY)
                         .setGranularity(Granularity.GRANULARITY_FINE)
                         .build();
                 fusedLocationProviderClient.requestLocationUpdates(request, fusedLocationListener, Looper.getMainLooper());
@@ -432,7 +475,15 @@ public class GNSSServerService extends Service {
                 );
             }
 
-            AppLog.d(TAG, "Location updates started");
+            if (fusedLocationProviderClient != null && Preferences.trackRecording(this)
+                    && Preferences.recordGpsReference(this) && locationManager != null) {
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, MIN_INTERVAL_MS, 0,
+                        gpsReferenceListener, Looper.getMainLooper());
+                gpsReferenceActive = true;
+                AppLog.i(TAG, "Recording raw GPS alongside Fused for comparison");
+            }
+            AppLog.i(TAG, "Location updates started: " + (fusedLocationProviderClient != null ? "fused" : "gps")
+                    + ", interval " + MIN_INTERVAL_MS + " ms" + (waitAccurate ? ", waiting for an accurate fix" : ""));
 
             isGnssActive = true;
 
@@ -442,6 +493,33 @@ public class GNSSServerService extends Service {
         } catch (Exception e) {
             Log.e(TAG, "Error starting location updates", e);
         }
+    }
+
+    /**
+     * Re-issues the location request with the current settings (interval, priority, provider) if
+     * updates are running, so changes in Settings apply without restarting the server.
+     */
+    public static void reapplyLocationSettings() {
+        GNSSServerService s = instance;
+        if (s != null) {
+            s.mainHandler.post(s::restartLocationUpdates);
+        }
+    }
+
+    private void restartLocationUpdates() {
+        if (!isGnssActive) {
+            return;
+        }
+        AppLog.i(TAG, "Re-applying location settings");
+        if (locationManager != null) {
+            locationManager.removeUpdates(locationListener);
+            stopGpsReference();
+        }
+        if (fusedLocationProviderClient != null) {
+            fusedLocationProviderClient.removeLocationUpdates(fusedLocationListener);
+            fusedLocationProviderClient = null;   // re-evaluated: the Fused toggle may have changed
+        }
+        startLocationUpdates();
     }
 
     private void stopLocationUpdates() {
@@ -454,6 +532,7 @@ public class GNSSServerService extends Service {
 
         if (locationManager != null) {
             locationManager.removeUpdates(locationListener);
+            stopGpsReference();
             locationManager.unregisterGnssStatusCallback(gnssStatusCallback);
             locationManager = null;
         }
@@ -467,11 +546,28 @@ public class GNSSServerService extends Service {
 
         isGnssActive = false;
         lastServerResponse.setStatus(LocationProto.Status.LOCATION_STOPPED);
+        if (trackRecorder != null) {
+            trackRecorder.close();
+            trackRecorder = null;
+        }
 
         updateNotification("Stopped location updates");
     }
 
     private void handleLocationUpdate(Location location) {
+        long receivedElapsed = SystemClock.elapsedRealtime();
+        updateTrackRecorder();
+        if (!hadAccurateFix) {
+            // "Wait for an accurate fix": hold back the coarse first fixes so the client's icon
+            // doesn't start tens of metres off and then jump.
+            if (!location.hasAccuracy() || location.getAccuracy() > ACCURATE_FIX_M) {
+                AppLog.d(TAG, "Skipping coarse fix while waiting for an accurate one: " + location.getAccuracy() + " m");
+                recordFix(receivedElapsed, location, false);
+                return;
+            }
+            hadAccurateFix = true;
+        }
+        recordFix(receivedElapsed, location, clientAddr != null);
         metrics.recordFix();
 
         AppLog.d(TAG, String.format("Handling location update: %s", location));
@@ -482,7 +578,7 @@ public class GNSSServerService extends Service {
                 .setLatitude(location.getLatitude())
                 .setLongitude(location.getLongitude())
                 .setProvider(location.getProvider())
-                .setLocationAge((System.currentTimeMillis() - location.getTime()) / 1000.0f);
+                .setLocationAge(fixAgeSeconds(location));
 
         if (location.hasAltitude()) {
             builder.setAltitude(location.getAltitude());
@@ -515,7 +611,50 @@ public class GNSSServerService extends Service {
 
         // Broadcast to the connected client
         AppLog.d(TAG, "Broadcasting location: " + location);
-        executor.execute(() -> broadcastLocationUpdate(lastServerResponse.build()));
+        // Build on this (main) thread: the builder is mutated here (fixes, GNSS status callbacks), so
+        // building it on the executor thread raced with those writes.
+        LocationProto.ServerResponse resp = lastServerResponse.build();
+        executor.execute(() -> broadcastLocationUpdate(resp));
+    }
+
+    private void recordFix(long receivedElapsed, Location location, boolean sent) {
+        if (trackRecorder != null) {
+            String source = "fused".equals(location.getProvider()) ? "fused" : "gps";
+            trackRecorder.fix(receivedElapsed, source, location, getSatelliteCount(), sent, clientAddr != null);
+        }
+    }
+
+    private void stopGpsReference() {
+        if (gpsReferenceActive && locationManager != null) {
+            locationManager.removeUpdates(gpsReferenceListener);
+        }
+        gpsReferenceActive = false;
+    }
+
+    /** Opens/closes track-server.csv to follow the "Record track" setting (checked on every fix). */
+    private void updateTrackRecorder() {
+        boolean wanted = Preferences.trackRecording(this);
+        if (wanted && trackRecorder == null) {
+            trackRecorder = new ServerTrackRecorder(new java.io.File(getCacheDir(), "logs"));
+            AppLog.i(TAG, "Track recording started");
+        } else if (!wanted && trackRecorder != null) {
+            trackRecorder.close();
+            trackRecorder = null;
+            AppLog.i(TAG, "Track recording stopped");
+        }
+    }
+
+    /**
+     * Age of the fix now. From the monotonic fix timestamp: Location.getTime() is GNSS (UTC) time
+     * for the GPS provider, and a phone clock seconds off would have shifted the client's latency
+     * compensation by those seconds.
+     */
+    static float fixAgeSeconds(Location location) {
+        long fixNanos = location.getElapsedRealtimeNanos();
+        if (fixNanos > 0) {
+            return Math.max(0, (SystemClock.elapsedRealtimeNanos() - fixNanos) / 1e9f);
+        }
+        return Math.max(0, (System.currentTimeMillis() - location.getTime()) / 1000.0f);
     }
 
     private void broadcastLocationUpdate(LocationProto.ServerResponse serverResponse) {
@@ -523,34 +662,36 @@ public class GNSSServerService extends Service {
         if (dest == null) {
             return;
         }
+        lastResponseSentElapsed = SystemClock.elapsedRealtime();
         sendPacket(Protocol.buildPacket(Protocol.TYPE_RESPONSE, serverResponse.toByteArray()), dest);
     }
 
     private void keepaliveTick() {
         SocketAddress dest = clientAddr;
         if (dest != null) {
-            long silence = System.currentTimeMillis() - lastHeard;
+            long silence = SystemClock.elapsedRealtime() - lastHeard;
             if (silence > CLIENT_TIMEOUT_MS) {
                 AppLog.i(TAG, "Client timed out (" + silence + "ms), marking gone");
                 if (clientAddr == dest) {          // still the same client we timed out
                     clientAddr = null;
                     onClientGone();
                 }
-            } else {
-                // Resend the latest response so the client's recency clock stays fresh.
+            } else if (SystemClock.elapsedRealtime() - lastResponseSentElapsed >= KEEPALIVE_IDLE_MS) {
+                // Nothing sent for a while: resend the latest response so the client stays connected.
                 LocationProto.ServerResponse resp = lastServerResponse.build();
                 executor.execute(() -> broadcastLocationUpdate(resp));
             }
         }
         if (running) {
-            mainHandler.postDelayed(keepaliveRunnable, KEEPALIVE_INTERVAL_MS);
+            mainHandler.postDelayed(keepaliveRunnable, KEEPALIVE_TICK_MS);
         }
     }
 
     private void onClientGone() {
-        AppLog.d(TAG, "No client; scheduling stop of location updates in 15 seconds");
+        long idleMs = Preferences.gpsIdleStopSeconds(this) * 1000L;
+        AppLog.d(TAG, "No client; scheduling stop of location updates in " + idleMs + " ms");
         mainHandler.removeCallbacks(this.stopLocationUpdates);
-        mainHandler.postDelayed(this.stopLocationUpdates, 15000);
+        mainHandler.postDelayed(this.stopLocationUpdates, idleMs);
         evaluateAutoStop();
         mainHandler.post(() -> updateNotification("Client disconnected"));
     }
@@ -721,7 +862,7 @@ public class GNSSServerService extends Service {
     //
     // Unified logic:
     //   - evaluateAutoStop() is called on BT disconnect and on last client disconnect.
-    //     Schedules a 10s stop only when BOTH all BT trigger devices AND all clients are gone.
+    //     Schedules a stop (Settings: Bluetooth stop delay) only when BOTH all BT trigger devices AND all clients are gone.
     //   - cancelBluetoothAutoStop() is called on BT reconnect and on new client connect.
     //   - btAutoStopService() re-checks conditions as a safety net before actually stopping.
 
@@ -755,9 +896,10 @@ public class GNSSServerService extends Service {
         boolean clientsGone = (clientAddr == null);
 
         if (btGone && clientsGone) {
-            AppLog.d(TAG, "All BT devices and clients disconnected, scheduling auto-stop in " + BT_AUTO_STOP_DELAY_MS + "ms");
+            long delayMs = Preferences.bluetoothStopDelaySeconds(this) * 1000L;
+            AppLog.d(TAG, "All BT devices and clients disconnected, scheduling auto-stop in " + delayMs + "ms");
             mainHandler.removeCallbacks(btAutoStopRunnable);
-            mainHandler.postDelayed(btAutoStopRunnable, BT_AUTO_STOP_DELAY_MS);
+            mainHandler.postDelayed(btAutoStopRunnable, delayMs);
         } else {
             AppLog.d(TAG, "Auto-stop not needed (BT connected: " + !btGone + ", clients connected: " + !clientsGone + ")");
         }

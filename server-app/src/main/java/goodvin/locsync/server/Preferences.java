@@ -176,6 +176,80 @@ public class Preferences {
     }
 
     // Cached: read on hot paths; avoids re-resolving the prefs file on every call.
+    private static final String PREF_LOCATION_INTERVAL_MS = "locationIntervalMs";
+    private static final String PREF_BALANCED_POWER = "locationBalancedPower";
+    private static final String PREF_WAIT_ACCURATE = "locationWaitForAccurate";
+
+    /** Requested time between location updates (ms). Phones often deliver no faster than 1 s. */
+    public static void setLocationIntervalMs(Context context, int ms) {
+        getPrefs(context).edit().putInt(PREF_LOCATION_INTERVAL_MS, ms).apply();
+    }
+
+    public static int locationIntervalMs(Context context) {
+        return getPrefs(context).getInt(PREF_LOCATION_INTERVAL_MS, 1000);
+    }
+
+    /** Balanced power/accuracy instead of high accuracy (Fused only). */
+    public static void setBalancedPower(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_BALANCED_POWER, enabled).apply();
+    }
+
+    public static boolean balancedPower(Context context) {
+        return getPrefs(context).getBoolean(PREF_BALANCED_POWER, false);
+    }
+
+    /** Don't send anything until the first accurate fix after (re)starting location updates. */
+    public static void setWaitForAccurate(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_WAIT_ACCURATE, enabled).apply();
+    }
+
+    public static boolean waitForAccurate(Context context) {
+        return getPrefs(context).getBoolean(PREF_WAIT_ACCURATE, false);
+    }
+
+    private static final String PREF_GPS_IDLE_STOP_S = "gpsIdleStopSeconds";
+    private static final String PREF_BT_STOP_DELAY_S = "bluetoothStopDelaySeconds";
+
+    /** Seconds without a client before location updates are switched off. */
+    public static void setGpsIdleStopSeconds(Context context, int s) {
+        getPrefs(context).edit().putInt(PREF_GPS_IDLE_STOP_S, s).apply();
+    }
+
+    public static int gpsIdleStopSeconds(Context context) {
+        return getPrefs(context).getInt(PREF_GPS_IDLE_STOP_S, 15);
+    }
+
+    /** Seconds after the last trigger device (and client) is gone before the server stops. */
+    public static void setBluetoothStopDelaySeconds(Context context, int s) {
+        getPrefs(context).edit().putInt(PREF_BT_STOP_DELAY_S, s).apply();
+    }
+
+    public static int bluetoothStopDelaySeconds(Context context) {
+        return getPrefs(context).getInt(PREF_BT_STOP_DELAY_S, 10);
+    }
+
+    private static final String PREF_TRACK_RECORDING = "trackRecording";
+
+    /** Record every fix the phone gets to track-server.csv for drive analysis. Off by default. */
+    public static void setTrackRecording(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_TRACK_RECORDING, enabled).apply();
+    }
+
+    public static boolean trackRecording(Context context) {
+        return getPrefs(context).getBoolean(PREF_TRACK_RECORDING, false);
+    }
+
+    private static final String PREF_RECORD_GPS_REFERENCE = "recordGpsReference";
+
+    /** While recording on Fused, also record raw GPS fixes (source gps_ref, never sent). */
+    public static void setRecordGpsReference(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_RECORD_GPS_REFERENCE, enabled).apply();
+    }
+
+    public static boolean recordGpsReference(Context context) {
+        return getPrefs(context).getBoolean(PREF_RECORD_GPS_REFERENCE, false);
+    }
+
     /** All stored settings, for the diagnostics export. */
     public static java.util.Map<String, ?> dump(Context context) {
         return new java.util.TreeMap<>(getPrefs(context).getAll());
