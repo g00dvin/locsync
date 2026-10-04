@@ -131,6 +131,7 @@ public class LocationKalmanFilter {
     private final double[][] scratch = new double[4][4];
     private final double[] xOut = new double[4];
     private final double[][] pOut = new double[4][4];
+    private final double[] gainScratch = new double[4], rowScratch = new double[4];
     private final Estimate estimate = new Estimate();
 
     /** Filter output projected to some time; see {@link #extrapolate(double)}. Reused between calls. */
@@ -523,7 +524,7 @@ public class LocationKalmanFilter {
     private void scalarUpdate(int idx, double z, double r) {
         double yInnov = z - x[idx];
         double s = P[idx][idx] + r;
-        double[] k = new double[4];
+        double[] k = gainScratch;
         for (int i = 0; i < 4; i++) {
             k[i] = P[i][idx] / s;
         }
@@ -531,7 +532,7 @@ public class LocationKalmanFilter {
             x[i] += k[i] * yInnov;
         }
         // P = (I - K H) P ; H = e_idx^T  =>  P -= K * P[idx, :]
-        double[] row = new double[4];
+        double[] row = rowScratch;
         System.arraycopy(P[idx], 0, row, 0, 4);
         for (int i = 0; i < 4; i++) {
             for (int j = 0; j < 4; j++) {

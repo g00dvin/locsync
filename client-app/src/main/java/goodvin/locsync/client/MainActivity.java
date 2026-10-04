@@ -269,6 +269,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        mockCheckedElapsed = 0;   // e.g. returning from Developer options
         // Recompute from the service rather than assuming a state; also re-check mock-app selection.
         refreshPermissions();
         refreshState();
@@ -594,7 +595,7 @@ public class MainActivity extends AppCompatActivity {
             // Version mismatch or a mock-provider failure reported by the service.
             msg = warningMessage;
             action = this::openMockLocationSettings;
-        } else if (!MockLocationManager.isSelectedMockApp(this)) {
+        } else if (!isMockAppSelected()) {
             msg = getString(R.string.mock_app_not_selected);
             action = this::openMockLocationSettings;
         }
@@ -635,6 +636,21 @@ public class MainActivity extends AppCompatActivity {
         return String.format(getString(R.string.uptime_format), s / 60, s % 60);
     }
 
+    // The mock-app check is an AppOps call into the system; the main screen refreshes every second,
+    // so cache the answer briefly (onResume, e.g. back from Developer options, re-checks at once).
+    private static final long MOCK_CHECK_TTL_MS = 5000;
+    private boolean mockAppSelected;
+    private long mockCheckedElapsed = 0;
+
+    private boolean isMockAppSelected() {
+        long now = SystemClock.elapsedRealtime();
+        if (mockCheckedElapsed == 0 || now - mockCheckedElapsed > MOCK_CHECK_TTL_MS) {
+            mockAppSelected = MockLocationManager.isSelectedMockApp(this);
+            mockCheckedElapsed = now;
+        }
+        return mockAppSelected;
+    }
+
     /** "Phone 192.168.43.1 · online 03:12" under the status line while connected. */
     private String connectedSub() {
         String addr = GNSSClientService.getServerAddress();
@@ -667,7 +683,7 @@ public class MainActivity extends AppCompatActivity {
         Location loc = connected ? lastLocation : null;
 
         // Navigator status
-        boolean mockSelected = MockLocationManager.isSelectedMockApp(this);
+        boolean mockSelected = isMockAppSelected();
         boolean injecting = System.currentTimeMillis() - GNSSClientService.getLastUpdateTime() < OUTPUT_ACTIVE_MS;
         int dotColor;
         if (!mockSelected) {
