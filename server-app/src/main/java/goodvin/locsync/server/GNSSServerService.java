@@ -580,6 +580,10 @@ public class GNSSServerService extends Service {
         // next client before the first new fix, putting the icon where the car was last time.
         lastServerResponse.setStatus(LocationProto.Status.LOCATION_STOPPED).clearLocationUpdate();
         lastFixElapsedNanos = 0;
+        // The status callback is unregistered above: drop the last count instead of showing it frozen.
+        gnssStatus = null;
+        satellitesUsed = 0;
+        lastServerResponse.setSatellites(0);
         if (trackRecorder != null) {
             trackRecorder.close();
             trackRecorder = null;
@@ -843,10 +847,12 @@ public class GNSSServerService extends Service {
                 );
 
 
-                if (lastServerResponse.hasLocationUpdate()) {
+                if (lastServerResponse.hasLocationUpdate() && lastFixElapsedNanos > 0) {
+                    // Monotonic, like the age sent to the client: the fix timestamp is GPS time and
+                    // the phone's wall clock can be off by seconds.
                     content += getString(R.string.notification_divider) + String.format(
                             getString(R.string.notification_age),
-                            (System.currentTimeMillis() - lastServerResponse.getLocationUpdate().getTimestamp()) / 1000.0
+                            (SystemClock.elapsedRealtimeNanos() - lastFixElapsedNanos) / 1e9
                     );
                 }
             } else {
