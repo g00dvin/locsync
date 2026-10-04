@@ -92,6 +92,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     // Last injected output, for the Monitor screen's filter card (NaN = nothing injected yet).
     private double outAccuracy = Double.NaN, outSpeedAcc = Double.NaN, outBearingAcc = Double.NaN;
     private double lastLatencyMs = Double.NaN, lastHorizonMs = Double.NaN;
+    // Monitor-only diagnostics, independent of what the "Honest accuracy" setting injects: the
+    // filter's own speed/bearing accuracy, and what the phone reported for the last fix.
+    private double filtSpeedAcc = Double.NaN, filtBearingAcc = Double.NaN;
+    private double inSpeedAcc = Double.NaN, inBearingAcc = Double.NaN;
     private TrackRecorder trackRecorder;    // non-null while "Record track" is on
     private final Runnable smoothingTick = this::smoothingTick;
 
@@ -277,6 +281,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         stateElapsedMs = 0;
         kalman.reset();
         outAccuracy = outSpeedAcc = outBearingAcc = Double.NaN;
+        filtSpeedAcc = filtBearingAcc = inSpeedAcc = inBearingAcc = Double.NaN;
         if (trackRecorder != null) {
             trackRecorder.close();
             trackRecorder = null;
@@ -445,6 +450,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             final float acc = locationUpdate.getAccuracy();
             final float spdAcc = locationUpdate.getSpeedAccuracy();
             final float brgAcc = locationUpdate.getBearingAccuracy();
+            final boolean hasSpdAcc = locationUpdate.hasSpeedAccuracy();
+            final boolean hasBrgAcc = locationUpdate.hasBearingAccuracy();
             final boolean hasSpd = locationUpdate.hasSpeed();
             final boolean hasBrg = locationUpdate.hasBearing();
             final long fixTs = locationUpdate.getTimestamp();
@@ -462,6 +469,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     }
                     long prevFixTs = lastFedFixTimestampMs;
                     lastFedFixTimestampMs = fixTs;
+                    metrics.recordFix();
+                    inSpeedAcc = hasSpdAcc ? spdAcc : Double.NaN;
+                    inBearingAcc = hasBrgAcc ? brgAcc : Double.NaN;
                     filterConfig = Preferences.filterConfig(this);
                     kalman.setTurnModel(filterConfig.turnModel);
                     kalman.setGating(filterConfig.gating, filterConfig.gateThreshold);
@@ -549,6 +559,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         loc.setAltitude(lastAltitude);
         double speed = est.speed;
         boolean moving = speed >= filterConfig.standstillSpeed;
+        filtSpeedAcc = est.speedAccuracy;
+        filtBearingAcc = moving ? est.bearingAccuracyDeg : Double.NaN;
         if (filterConfig.reportUncertainty) {
             outAccuracy = est.accuracy68;
             outSpeedAcc = est.speedAccuracy;
@@ -657,8 +669,13 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         java.util.ArrayList<String> labels = new java.util.ArrayList<>();
         java.util.ArrayList<String> values = new java.util.ArrayList<>();
         addStat(labels, values, R.string.filter_out_accuracy, outAccuracy, "±%.1f m");
-        addStat(labels, values, R.string.filter_out_speed_acc, outSpeedAcc, "±%.2f m/s");
-        addStat(labels, values, R.string.filter_out_bearing_acc, outBearingAcc, "±%.1f°");
+        labels.add(getString(R.string.filter_accuracy_mode));
+        values.add(getString(filterConfig.reportUncertainty
+                ? R.string.filter_accuracy_mode_68 : R.string.filter_accuracy_mode_legacy));
+        addStat(labels, values, R.string.filter_out_speed_acc, filtSpeedAcc, "±%.2f m/s");
+        addStat(labels, values, R.string.filter_out_bearing_acc, filtBearingAcc, "±%.1f°");
+        addStat(labels, values, R.string.filter_in_speed_acc, inSpeedAcc, "±%.2f m/s");
+        addStat(labels, values, R.string.filter_in_bearing_acc, inBearingAcc, "±%.1f°");
         addStat(labels, values, R.string.filter_latency, lastLatencyMs, "%.0f ms");
         addStat(labels, values, R.string.filter_horizon, lastHorizonMs, "%.0f ms");
         addStat(labels, values, R.string.filter_turn_rate,
