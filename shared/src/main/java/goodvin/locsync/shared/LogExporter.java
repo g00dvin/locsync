@@ -28,7 +28,9 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Date;
 import java.util.Locale;
 
@@ -52,7 +54,7 @@ public class LogExporter {
         }
 
         try {
-            Process process = Runtime.getRuntime().exec("logcat -d *:V --pid=" + android.os.Process.myPid());
+            Process process = startLogcat(context, true);
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream())
             );
@@ -70,6 +72,10 @@ public class LogExporter {
 
             if (process.waitFor() != 0) {
                 Log.e(TAG, "Failed to export logs, logcat command exited with result = " + process.exitValue());
+                if (clearedAtMs(context) > 0) {
+                    // This logcat may not understand -T; export everything rather than nothing.
+                    return exportUnfiltered(context, logFile);
+                }
                 return null;
             }
 
@@ -79,6 +85,64 @@ public class LogExporter {
             Log.e(TAG, "Error exporting logs", e);
             return null;
         }
+    }
+
+    private static File exportUnfiltered(Context context, File logFile) throws IOException, InterruptedException {
+        Process process = startLogcat(context, false);
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+             BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(logFile)))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                writer.append(line).append("\n");
+            }
+        }
+        return process.waitFor() == 0 ? logFile : null;
+    }
+
+    /** This process's logcat; after {@link #clearAll} only lines newer than the clear (logcat -T). */
+    private static Process startLogcat(Context context, boolean sinceClear) throws IOException {
+        List<String> cmd = new ArrayList<>(Arrays.asList("logcat", "-d"));
+        long since = sinceClear ? clearedAtMs(context) : 0;
+        if (since > 0) {
+            cmd.add("-T");
+            cmd.add(String.format(Locale.US, "%d.%03d", since / 1000, since % 1000)); // epoch sssss.mmm
+        }
+        cmd.add("*:V");
+        cmd.add("--pid=" + android.os.Process.myPid());
+        return Runtime.getRuntime().exec(cmd.toArray(new String[0]));
+    }
+
+    private static final String PREFS = "locsync_log_exporter";
+    private static final String PREF_CLEARED_AT = "clearedAtMs";
+
+    private static long clearedAtMs(Context context) {
+        return context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getLong(PREF_CLEARED_AT, 0);
+    }
+
+    /**
+     * Clears this app's diagnostics without touching its settings: deletes every file in the logs
+     * directory (exported logs, metrics and track CSVs), empties the in-app log console and makes
+     * later log exports start from now (logcat itself is system-wide and can't be cleared by an app).
+     *
+     * @return bytes freed
+     */
+    public static long clearAll(Context context) {
+        long freed = 0;
+        File[] files = getLogDir(context).listFiles();
+        if (files != null) {
+            for (File f : files) {
+                long len = f.length();
+                if (f.isFile() && f.delete()) {
+                    freed += len;
+                }
+            }
+        }
+        AppLog.clearRing();
+        context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putLong(PREF_CLEARED_AT, System.currentTimeMillis()).apply();
+        AppLog.i(TAG, "Logs cleared (" + freed + " bytes freed)");
+        return freed;
     }
 
     /**

@@ -23,4 +23,9 @@
     <string name="export_logs_no_logs">Нет логов для экспорта</string>
     <string name="share_logs">Поделиться логами</string>
     <string name="export_logs_in_progress">Экспорт логов…</string>
+    <string name="clear_logs">Очистить логи и метрики</string>
+    <string name="clear_logs_sub">Удалить экспортированные логи, CSV метрик и трека; следующий экспорт логов начнётся с этого момента. Настройки сохраняются.</string>
+    <string name="clear_logs_confirm">Удалить все логи, метрики и записанные треки этого приложения?</string>
+    <string name="clear_logs_action">Очистить</string>
+    <string name="clear_logs_done">Логи очищены (освобождено %s)</string>
 </resources>

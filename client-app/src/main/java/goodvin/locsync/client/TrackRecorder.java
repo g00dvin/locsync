@@ -89,6 +89,11 @@ final class TrackRecorder {
 
     void flush() {
         if (writer == null) return;
+        if (!file.exists()) {
+            // Deleted by "Clear logs": drop the stale handle; the next row starts a fresh file.
+            closeQuietly();
+            return;
+        }
         try {
             writer.flush();
         } catch (IOException e) {

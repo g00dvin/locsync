@@ -50,6 +50,7 @@ import android.widget.ViewFlipper;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.content.ContextCompat;
@@ -470,6 +471,8 @@ public class MainActivity extends AppCompatActivity {
                 getString(R.string.track_recording_sub), Preferences.trackRecording(this),
                 checked -> Preferences.setTrackRecording(this, checked));
         bindActionChevron(R.id.rowExportTrack, getString(R.string.export_track), null, this::shareTrackCsv);
+        bindActionChevron(R.id.rowClearLogs, getString(R.string.clear_logs),
+                getString(R.string.clear_logs_sub), this::confirmClearLogs);
 
         // About
         String buildLabel = getString(R.string.build_label);
@@ -884,6 +887,21 @@ public class MainActivity extends AppCompatActivity {
                         Toast.LENGTH_LONG).show());
             }
         }).start();
+    }
+
+    private void confirmClearLogs() {
+        new AlertDialog.Builder(this)
+                .setMessage(R.string.clear_logs_confirm)
+                .setPositiveButton(R.string.clear_logs_action, (d, w) -> {
+                    long freed = LogExporter.clearAll(this);
+                    renderLog();
+                    setText(findViewById(R.id.rowExportMetrics), R.id.row_sub, "");
+                    refreshTrackRow();
+                    Toast.makeText(this, getString(R.string.clear_logs_done,
+                            android.text.format.Formatter.formatShortFileSize(this, freed)), Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     private void shareMetricsCsv() {
