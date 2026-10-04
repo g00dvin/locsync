@@ -162,8 +162,9 @@ public class TrackReplayTest {
         String path = System.getenv("LOCSYNC_TRACK");
         assumeTrue("set LOCSYNC_TRACK to a recorded track-client.csv", path != null);
         List<Fix> fixes = load(Path.of(path));
-        System.out.println(replay(fixes, false, kf -> { }).summary("age only (v3.4)"));
-        System.out.println(replay(fixes, true, kf -> { }).summary("+ Wi-Fi delay sync"));
+        System.out.println(replay(fixes, false, kf -> kf.setBearingHandling(false, 0)).summary("v3.4 (age only)"));
+        System.out.println(replay(fixes, true, kf -> kf.setBearingHandling(false, 0)).summary("+ Wi-Fi delay sync"));
+        System.out.println(replay(fixes, true, kf -> { }).summary("+ bearing rounding fix"));
     }
 
     static double[] alongCross(double lat, double lon, Fix f) {

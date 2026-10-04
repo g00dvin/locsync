@@ -173,4 +173,12 @@
     <string name="wifi_low_latency">Wi-Fi без энергосбережения</string>
     <string name="wifi_low_latency_sub">Не давать Wi-Fi засыпать, пока клиент работает, чтобы фиксы приходили вовремя, а не пачками. Применяется при следующем запуске.</string>
     <string name="filter_network_delay">Задержка Wi-Fi последнего фикса</string>
+
+    <string name="filter_bearing_comp">Поправка округления курса</string>
+    <string name="filter_bearing_comp_sub">Телефон отдаёт курс целыми градусами с округлением вниз; фильтр верил ему как точному, и значок смещался примерно на 1.4 м влево. Добавляет 0.5°, когда округление обнаружено.</string>
+    <string name="filter_min_bearing_acc">Мин. погрешность курса, °</string>
+    <string name="filter_bearing_quantized">Курс телефона целыми градусами</string>
+    <string name="filter_bearing_quantized_yes">да (без поправки)</string>
+    <string name="filter_bearing_quantized_fixed">да, поправка +0.5°</string>
+    <string name="filter_bearing_quantized_no">нет</string>
 </resources>

@@ -169,8 +169,10 @@ public class LocationKalmanFilterTest {
     @Test
     public void speedAndBearingAccuracyFromVelocityCovariance() {
         LocationKalmanFilter slow = newFilter();
+        slow.setBearingHandling(false, 0); // exact covariance arithmetic: no bearing-accuracy floor
         slow.update(59.0, 30.0, 2.0, 90.0, 5.0, 0.5, 0.0);
         LocationKalmanFilter fast = newFilter();
+        fast.setBearingHandling(false, 0);
         fast.update(59.0, 30.0, 20.0, 90.0, 5.0, 0.5, 0.0);
         assertEquals(0.5, fast.getSpeedAccuracy(), 1e-6);
         assertTrue("bearing acc should drop with speed: " + slow.getBearingAccuracyDeg()
@@ -373,5 +375,43 @@ public class LocationKalmanFilterTest {
         assertTrue("NIS mean should be high: " + f.getNisAverage(), f.getNisAverage() > 3.0);
         assertTrue(f.getProcessNoise() > 0.5);
         assertTrue(f.getProcessNoise() <= 0.5 * 3.0 + 1e-9);
+    }
+
+    // A source that truncates bearing to whole degrees reads 0.5° left on average. Driving due
+    // north-east at exactly 45.5° with bearings reported as 45: the corrected filter must end up on
+    // the true course, the uncorrected one 0.5° left of it.
+    @Test
+    public void wholeDegreeBearingTruncationIsCompensated() {
+        double trueBrg = 45.5, speed = 15.0;
+        LocationKalmanFilter fixedF = newFilter();
+        LocationKalmanFilter rawF = newFilter();
+        rawF.setBearingHandling(false, 0);
+        double e = 0, n = 0;
+        for (int i = 0; i < 60; i++) {
+            double lat = 59.0 + n / M_PER_DEG_LAT, lon = 30.0 + e / (M_PER_DEG_LAT * Math.cos(Math.toRadians(59.0)));
+            for (LocationKalmanFilter f : new LocationKalmanFilter[]{fixedF, rawF}) {
+                if (i > 0) f.predict(1.0);
+                f.update(lat, lon, speed, Math.floor(trueBrg), 4.0, 0.15, 0.7);
+            }
+            e += speed * Math.sin(Math.toRadians(trueBrg));
+            n += speed * Math.cos(Math.toRadians(trueBrg));
+        }
+        assertTrue(fixedF.isBearingQuantized());
+        assertEquals(trueBrg, fixedF.getBearingDeg(), 0.15);
+        assertTrue("uncorrected should sit left of the course: " + rawF.getBearingDeg(), rawF.getBearingDeg() < trueBrg - 0.3);
+    }
+
+    @Test
+    public void fractionalBearingsAreNotShifted() {
+        LocationKalmanFilter f = newFilter();
+        f.update(59.0, 30.0, 10.0, 45.37, 4.0, 0.15, 0.7);
+        for (int i = 0; i < 30; i++) {
+            f.predict(1.0);
+            f.update(59.0 + (i + 1) * 10 * Math.cos(Math.toRadians(45.37)) / M_PER_DEG_LAT,
+                    30.0 + (i + 1) * 10 * Math.sin(Math.toRadians(45.37)) / (M_PER_DEG_LAT * Math.cos(Math.toRadians(59.0))),
+                    10.0, 45.37, 4.0, 0.15, 0.7);
+        }
+        assertTrue(!f.isBearingQuantized());
+        assertEquals(45.37, f.getBearingDeg(), 0.1);
     }
 }

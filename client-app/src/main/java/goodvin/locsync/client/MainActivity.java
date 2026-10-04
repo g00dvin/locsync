@@ -445,6 +445,12 @@ public class MainActivity extends AppCompatActivity {
         bindToggle(R.id.rowTurnModel, getString(R.string.filter_turn_model),
                 getString(R.string.filter_turn_model_sub), Preferences.filterTurnModel(this),
                 checked -> Preferences.setFilterTurnModel(this, checked));
+        bindToggle(R.id.rowBearingComp, getString(R.string.filter_bearing_comp),
+                getString(R.string.filter_bearing_comp_sub), Preferences.filterBearingCompensation(this),
+                checked -> Preferences.setFilterBearingCompensation(this, checked));
+        bindNumberInput(R.id.rowMinBearingAcc, getString(R.string.filter_min_bearing_acc),
+                Preferences.filterMinBearingAccuracy(this), 0, 20,
+                v -> Preferences.setFilterMinBearingAccuracy(this, (float) v));
         bindToggle(R.id.rowGating, getString(R.string.filter_gating),
                 getString(R.string.filter_gating_sub), Preferences.filterGating(this),
                 checked -> Preferences.setFilterGating(this, checked));

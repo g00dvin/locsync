@@ -87,6 +87,13 @@ public class LocationKalmanFilter {
     private double nisEma = NIS_EXPECTED;
     private final double defaultSpeedSigma; // fallback velocity measurement noise (m/s)
     private boolean turnModel = true;
+    // Bearing quantization (whole degrees) detection and compensation, plus a floor on the bearing
+    // accuracy a source may claim. Detection: running share of whole-degree bearings.
+    private static final double BEARING_QUANT_ALPHA = 0.05;
+    private static final double BEARING_QUANT_DETECT = 0.9;
+    private boolean bearingCompensation = true;
+    private double minBearingAccuracyDeg = 2.0;
+    private double integerBearingShare = 0;
     private boolean gating = true;
     private double gateThreshold = 9.21;    // χ² with 2 dof at 99%
     private boolean standstillHold = true;
@@ -150,6 +157,20 @@ public class LocationKalmanFilter {
         }
     }
 
+    /**
+     * Compensates whole-degree bearing truncation (+0.5° once detected) and never trusts a bearing
+     * more than {@code minAccuracyDeg}.
+     */
+    public void setBearingHandling(boolean compensateQuantization, double minAccuracyDeg) {
+        bearingCompensation = compensateQuantization;
+        minBearingAccuracyDeg = Math.max(0, minAccuracyDeg);
+    }
+
+    /** Whether incoming bearings look truncated to whole degrees (and are being compensated). */
+    public boolean isBearingQuantized() {
+        return integerBearingShare > BEARING_QUANT_DETECT;
+    }
+
     /** Mahalanobis gating of position fixes; {@code threshold} is χ² with 2 degrees of freedom. */
     public void setGating(boolean enabled, double threshold) {
         gating = enabled;
@@ -197,6 +218,23 @@ public class LocationKalmanFilter {
     public void update(double lat, double lon, double speed, double bearingDeg,
                        double accuracy, double speedAccuracy, double bearingAccuracyDeg,
                        boolean hasSpeed, boolean hasBearing) {
+        if (hasBearing) {
+            // Track whether the source quantizes bearing to whole degrees.
+            boolean whole = Math.abs(bearingDeg - Math.rint(bearingDeg)) < 1e-6;
+            integerBearingShare += BEARING_QUANT_ALPHA * ((whole ? 1 : 0) - integerBearingShare);
+            if (bearingCompensation && integerBearingShare > BEARING_QUANT_DETECT) {
+                // Fused truncates bearing to whole degrees: on average it reads 0.5° left of the
+                // true course. Trusted at ±0.7°, that bias steered the estimate ~1.4 m to the left.
+                bearingDeg += 0.5;
+            }
+            bearingAccuracyDeg = Math.max(bearingAccuracyDeg, minBearingAccuracyDeg);
+        }
+        updateInternal(lat, lon, speed, bearingDeg, accuracy, speedAccuracy, bearingAccuracyDeg, hasSpeed, hasBearing);
+    }
+
+    private void updateInternal(double lat, double lon, double speed, double bearingDeg,
+                                double accuracy, double speedAccuracy, double bearingAccuracyDeg,
+                                boolean hasSpeed, boolean hasBearing) {
         boolean applyVel = hasSpeed && hasBearing;
         if (!initialized) {
             setAnchor(lat, lon);
@@ -250,7 +288,7 @@ public class LocationKalmanFilter {
                 // jumped, e.g. after a ferry). Start over from this fix.
                 reinitCount++;
                 reset();
-                update(lat, lon, speed, bearingDeg, accuracy, speedAccuracy, bearingAccuracyDeg, hasSpeed, hasBearing);
+                updateInternal(lat, lon, speed, bearingDeg, accuracy, speedAccuracy, bearingAccuracyDeg, hasSpeed, hasBearing);
                 return;
             }
             // Inflating R by d²/τ puts the fix exactly on the gate: it still pulls, but gently.

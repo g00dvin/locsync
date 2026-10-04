@@ -486,6 +486,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     inBearingAcc = hasBrgAcc ? brgAcc : Double.NaN;
                     filterConfig = Preferences.filterConfig(this);
                     kalman.setTurnModel(filterConfig.turnModel);
+                    kalman.setBearingHandling(filterConfig.bearingCompensation, filterConfig.minBearingAccuracyDeg);
                     kalman.setGating(filterConfig.gating, filterConfig.gateThreshold);
                     kalman.setStandstill(filterConfig.standstillHold, filterConfig.standstillSpeed);
                     kalman.setProcessNoise(filterConfig.processNoise, filterConfig.adaptiveNoise);
@@ -731,6 +732,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         addStat(labels, values, R.string.filter_out_bearing_acc, filtBearingAcc, "±%.1f°");
         addStat(labels, values, R.string.filter_in_speed_acc, inSpeedAcc, "±%.2f m/s");
         addStat(labels, values, R.string.filter_in_bearing_acc, inBearingAcc, "±%.1f°");
+        labels.add(getString(R.string.filter_bearing_quantized));
+        values.add(!kalman.isInitialized() ? "—" : getString(kalman.isBearingQuantized()
+                ? (filterConfig.bearingCompensation ? R.string.filter_bearing_quantized_fixed : R.string.filter_bearing_quantized_yes)
+                : R.string.filter_bearing_quantized_no));
         addStat(labels, values, R.string.filter_latency, lastLatencyMs, "%.0f ms");
         addStat(labels, values, R.string.filter_network_delay, lastNetworkDelayMs, "%.0f ms");
         addStat(labels, values, R.string.filter_horizon, lastHorizonMs, "%.0f ms");

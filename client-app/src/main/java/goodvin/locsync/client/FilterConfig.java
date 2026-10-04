@@ -34,6 +34,10 @@ public final class FilterConfig {
     public boolean wifiLowLatency = true;
     /** Coordinated-turn motion model (predict along an arc) instead of straight lines. */
     public boolean turnModel = true;
+    /** Add 0.5° to bearings once the source is seen to truncate them to whole degrees. */
+    public boolean bearingCompensation = true;
+    /** Never trust a bearing more than this (degrees, 1-sigma). */
+    public double minBearingAccuracyDeg = 2.0;
     /** De-weight fixes whose position innovation fails a χ² gate (multipath outliers). */
     public boolean gating = true;
     /** Gate threshold: χ² with 2 degrees of freedom (9.21 = 99%). */

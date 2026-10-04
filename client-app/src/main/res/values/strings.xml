@@ -180,4 +180,12 @@
     <string name="wifi_low_latency">Wi-Fi without power saving</string>
     <string name="wifi_low_latency_sub">Keep the Wi-Fi radio awake while running so fixes arrive on time, not in delayed pairs. Applies on the next start.</string>
     <string name="filter_network_delay">Wi-Fi delay of last fix</string>
+
+    <string name="filter_bearing_comp">Correct bearing rounding</string>
+    <string name="filter_bearing_comp_sub">The phone reports bearing in whole degrees, rounded down; trusted as precise, that shifted the icon ~1.4 m to the left. Adds 0.5° once rounding is detected.</string>
+    <string name="filter_min_bearing_acc">Min. bearing error, °</string>
+    <string name="filter_bearing_quantized">Phone bearing in whole degrees</string>
+    <string name="filter_bearing_quantized_yes">yes (not corrected)</string>
+    <string name="filter_bearing_quantized_fixed">yes, corrected +0.5°</string>
+    <string name="filter_bearing_quantized_no">no</string>
 </resources>

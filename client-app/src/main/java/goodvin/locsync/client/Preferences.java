@@ -262,6 +262,25 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_WIFI_LOW_LATENCY, true);
     }
 
+    private static final String PREF_FILTER_BEARING_COMP = "filterBearingCompensation";
+    private static final String PREF_FILTER_MIN_BEARING_ACC = "filterMinBearingAccuracy";
+
+    public static void setFilterBearingCompensation(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_BEARING_COMP, enabled).apply();
+    }
+
+    public static boolean filterBearingCompensation(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_BEARING_COMP, true);
+    }
+
+    public static void setFilterMinBearingAccuracy(Context context, float deg) {
+        getPrefs(context).edit().putFloat(PREF_FILTER_MIN_BEARING_ACC, deg).apply();
+    }
+
+    public static float filterMinBearingAccuracy(Context context) {
+        return getPrefs(context).getFloat(PREF_FILTER_MIN_BEARING_ACC, 2.0f);
+    }
+
     /** Current smoothing options; cheap enough to re-read on every fix so changes apply live. */
     public static FilterConfig filterConfig(Context context) {
         FilterConfig c = new FilterConfig();
@@ -271,6 +290,8 @@ public class Preferences {
         c.networkDelayCompensation = filterNetworkDelay(context);
         c.wifiLowLatency = wifiLowLatency(context);
         c.turnModel = filterTurnModel(context);
+        c.bearingCompensation = filterBearingCompensation(context);
+        c.minBearingAccuracyDeg = filterMinBearingAccuracy(context);
         c.gating = filterGating(context);
         c.gateThreshold = filterGateThreshold(context);
         c.standstillHold = filterStandstillHold(context);
