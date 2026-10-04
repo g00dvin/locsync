@@ -127,6 +127,8 @@ public class GNSSServerService extends Service {
         }
     };
 
+    // Main thread only (fix and GNSS status callbacks run on mainHandler); hand built messages to
+    // other threads, never the builder.
     private final LocationProto.ServerResponse.Builder lastServerResponse = LocationProto.ServerResponse.newBuilder()
             .setStatus(LocationProto.Status.UNINITIALIZED);
 
@@ -603,7 +605,10 @@ public class GNSSServerService extends Service {
 
         // Broadcast to the connected client
         AppLog.d(TAG, "Broadcasting location: " + location);
-        executor.execute(() -> broadcastLocationUpdate(lastServerResponse.build()));
+        // Build on this (main) thread: the builder is mutated here (fixes, GNSS status callbacks), so
+        // building it on the executor thread raced with those writes.
+        LocationProto.ServerResponse resp = lastServerResponse.build();
+        executor.execute(() -> broadcastLocationUpdate(resp));
     }
 
     private void recordFix(long receivedElapsed, Location location, boolean sent) {
