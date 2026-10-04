@@ -140,6 +140,31 @@ public class GNSSServerService extends Service {
     private boolean isGnssActive = false;
     private boolean hadAccurateFix = true;                 // see Preferences.waitForAccurate
     private ServerTrackRecorder trackRecorder;             // non-null while "Record track" is on
+    private boolean gpsReferenceActive = false;
+    // Raw GPS alongside Fused, for the track only: shows how much Fused smooths and lags.
+    // An explicit class, not a lambda: before API 30 the other LocationListener callbacks are abstract.
+    private final LocationListener gpsReferenceListener = new LocationListener() {
+        @Override
+        public void onLocationChanged(@NonNull Location location) {
+            if (trackRecorder != null) {
+                trackRecorder.fix(SystemClock.elapsedRealtime(), "gps_ref", location, getSatelliteCount(),
+                        false, clientAddr != null);
+            }
+        }
+
+        @Override
+        public void onProviderEnabled(@NonNull String provider) {
+        }
+
+        @Override
+        public void onProviderDisabled(@NonNull String provider) {
+        }
+
+        @Override
+        @SuppressWarnings("deprecation")
+        public void onStatusChanged(String provider, int status, android.os.Bundle extras) {
+        }
+    };
     private static final float ACCURATE_FIX_M = 20f;
     private WifiManager.MulticastLock multicastLock;
 
@@ -442,6 +467,13 @@ public class GNSSServerService extends Service {
                 );
             }
 
+            if (fusedLocationProviderClient != null && Preferences.trackRecording(this)
+                    && Preferences.recordGpsReference(this) && locationManager != null) {
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, MIN_INTERVAL_MS, 0,
+                        gpsReferenceListener, Looper.getMainLooper());
+                gpsReferenceActive = true;
+                AppLog.i(TAG, "Recording raw GPS alongside Fused for comparison");
+            }
             AppLog.i(TAG, "Location updates started: " + (fusedLocationProviderClient != null ? "fused" : "gps")
                     + ", interval " + MIN_INTERVAL_MS + " ms" + (waitAccurate ? ", waiting for an accurate fix" : ""));
 
@@ -473,6 +505,7 @@ public class GNSSServerService extends Service {
         AppLog.i(TAG, "Re-applying location settings");
         if (locationManager != null) {
             locationManager.removeUpdates(locationListener);
+            stopGpsReference();
         }
         if (fusedLocationProviderClient != null) {
             fusedLocationProviderClient.removeLocationUpdates(fusedLocationListener);
@@ -491,6 +524,7 @@ public class GNSSServerService extends Service {
 
         if (locationManager != null) {
             locationManager.removeUpdates(locationListener);
+            stopGpsReference();
             locationManager.unregisterGnssStatusCallback(gnssStatusCallback);
             locationManager = null;
         }
@@ -577,6 +611,13 @@ public class GNSSServerService extends Service {
             String source = "fused".equals(location.getProvider()) ? "fused" : "gps";
             trackRecorder.fix(receivedElapsed, source, location, getSatelliteCount(), sent, clientAddr != null);
         }
+    }
+
+    private void stopGpsReference() {
+        if (gpsReferenceActive && locationManager != null) {
+            locationManager.removeUpdates(gpsReferenceListener);
+        }
+        gpsReferenceActive = false;
     }
 
     /** Opens/closes track-server.csv to follow the "Record track" setting (checked on every fix). */

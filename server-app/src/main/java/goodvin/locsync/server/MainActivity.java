@@ -431,7 +431,16 @@ public class MainActivity extends AppCompatActivity {
                 Preferences.metricsEnabled(this), checked -> Preferences.setMetricsEnabled(this, checked));
         bindToggle(R.id.rowTrackRecording, getString(R.string.server_track_recording),
                 getString(R.string.server_track_recording_sub), Preferences.trackRecording(this),
-                checked -> Preferences.setTrackRecording(this, checked));
+                checked -> {
+                    Preferences.setTrackRecording(this, checked);
+                    GNSSServerService.reapplyLocationSettings(); // starts/stops the GPS reference
+                });
+        bindToggle(R.id.rowGpsReference, getString(R.string.record_gps_reference),
+                getString(R.string.record_gps_reference_sub), Preferences.recordGpsReference(this),
+                checked -> {
+                    Preferences.setRecordGpsReference(this, checked);
+                    GNSSServerService.reapplyLocationSettings();
+                });
         bindActionChevron(R.id.rowExportAll, getString(R.string.export_all),
                 getString(R.string.export_all_sub), this::exportAllData);
         bindActionChevron(R.id.rowClearLogs, getString(R.string.clear_logs),

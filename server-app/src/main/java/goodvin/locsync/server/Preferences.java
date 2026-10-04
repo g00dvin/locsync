@@ -239,6 +239,17 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_TRACK_RECORDING, false);
     }
 
+    private static final String PREF_RECORD_GPS_REFERENCE = "recordGpsReference";
+
+    /** While recording on Fused, also record raw GPS fixes (source gps_ref, never sent). */
+    public static void setRecordGpsReference(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_RECORD_GPS_REFERENCE, enabled).apply();
+    }
+
+    public static boolean recordGpsReference(Context context) {
+        return getPrefs(context).getBoolean(PREF_RECORD_GPS_REFERENCE, false);
+    }
+
     /** All stored settings, for the diagnostics export. */
     public static java.util.Map<String, ?> dump(Context context) {
         return new java.util.TreeMap<>(getPrefs(context).getAll());

@@ -51,6 +51,8 @@
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowTrackRecording" />
             <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowGpsReference" />
+            <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowExportAll" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowClearLogs" />
