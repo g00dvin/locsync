@@ -56,6 +56,12 @@
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowMetrics" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowExportMetrics" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowTrackRecording" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_action" android:id="@+id/rowExportTrack" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_action" android:id="@+id/rowClearLogs" />
         </LinearLayout>
 
         <!-- About -->

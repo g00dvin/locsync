@@ -127,4 +127,9 @@
     <string name="filter_process_noise_base">Базовый шум процесса σa, м/с² (меньше = плавнее)</string>
     <string name="filter_nis_avg">Средняя невязка (идеал ≈2)</string>
     <string name="filter_process_noise">Шум процесса σa</string>
+
+    <string name="track_recording">Запись трека (CSV)</string>
+    <string name="track_recording_sub">Сырые фиксы с телефона и то, что ушло в навигатор, — для разбора поездки (~4 МБ в час).</string>
+    <string name="export_track">Экспорт трека CSV</string>
+    <string name="track_export_none">Трека пока нет — включите запись и проедьтесь</string>
 </resources>

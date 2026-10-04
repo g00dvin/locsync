@@ -50,6 +50,7 @@ import android.widget.ViewFlipper;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.content.ContextCompat;
@@ -271,6 +272,7 @@ public class MainActivity extends AppCompatActivity {
         refreshPermissions();
         refreshState();
         refreshA11yAutostartRow();
+        refreshTrackRow();
     }
 
     // --- binding ---
@@ -465,6 +467,12 @@ public class MainActivity extends AppCompatActivity {
                 checked -> Preferences.setMetricsEnabled(this, checked));
         bindActionChevron(R.id.rowExportMetrics, getString(R.string.export_metrics),
                 lastMetricsFileName(), this::shareMetricsCsv);
+        bindToggle(R.id.rowTrackRecording, getString(R.string.track_recording),
+                getString(R.string.track_recording_sub), Preferences.trackRecording(this),
+                checked -> Preferences.setTrackRecording(this, checked));
+        bindActionChevron(R.id.rowExportTrack, getString(R.string.export_track), null, this::shareTrackCsv);
+        bindActionChevron(R.id.rowClearLogs, getString(R.string.clear_logs),
+                getString(R.string.clear_logs_sub), this::confirmClearLogs);
 
         // About
         String buildLabel = getString(R.string.build_label);
@@ -881,6 +889,21 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
+    private void confirmClearLogs() {
+        new AlertDialog.Builder(this)
+                .setMessage(R.string.clear_logs_confirm)
+                .setPositiveButton(R.string.clear_logs_action, (d, w) -> {
+                    long freed = LogExporter.clearAll(this);
+                    renderLog();
+                    setText(findViewById(R.id.rowExportMetrics), R.id.row_sub, "");
+                    refreshTrackRow();
+                    Toast.makeText(this, getString(R.string.clear_logs_done,
+                            android.text.format.Formatter.formatShortFileSize(this, freed)), Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
     private void shareMetricsCsv() {
         File csv = MetricsCsvWriter.fileFor(new File(getCacheDir(), "logs"), "client");
         if (!csv.exists() || csv.length() == 0) {
@@ -888,6 +911,29 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         shareFile(csv, "text/csv", getString(R.string.export_metrics));
+    }
+
+    private File trackFile() {
+        return TrackRecorder.fileFor(new File(getCacheDir(), "logs"));
+    }
+
+    /** Export row subtitle: current track file size, or a hint that there is none yet. */
+    private void refreshTrackRow() {
+        File f = trackFile();
+        TextView sub = findViewById(R.id.rowExportTrack).findViewById(R.id.row_sub);
+        sub.setText(f.exists() && f.length() > 0
+                ? String.format(Locale.US, "%s · %.1f MB", f.getName(), f.length() / 1048576.0)
+                : getString(R.string.track_export_none));
+        sub.setVisibility(View.VISIBLE);
+    }
+
+    private void shareTrackCsv() {
+        File f = trackFile();
+        if (!f.exists() || f.length() == 0) {
+            Toast.makeText(this, R.string.track_export_none, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        shareFile(f, "text/csv", getString(R.string.export_track));
     }
 
     private void shareFile(File file, String mime, String chooserTitle) {

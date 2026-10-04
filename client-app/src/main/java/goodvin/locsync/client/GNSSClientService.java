@@ -92,6 +92,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     // Last injected output, for the Monitor screen's filter card (NaN = nothing injected yet).
     private double outAccuracy = Double.NaN, outSpeedAcc = Double.NaN, outBearingAcc = Double.NaN;
     private double lastLatencyMs = Double.NaN, lastHorizonMs = Double.NaN;
+    private TrackRecorder trackRecorder;    // non-null while "Record track" is on
     private final Runnable smoothingTick = this::smoothingTick;
 
     private volatile DatagramSocket udpSocket;
@@ -276,6 +277,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         stateElapsedMs = 0;
         kalman.reset();
         outAccuracy = outSpeedAcc = outBearingAcc = Double.NaN;
+        if (trackRecorder != null) {
+            trackRecorder.close();
+            trackRecorder = null;
+        }
         lastLatencyMs = lastHorizonMs = Double.NaN;
         connectionManager.clearLearnedServerAddress();
         lastBroadcastSatelliteCount = -1;
@@ -445,6 +450,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             final long fixTs = locationUpdate.getTimestamp();
             final double alt = locationUpdate.getAltitude();
             final float ageS = locationUpdate.getLocationAge();
+            final String provider = locationUpdate.getProvider();
+            final int sats = response.getSatellites();
             mainHandler.post(() -> {
                 try {
                     // Skip keepalive resends of a fix already fed to the filter. The server re-sends the
@@ -492,6 +499,12 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     lastAltitude = alt;
                     lastFixElapsedMs = nowElapsed;
                     stateElapsedMs = measElapsed;
+
+                    updateTrackRecorder();
+                    if (trackRecorder != null) {
+                        trackRecorder.fix(nowElapsed, fixTs, provider, sats, lat, lon, alt, acc, hasSpd, spd, hasBrg, brg,
+                                spdAcc, brgAcc, ageS, latencyMs, kalman);
+                    }
                 } catch (Exception e) {
                     Log.e(TAG, "Error updating Kalman filter", e);
                 }
@@ -560,6 +573,11 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         lastUpdateTime = System.currentTimeMillis();
         try {
             mockLocationManager.setMockLocation(loc);
+            if (trackRecorder != null) {
+                // after setMockLocation: records what was actually injected (incl. static jitter)
+                trackRecorder.out(SystemClock.elapsedRealtime(), loc.getLatitude(), loc.getLongitude(), moving, loc.getSpeed(), loc.getBearing(),
+                        outAccuracy, outSpeedAcc, outBearingAcc, lastHorizonMs);
+            }
         } catch (SecurityException e) {
             Log.e(TAG, "Security exception - mock location permission denied", e);
             broadcastMockLocationStatus(getString(R.string.mock_location_permission_denied), true);
@@ -611,8 +629,24 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         } catch (Exception e) {
             Log.w(TAG, "metrics sampling failed", e);
         }
+        if (trackRecorder != null) {
+            trackRecorder.flush();
+        }
         broadcastFilterStats();
         mainHandler.postDelayed(metricsTick, METRICS_INTERVAL_MS);
+    }
+
+    /** Opens/closes the track file to follow the "Record track" setting (checked on every fix). */
+    private void updateTrackRecorder() {
+        boolean wanted = Preferences.trackRecording(this);
+        if (wanted && trackRecorder == null) {
+            trackRecorder = new TrackRecorder(new java.io.File(getCacheDir(), "logs"));
+            AppLog.i(TAG, "Track recording started");
+        } else if (!wanted && trackRecorder != null) {
+            trackRecorder.close();
+            trackRecorder = null;
+            AppLog.i(TAG, "Track recording stopped");
+        }
     }
 
     /**

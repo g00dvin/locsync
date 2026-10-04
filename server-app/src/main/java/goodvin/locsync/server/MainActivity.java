@@ -409,6 +409,8 @@ public class MainActivity extends AppCompatActivity {
                 Preferences.metricsEnabled(this), checked -> Preferences.setMetricsEnabled(this, checked));
         bindActionChevron(R.id.rowExportMetrics, getString(R.string.export_metrics),
                 lastMetricsFileName(), this::shareMetricsCsv);
+        bindActionChevron(R.id.rowClearLogs, getString(R.string.clear_logs),
+                getString(R.string.clear_logs_sub), this::confirmClearLogs);
 
         // About
         String buildLabel = getString(R.string.build_label);
@@ -824,6 +826,20 @@ public class MainActivity extends AppCompatActivity {
                         Toast.LENGTH_LONG).show());
             }
         }).start();
+    }
+
+    private void confirmClearLogs() {
+        new AlertDialog.Builder(this)
+                .setMessage(R.string.clear_logs_confirm)
+                .setPositiveButton(R.string.clear_logs_action, (d, w) -> {
+                    long freed = LogExporter.clearAll(this);
+                    renderLog();
+                    setText(findViewById(R.id.rowExportMetrics), R.id.row_sub, "");
+                    Toast.makeText(this, getString(R.string.clear_logs_done,
+                            android.text.format.Formatter.formatShortFileSize(this, freed)), Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     private void shareMetricsCsv() {
