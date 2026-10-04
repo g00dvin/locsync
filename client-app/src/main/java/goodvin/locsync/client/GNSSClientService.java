@@ -79,7 +79,12 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
     private final LocationKalmanFilter kalman = new LocationKalmanFilter(2.0, 1.0);
     private static final long OUTPUT_INTERVAL_MS = 100;   // 10 Hz
-    private static final long GPS_LOSS_CAP_MS = 2500;
+    private static final long GPS_LOSS_CAP_MS = 2500;           // at the usual 1 fix/s
+    // The server's update interval is configurable (up to 5 s), so "GPS lost" and the prediction
+    // horizon scale with the observed fix interval; a fixed 2.5 s froze the icon between slow fixes.
+    private static final double GPS_LOSS_INTERVALS = 2.5;
+    private static final long MAX_GPS_LOSS_CAP_MS = 12_500;
+    private double fixIntervalEmaMs = 1000;
     private volatile long lastFixElapsedMs = 0;           // SystemClock.elapsedRealtime of last real fix
     // Head-unit elapsedRealtime the filter state refers to: the fix time, i.e. arrival minus the
     // fix's age when latency compensation is on. Output ticks extrapolate from here to "now".
@@ -294,6 +299,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         stateElapsedMs = 0;
         kalman.reset();
         fixClock.reset();
+        fixIntervalEmaMs = 1000;
         releaseWifiLocks();
         outAccuracy = outSpeedAcc = outBearingAcc = Double.NaN;
         filtSpeedAcc = filtBearingAcc = inSpeedAcc = inBearingAcc = Double.NaN;
@@ -519,7 +525,11 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     lastLatencyMs = latencyMs;
 
                     boolean resumingAfterGap =
-                            lastFixElapsedMs == 0 || (nowElapsed - lastFixElapsedMs) > GPS_LOSS_CAP_MS;
+                            lastFixElapsedMs == 0 || (nowElapsed - lastFixElapsedMs) > gpsLossCapMs();
+                    long fixDt = fixTs - prevFixTs;
+                    if (!resumingAfterGap && prevFixTs != Long.MIN_VALUE && fixDt > 0 && fixDt <= MAX_GPS_LOSS_CAP_MS) {
+                        fixIntervalEmaMs += 0.2 * (fixDt - fixIntervalEmaMs);   // gaps don't count
+                    }
                     if (resumingAfterGap) {
                         // Fresh start, or the first real fix after a GPS gap (e.g. tunnel exit): re-anchor so
                         // the estimate snaps to the new position instead of lurching from stale state.
@@ -567,12 +577,14 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             return;
         }
         long nowElapsed = SystemClock.elapsedRealtime();
-        boolean gpsLost = lastFixElapsedMs == 0 || (nowElapsed - lastFixElapsedMs) > GPS_LOSS_CAP_MS;
+        long lossCapMs = gpsLossCapMs();
+        boolean gpsLost = lastFixElapsedMs == 0 || (nowElapsed - lastFixElapsedMs) > lossCapMs;
 
         if (kalman.isInitialized() && !gpsLost) {
             // Project the fix-time state to now (covers both the time since the last fix and, with
             // latency compensation, the fix's own age) without disturbing the filter.
-            double horizonS = Math.max(0, Math.min((nowElapsed - stateElapsedMs) / 1000.0, MAX_HORIZON_S));
+            double maxHorizonS = Math.max(MAX_HORIZON_S, lossCapMs / 1000.0 + 0.5);
+            double horizonS = Math.max(0, Math.min((nowElapsed - stateElapsedMs) / 1000.0, maxHorizonS));
             lastHorizonMs = horizonS * 1000.0;
             injectSmoothed(kalman.extrapolate(horizonS));
         }
@@ -585,6 +597,11 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             nextTickUptimeMs = nowUptime + OUTPUT_INTERVAL_MS; // fell behind (or first tick): resync
         }
         mainHandler.postAtTime(smoothingTick, nextTickUptimeMs);
+    }
+
+    /** How long without a new fix counts as GPS lost: 2.5 fix intervals, at least 2.5 s. */
+    private long gpsLossCapMs() {
+        return Math.max(GPS_LOSS_CAP_MS, Math.min(MAX_GPS_LOSS_CAP_MS, Math.round(GPS_LOSS_INTERVALS * fixIntervalEmaMs)));
     }
 
     private void injectSmoothed(LocationKalmanFilter.Estimate est) {
