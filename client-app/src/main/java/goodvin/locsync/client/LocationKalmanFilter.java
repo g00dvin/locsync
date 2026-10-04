@@ -57,10 +57,9 @@ public class LocationKalmanFilter {
     private static final double MIN_SPEED_FOR_HEADING = 0.1; // m/s; below this heading is undefined
 
     // Turn-rate estimation. Below TURN_MIN_SPEED the heading is too noisy to differentiate, so ω
-    // decays to zero. TURN_ALPHA smooths the per-fix estimate; MAX_TURN_RATE (~46°/s) bounds it to
+    // decays to zero. turnAlpha smooths the per-fix estimate; MAX_TURN_RATE (~46°/s) bounds it to
     // what a car can do (a U-turn at walking pace) so a heading glitch can't spin the prediction.
     private static final double TURN_MIN_SPEED = 2.0;   // m/s
-    private static final double TURN_ALPHA = 0.5;
     private static final double MAX_TURN_RATE = 0.8;    // rad/s
     private static final double MAX_TURN_DT = 3.0;      // s; older heading is too stale to difference
 
@@ -95,6 +94,9 @@ public class LocationKalmanFilter {
     private double nisEma = NIS_EXPECTED;
     private final double defaultSpeedSigma; // fallback velocity measurement noise (m/s)
     private boolean turnModel = true;
+    // Weight of the newest heading change in the turn-rate estimate (1 = no smoothing). 0.5 left
+    // the estimate at about half the real rate through a turn on a recorded drive.
+    private double turnAlpha = 0.85;
     // Bearing quantization (whole degrees) detection and compensation, plus a floor on the bearing
     // accuracy a source may claim. Detection: running share of whole-degree bearings.
     private static final double BEARING_QUANT_ALPHA = 0.05;
@@ -155,6 +157,11 @@ public class LocationKalmanFilter {
         }
         adaptiveNoise = adaptive;
         updateProcessNoise();
+    }
+
+    /** How fast the turn-rate estimate follows heading changes (0.1 = sluggish, 1 = no smoothing). */
+    public void setTurnResponsiveness(double alpha) {
+        turnAlpha = Math.max(0.1, Math.min(1.0, alpha));
     }
 
     /** Enables the coordinated-turn motion model; when off, the filter is constant-velocity. */
@@ -496,9 +503,9 @@ public class LocationKalmanFilter {
             if (Math.abs(raw) > 2 * MAX_TURN_RATE) {
                 // Physically implausible for a car (e.g. a heading flip from position noise with no
                 // Doppler bearing): not a turn, so decay towards straight rather than chase it.
-                omega *= 1 - TURN_ALPHA;
+                omega *= 1 - turnAlpha;
             } else {
-                omega += TURN_ALPHA * (raw - omega);
+                omega += turnAlpha * (raw - omega);
                 omega = Math.max(-MAX_TURN_RATE, Math.min(MAX_TURN_RATE, omega));
             }
         }

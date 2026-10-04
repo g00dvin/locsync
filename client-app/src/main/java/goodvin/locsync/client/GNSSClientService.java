@@ -486,6 +486,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     inBearingAcc = hasBrgAcc ? brgAcc : Double.NaN;
                     filterConfig = Preferences.filterConfig(this);
                     kalman.setTurnModel(filterConfig.turnModel);
+                    kalman.setTurnResponsiveness(filterConfig.turnResponsiveness);
                     kalman.setBearingHandling(filterConfig.bearingCompensation, filterConfig.minBearingAccuracyDeg);
                     kalman.setAdaptivePosition(filterConfig.adaptivePosition);
                     kalman.setGating(filterConfig.gating, filterConfig.gateThreshold);

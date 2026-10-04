@@ -291,6 +291,16 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_FILTER_ADAPTIVE_POSITION, true);
     }
 
+    private static final String PREF_FILTER_TURN_RESPONSIVENESS = "filterTurnResponsiveness";
+
+    public static void setFilterTurnResponsiveness(Context context, float alpha) {
+        getPrefs(context).edit().putFloat(PREF_FILTER_TURN_RESPONSIVENESS, alpha).apply();
+    }
+
+    public static float filterTurnResponsiveness(Context context) {
+        return getPrefs(context).getFloat(PREF_FILTER_TURN_RESPONSIVENESS, 0.85f);
+    }
+
     /** Current smoothing options; cheap enough to re-read on every fix so changes apply live. */
     public static FilterConfig filterConfig(Context context) {
         FilterConfig c = new FilterConfig();
@@ -300,6 +310,7 @@ public class Preferences {
         c.networkDelayCompensation = filterNetworkDelay(context);
         c.wifiLowLatency = wifiLowLatency(context);
         c.turnModel = filterTurnModel(context);
+        c.turnResponsiveness = filterTurnResponsiveness(context);
         c.bearingCompensation = filterBearingCompensation(context);
         c.minBearingAccuracyDeg = filterMinBearingAccuracy(context);
         c.adaptivePosition = filterAdaptivePosition(context);

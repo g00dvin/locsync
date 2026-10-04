@@ -164,14 +164,22 @@ public class TrackReplayTest {
         List<Fix> fixes = load(Path.of(path));
         System.out.println(replay(fixes, false, TrackReplayTest::v34).summary("v3.4 (age only)"));
         System.out.println(replay(fixes, true, TrackReplayTest::v34).summary("+ Wi-Fi delay sync"));
-        System.out.println(replay(fixes, true, kf -> kf.setAdaptivePosition(false)).summary("+ bearing rounding fix"));
-        System.out.println(replay(fixes, true, kf -> { }).summary("+ adaptive position trust"));
+        System.out.println(replay(fixes, true, kf -> {
+            kf.setAdaptivePosition(false);
+            kf.setTurnResponsiveness(0.5);
+        }).summary("+ bearing rounding fix"));
+        System.out.println(replay(fixes, true, kf -> kf.setTurnResponsiveness(0.5)).summary("+ adaptive position trust"));
+        for (double a : new double[]{0.7, 0.85, 1.0}) {
+            System.out.println(replay(fixes, true, kf -> kf.setTurnResponsiveness(a))
+                    .summary(String.format(Locale.US, "+ turn responsiveness %.2f", a)));
+        }
     }
 
     /** Filter settings as shipped in v3.4.x, for comparison. */
     static void v34(LocationKalmanFilter kf) {
         kf.setBearingHandling(false, 0);
         kf.setAdaptivePosition(false);
+        kf.setTurnResponsiveness(0.5);
     }
 
     static double[] alongCross(double lat, double lon, Fix f) {

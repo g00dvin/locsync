@@ -192,4 +192,5 @@
     <string name="filter_adaptive_position">Adaptive position trust</string>
     <string name="filter_adaptive_position_sub">The phone understates how precise its track is, so the filter leaned on speed and lagged behind. Learn from the fixes how much to trust them (up to 2× tighter).</string>
     <string name="filter_position_trust">Position error used</string>
+    <string name="filter_turn_responsiveness">Turn responsiveness (1 = fastest)</string>
 </resources>

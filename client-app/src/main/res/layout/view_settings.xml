@@ -41,6 +41,7 @@
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowWifiLowLatency" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowTurnModel" />
+            <include layout="@layout/row_setting_input" android:id="@+id/rowTurnResponsiveness" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowBearingComp" />
             <include layout="@layout/row_setting_input" android:id="@+id/rowMinBearingAcc" />

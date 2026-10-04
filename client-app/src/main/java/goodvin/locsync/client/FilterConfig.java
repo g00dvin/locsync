@@ -34,6 +34,8 @@ public final class FilterConfig {
     public boolean wifiLowLatency = true;
     /** Coordinated-turn motion model (predict along an arc) instead of straight lines. */
     public boolean turnModel = true;
+    /** Weight of the newest heading change in the turn-rate estimate (0.1–1). */
+    public double turnResponsiveness = 0.85;
     /** Add 0.5° to bearings once the source is seen to truncate them to whole degrees. */
     public boolean bearingCompensation = true;
     /** Never trust a bearing more than this (degrees, 1-sigma). */
