@@ -399,8 +399,10 @@ public class MainActivity extends AppCompatActivity {
             AppLog.clearRing();
             renderLog();
         });
-        findViewById(R.id.btnExportLogs).setOnClickListener(v -> exportLogs("locsync-client"));
-        findViewById(R.id.btnExportCsv).setOnClickListener(v -> shareMetricsCsv());
+        TextView exportBtn = findViewById(R.id.btnExportLogs);
+        exportBtn.setText(R.string.export_all_short);
+        exportBtn.setOnClickListener(v -> exportAllData());
+        findViewById(R.id.btnExportCsv).setVisibility(View.GONE);
     }
 
     private void bindSettings() {
@@ -486,12 +488,11 @@ public class MainActivity extends AppCompatActivity {
         bindToggle(R.id.rowMetrics, getString(R.string.metrics_enabled), null,
                 Preferences.metricsEnabled(this),
                 checked -> Preferences.setMetricsEnabled(this, checked));
-        bindActionChevron(R.id.rowExportMetrics, getString(R.string.export_metrics),
-                lastMetricsFileName(), this::shareMetricsCsv);
+        bindActionChevron(R.id.rowExportAll, getString(R.string.export_all),
+                getString(R.string.export_all_sub), this::exportAllData);
         bindToggle(R.id.rowTrackRecording, getString(R.string.track_recording),
                 getString(R.string.track_recording_sub), Preferences.trackRecording(this),
                 checked -> Preferences.setTrackRecording(this, checked));
-        bindActionChevron(R.id.rowExportTrack, getString(R.string.export_track), null, this::shareTrackCsv);
         bindActionChevron(R.id.rowClearLogs, getString(R.string.clear_logs),
                 getString(R.string.clear_logs_sub), this::confirmClearLogs);
 
@@ -967,34 +968,6 @@ public class MainActivity extends AppCompatActivity {
 
     // --- exports (behaviour preserved) ---
 
-    private String lastMetricsFileName() {
-        File csv = MetricsCsvWriter.fileFor(new File(getCacheDir(), "logs"), "client");
-        return (csv.exists() && csv.length() > 0) ? csv.getName() : "";
-    }
-
-    private void exportLogs(String appName) {
-        Toast.makeText(this, goodvin.locsync.logexporter.R.string.export_logs_in_progress, Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
-            try {
-                File logFile = LogExporter.exportLogs(this, appName);
-                LogExporter.cleanupOldLogs(this, appName);
-                runOnUiThread(() -> {
-                    if (logFile != null) {
-                        shareFile(logFile, "text/plain", getString(goodvin.locsync.logexporter.R.string.share_logs));
-                        Toast.makeText(this, goodvin.locsync.logexporter.R.string.export_logs_success, Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(this, goodvin.locsync.logexporter.R.string.export_logs_no_logs, Toast.LENGTH_SHORT).show();
-                    }
-                });
-            } catch (Exception e) {
-                Log.e(TAG, "Error exporting logs", e);
-                runOnUiThread(() -> Toast.makeText(this,
-                        String.format(getString(goodvin.locsync.logexporter.R.string.export_logs_error), e.getMessage()),
-                        Toast.LENGTH_LONG).show());
-            }
-        }).start();
-    }
-
     private final Runnable disarmClearLogs = this::disarmClearLogs;
 
     /**
@@ -1013,7 +986,6 @@ public class MainActivity extends AppCompatActivity {
             disarmClearLogs();
             long freed = LogExporter.clearAll(this);
             renderLog();
-            setText(findViewById(R.id.rowExportMetrics), R.id.row_sub, "");
             refreshTrackRow();
             Toast.makeText(this, getString(R.string.clear_logs_done,
                     android.text.format.Formatter.formatShortFileSize(this, freed)), Toast.LENGTH_SHORT).show();
@@ -1030,36 +1002,39 @@ public class MainActivity extends AppCompatActivity {
         row.findViewById(R.id.row_chevron).setVisibility(View.VISIBLE);
     }
 
-    private void shareMetricsCsv() {
-        File csv = MetricsCsvWriter.fileFor(new File(getCacheDir(), "logs"), "client");
-        if (!csv.exists() || csv.length() == 0) {
-            Toast.makeText(this, R.string.metrics_export_none, Toast.LENGTH_SHORT).show();
-            return;
-        }
-        shareFile(csv, "text/csv", getString(R.string.export_metrics));
+    /** Settings → Diagnostics / Monitor: one archive with logs, metrics, track and settings. */
+    private void exportAllData() {
+        Toast.makeText(this, R.string.export_all_in_progress, Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            File zip = null;
+            try {
+                zip = LogExporter.exportAll(this, "locsync-client", appVersion, Preferences.dump(this));
+            } catch (Exception e) {
+                Log.e(TAG, "Error exporting data", e);
+            }
+            final File result = zip;
+            runOnUiThread(() -> {
+                if (result != null) {
+                    shareFile(result, "application/zip", getString(R.string.export_all));
+                } else {
+                    Toast.makeText(this, R.string.export_all_failed, Toast.LENGTH_LONG).show();
+                }
+            });
+        }).start();
     }
 
     private File trackFile() {
         return TrackRecorder.fileFor(new File(getCacheDir(), "logs"));
     }
 
-    /** Export row subtitle: current track file size, or a hint that there is none yet. */
+    /** Track toggle subtitle: what it records, plus how much is recorded so far. */
     private void refreshTrackRow() {
         File f = trackFile();
-        TextView sub = findViewById(R.id.rowExportTrack).findViewById(R.id.row_sub);
+        TextView sub = findViewById(R.id.rowTrackRecording).findViewById(R.id.row_sub);
+        String base = getString(R.string.track_recording_sub);
         sub.setText(f.exists() && f.length() > 0
-                ? String.format(Locale.US, "%s · %.1f MB", f.getName(), f.length() / 1048576.0)
-                : getString(R.string.track_export_none));
+                ? base + String.format(Locale.US, " · %.1f MB", f.length() / 1048576.0) : base);
         sub.setVisibility(View.VISIBLE);
-    }
-
-    private void shareTrackCsv() {
-        File f = trackFile();
-        if (!f.exists() || f.length() == 0) {
-            Toast.makeText(this, R.string.track_export_none, Toast.LENGTH_SHORT).show();
-            return;
-        }
-        shareFile(f, "text/csv", getString(R.string.export_track));
     }
 
     private void shareFile(File file, String mime, String chooserTitle) {

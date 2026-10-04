@@ -176,6 +176,11 @@ public class Preferences {
     }
 
     // Cached: read on hot paths; avoids re-resolving the prefs file on every call.
+    /** All stored settings, for the diagnostics export. */
+    public static java.util.Map<String, ?> dump(Context context) {
+        return new java.util.TreeMap<>(getPrefs(context).getAll());
+    }
+
     private static volatile SharedPreferences prefs;
 
     private static SharedPreferences getPrefs(Context context) {

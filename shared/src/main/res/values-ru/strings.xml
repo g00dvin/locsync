@@ -28,4 +28,9 @@
     <string name="clear_logs_confirm">Удалить все логи, метрики и записанные треки? Нажмите «Очистить» для подтверждения.</string>
     <string name="clear_logs_action">Очистить</string>
     <string name="clear_logs_done">Логи очищены (освобождено %s)</string>
+    <string name="export_all">Экспорт всех данных (ZIP)</string>
+    <string name="export_all_sub">Лог, метрики, записанный трек и настройки одним архивом — для отправки на разбор</string>
+    <string name="export_all_short">Экспорт всех данных</string>
+    <string name="export_all_in_progress">Собираю архив…</string>
+    <string name="export_all_failed">Не удалось создать архив</string>
 </resources>

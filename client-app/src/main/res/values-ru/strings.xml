@@ -130,8 +130,6 @@
 
     <string name="track_recording">Запись трека (CSV)</string>
     <string name="track_recording_sub">Сырые фиксы с телефона и то, что ушло в навигатор, — для разбора поездки (~4 МБ в час).</string>
-    <string name="export_track">Экспорт трека CSV</string>
-    <string name="track_export_none">Трека пока нет — включите запись и проедьтесь</string>
 
     <string name="sub_client_connected_fmt">Телефон %1$s · на связи %2$s</string>
     <string name="tile_speed">Скорость</string>

@@ -327,6 +327,11 @@ public class Preferences {
     // device-protected context each time is wasteful, and some head-unit ROMs log a full stack trace
     // for every getApplicationContext() call (~26 lines/s), flooding logcat so exported logs lose
     // everything else.
+    /** All stored settings, for the diagnostics export. */
+    public static java.util.Map<String, ?> dump(Context context) {
+        return new java.util.TreeMap<>(getPrefs(context).getAll());
+    }
+
     private static volatile SharedPreferences prefs;
 
     private static SharedPreferences getPrefs(Context context) {
