@@ -67,7 +67,6 @@ import goodvin.locsync.shared.LinkState;
 import goodvin.locsync.shared.LogExporter;
 import goodvin.locsync.shared.MetricsCsvWriter;
 import goodvin.locsync.shared.PowerOrbView;
-import goodvin.locsync.shared.SatelliteBarsView;
 import goodvin.locsync.shared.SparklineView;
 import goodvin.locsync.shared.VersionGetter;
 
@@ -93,10 +92,11 @@ public class MainActivity extends AppCompatActivity {
 
     // Connect
     private PowerOrbView powerOrb;
-    private TextView statusLine, statusSub, signalDetail, bannerText;
+    private TextView statusLine, statusSub, bannerText;
     private View connectBanner;
-    private SatelliteBarsView satBars;
-    private View statCard1, statCard2, statCard3;
+    private View tileSpeed, tileAccuracy, tileSats, tileFresh;
+    private View navDot;
+    private TextView navTitle, navDetail;
 
     // Monitor
     private TextView monLocation, monAltAcc, logText;
@@ -119,6 +119,7 @@ public class MainActivity extends AppCompatActivity {
     private Location lastLocation = null;
     private String lastProvider = null;
     private float lastLocationAge = 0;
+    private long lastLocationRecvElapsed = 0;   // when the last location broadcast arrived
     private double mPktRecv = Double.NaN, mPktSent = Double.NaN, mBytesRecv = Double.NaN,
             mBytesSent = Double.NaN, mMaxGap = Double.NaN, mAgeMean = Double.NaN,
             mAgeP95 = Double.NaN, mCpu = Double.NaN, mFixes = Double.NaN;
@@ -158,6 +159,7 @@ public class MainActivity extends AppCompatActivity {
                     lastLocation = location;
                     lastProvider = intent.getStringExtra("provider");
                     lastLocationAge = intent.getFloatExtra("locationAge", 0);
+                    lastLocationRecvElapsed = SystemClock.elapsedRealtime();
                 }
                 updateConnectReadouts();
                 if (liveMonitoring) {
@@ -329,18 +331,20 @@ public class MainActivity extends AppCompatActivity {
         powerOrb = findViewById(R.id.powerOrb);
         statusLine = findViewById(R.id.statusLine);
         statusSub = findViewById(R.id.statusSub);
-        signalDetail = findViewById(R.id.signalDetail);
-        satBars = findViewById(R.id.satBars);
         connectBanner = findViewById(R.id.connectBanner);
         bannerText = findViewById(R.id.bannerText);
-        statCard1 = findViewById(R.id.statCard1);
-        statCard2 = findViewById(R.id.statCard2);
-        statCard3 = findViewById(R.id.statCard3);
+        tileSpeed = findViewById(R.id.tileSpeed);
+        tileAccuracy = findViewById(R.id.tileAccuracy);
+        tileSats = findViewById(R.id.tileSats);
+        tileFresh = findViewById(R.id.tileFresh);
+        navDot = findViewById(R.id.navDot);
+        navTitle = findViewById(R.id.navTitle);
+        navDetail = findViewById(R.id.navDetail);
 
-        setText(statCard1, R.id.statLabel, getString(R.string.stat_satellites));
-        setText(statCard2, R.id.statLabel, getString(R.string.stat_recv));
-        setText(statCard2, R.id.statUnit, getString(R.string.unit_pkts));
-        setText(statCard3, R.id.statLabel, getString(R.string.uptime_label));
+        setText(tileSpeed, R.id.tileLabel, getString(R.string.tile_speed));
+        setText(tileAccuracy, R.id.tileLabel, getString(R.string.tile_accuracy));
+        setText(tileSats, R.id.tileLabel, getString(R.string.stat_satellites));
+        setText(tileFresh, R.id.tileLabel, getString(R.string.tile_fresh));
 
         powerOrb.setOnClickListener(v -> togglePower());
         connectBanner.setOnClickListener(v -> {
@@ -540,7 +544,7 @@ public class MainActivity extends AppCompatActivity {
             case CONNECTED -> {
                 statusLine.setText(R.string.status_client_connected);
                 statusLine.setTextColor(getColor(R.color.ls_accent_400));
-                statusSub.setText(R.string.sub_client_connected);
+                statusSub.setText(connectedSub());
             }
             case WAITING -> {
                 statusLine.setText(R.string.status_client_connecting);
@@ -553,7 +557,7 @@ public class MainActivity extends AppCompatActivity {
                 statusSub.setText(R.string.subtitle_client);
             }
         }
-        subtitleText.setText(statusSub.getText());
+        subtitleText.setText(state == LinkState.CONNECTED ? getString(R.string.sub_client_connected) : statusSub.getText());
         updateBanner(state);
         updateConnectReadouts();
     }
@@ -612,33 +616,115 @@ public class MainActivity extends AppCompatActivity {
         return String.format(getString(R.string.uptime_format), s / 60, s % 60);
     }
 
-    private void updateConnectReadouts() {
-        boolean connected = currentState() == LinkState.CONNECTED;
-        int textColor = getColor(R.color.ls_text);
-        int dimColor = getColor(R.color.ls_text_dim);
-
-        if (connected) {
-            setStat(statCard1, String.valueOf(lastSatellites), textColor);
-            setStat(statCard2, fmt1(mPktRecv), textColor);
-            setStat(statCard3, uptime(), textColor);
-            // Client only knows the satellite count (no per-satellite C/N0 over the protocol),
-            // so the signal card shows the count and a uniform count meter.
-            signalDetail.setText(String.format(getString(R.string.signal_sats), lastSatellites));
-            satBars.setData(lastSatellites, null);
-        } else {
-            String none = getString(R.string.value_none);
-            setStat(statCard1, none, dimColor);
-            setStat(statCard2, none, dimColor);
-            setStat(statCard3, none, dimColor);
-            signalDetail.setText(none);
-            satBars.clear();
-        }
+    /** "Phone 192.168.43.1 · online 03:12" under the status line while connected. */
+    private String connectedSub() {
+        String addr = GNSSClientService.getServerAddress();
+        return getString(R.string.sub_client_connected_fmt,
+                addr != null ? addr : getString(R.string.unknown), uptime());
     }
 
-    private void setStat(View card, String value, int color) {
-        TextView v = card.findViewById(R.id.statValue);
+    // A fix older than this (phone-side age + time since it arrived) is no longer "live"; matches the
+    // service's GPS-loss cap, after which it stops moving the icon.
+    private static final double STALE_FIX_S = 3.0;
+    private static final long OUTPUT_ACTIVE_MS = 1500;
+
+    /** Seconds since the phone took the last fix we know of (NaN if none yet). */
+    private double fixAgeSeconds() {
+        if (lastLocation == null || lastLocationRecvElapsed == 0) return Double.NaN;
+        return lastLocationAge + (SystemClock.elapsedRealtime() - lastLocationRecvElapsed) / 1000.0;
+    }
+
+    /**
+     * Main screen: one status card answering "does the navigator get a position?" and four tiles with
+     * what the phone reports (speed, accuracy, satellites, data freshness), each with a plain hint.
+     */
+    private void updateConnectReadouts() {
+        LinkState state = currentState();
+        boolean connected = state == LinkState.CONNECTED;
+        int textColor = getColor(R.color.ls_text);
+        int dimColor = getColor(R.color.ls_text_dim);
+        double age = fixAgeSeconds();
+        boolean fresh = connected && !Double.isNaN(age) && age <= STALE_FIX_S;
+        Location loc = connected ? lastLocation : null;
+
+        // Navigator status
+        boolean mockSelected = MockLocationManager.isSelectedMockApp(this);
+        boolean injecting = System.currentTimeMillis() - GNSSClientService.getLastUpdateTime() < OUTPUT_ACTIVE_MS;
+        int dotColor;
+        if (!mockSelected) {
+            navTitle.setText(R.string.nav_mock_title);
+            navDetail.setText(R.string.nav_mock_detail);
+            dotColor = getColor(R.color.ls_error);
+        } else if (connected && fresh && injecting) {
+            navTitle.setText(R.string.nav_ok_title);
+            navDetail.setText(R.string.nav_ok_detail);
+            dotColor = getColor(R.color.ls_accent_400);
+        } else if (connected) {
+            navTitle.setText(R.string.nav_stale_title);
+            navDetail.setText(R.string.nav_stale_detail);
+            dotColor = getColor(R.color.ls_error);
+        } else if (state == LinkState.WAITING) {
+            navTitle.setText(R.string.nav_waiting_title);
+            navDetail.setText(R.string.nav_waiting_detail);
+            dotColor = getColor(R.color.ls_accent_300);
+        } else {
+            navTitle.setText(R.string.nav_off_title);
+            navDetail.setText(R.string.nav_off_detail);
+            dotColor = getColor(R.color.ls_neutral_500);
+        }
+        navDot.getBackground().mutate().setTint(dotColor);
+        findViewById(R.id.navCard).setOnClickListener(mockSelected ? null : v -> openMockLocationSettings());
+
+        String none = getString(R.string.value_none);
+        if (loc == null) {
+            String hint = connected ? getString(R.string.hint_no_fix) : "";
+            setTile(tileSpeed, none, "", hint, dimColor);
+            setTile(tileAccuracy, none, "", hint, dimColor);
+            setTile(tileSats, none, "", hint, dimColor);
+            setTile(tileFresh, none, "", hint, dimColor);
+            return;
+        }
+
+        // Speed (Doppler, from the phone)
+        if (loc.hasSpeed()) {
+            float kmh = loc.getSpeed() * 3.6f;
+            setTile(tileSpeed, String.format(Locale.US, "%.0f", kmh), getString(R.string.unit_kmh),
+                    getString(kmh < 2 ? R.string.hint_speed_stopped : R.string.hint_speed), textColor);
+        } else {
+            setTile(tileSpeed, none, getString(R.string.unit_kmh), getString(R.string.hint_speed_none), dimColor);
+        }
+
+        // Accuracy (68% radius reported by the phone) with a plain-language grade
+        if (loc.hasAccuracy()) {
+            float acc = loc.getAccuracy();
+            int grade = acc <= 5 ? R.string.acc_excellent : acc <= 10 ? R.string.acc_good
+                    : acc <= 25 ? R.string.acc_fair : R.string.acc_poor;
+            setTile(tileAccuracy, String.format(Locale.US, "±%.0f", acc), getString(R.string.unit_m),
+                    getString(grade), acc <= 25 ? textColor : getColor(R.color.ls_error));
+        } else {
+            setTile(tileAccuracy, none, "", "", dimColor);
+        }
+
+        // Satellites used by the phone, and which provider produced the fix
+        String provider = lastProvider == null ? "" : lastProvider;
+        String providerHint = "fused".equals(provider) ? getString(R.string.hint_provider_fused)
+                : "gps".equals(provider) ? getString(R.string.hint_provider_gps)
+                : provider.isEmpty() ? "" : provider;
+        setTile(tileSats, String.valueOf(lastSatellites), "", providerHint,
+                lastSatellites > 0 ? textColor : getColor(R.color.ls_error));
+
+        // Freshness of the data
+        setTile(tileFresh, String.format(Locale.US, "%.1f", age), getString(R.string.unit_s_ago),
+                getString(fresh ? R.string.hint_fresh : R.string.hint_stale),
+                fresh ? textColor : getColor(R.color.ls_error));
+    }
+
+    private void setTile(View tile, String value, String unit, String hint, int valueColor) {
+        TextView v = tile.findViewById(R.id.tileValue);
         v.setText(value);
-        v.setTextColor(color);
+        v.setTextColor(valueColor);
+        setText(tile, R.id.tileUnit, unit);
+        setText(tile, R.id.tileHint, hint);
     }
 
     // --- monitor readouts ---
@@ -742,7 +828,10 @@ public class MainActivity extends AppCompatActivity {
         uiHandler.postDelayed(new Runnable() {
             @Override public void run() {
                 if (currentState() == LinkState.CONNECTED) {
-                    setStat(statCard3, uptime(), getColor(R.color.ls_text));
+                    statusSub.setText(connectedSub());
+                }
+                if (viewFlipper.getDisplayedChild() == VIEW_CONNECT) {
+                    updateConnectReadouts();   // freshness and the navigator status age every second
                 }
                 blinkLogDot();
                 if (liveMonitoring && viewFlipper.getDisplayedChild() == VIEW_MONITOR) {

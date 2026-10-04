@@ -139,4 +139,34 @@
     <string name="track_recording_sub">Raw fixes from the phone and what was sent to the navigator, for analysing a drive (~4 MB per hour).</string>
     <string name="export_track">Export track CSV</string>
     <string name="track_export_none">No track yet — enable recording and drive</string>
+
+    <string name="sub_client_connected_fmt">Phone %1$s · online %2$s</string>
+    <string name="tile_speed">Speed</string>
+    <string name="tile_accuracy">Accuracy</string>
+    <string name="tile_fresh">Data age</string>
+    <string name="unit_kmh">km/h</string>
+    <string name="unit_m">m</string>
+    <string name="unit_s_ago">s ago</string>
+    <string name="hint_speed">from the phone\'s GPS</string>
+    <string name="hint_speed_stopped">stopped</string>
+    <string name="hint_speed_none">phone reports no speed</string>
+    <string name="acc_excellent">excellent</string>
+    <string name="acc_good">good</string>
+    <string name="acc_fair">fair — may wobble</string>
+    <string name="acc_poor">poor — position may jump</string>
+    <string name="hint_provider_fused">Fused: GPS + phone sensors</string>
+    <string name="hint_provider_gps">GPS only</string>
+    <string name="hint_fresh">updates every second</string>
+    <string name="hint_stale">phone stopped sending positions</string>
+    <string name="hint_no_fix">waiting for the phone\'s first fix</string>
+    <string name="nav_ok_title">Navigator is getting the position</string>
+    <string name="nav_ok_detail">LocSync stands in for the head unit\'s GPS</string>
+    <string name="nav_stale_title">No fresh position</string>
+    <string name="nav_stale_detail">The navigator keeps the last known position — check GPS on the phone</string>
+    <string name="nav_waiting_title">Looking for the phone</string>
+    <string name="nav_waiting_detail">Start LocSync Server on the phone and connect to its Wi-Fi hotspot</string>
+    <string name="nav_off_title">Position is not being sent</string>
+    <string name="nav_off_detail">Tap the circle to start</string>
+    <string name="nav_mock_title">GPS substitution is not set up</string>
+    <string name="nav_mock_detail">Tap: Developer options → Select mock location app → LocSync Client</string>
 </resources>
