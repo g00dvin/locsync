@@ -71,7 +71,13 @@ public class GNSSServerService extends Service {
     private static final int NOTIFICATION_ID = 1;
     private static final String PREF_IS_SERVICE_ENABLED = "isServiceEnabled";
     private static final long CLIENT_TIMEOUT_MS = 5000;   // no HELLO for this long => client gone
-    private static final long KEEPALIVE_INTERVAL_MS = 1000; // resend latest response at least this often
+    // Keepalive: the client needs a RESPONSE at least every ~3 s to stay "connected". Fixes already
+    // arrive every second, so the latest response is resent only after KEEPALIVE_IDLE_MS without
+    // one (no fix yet, GPS lost) instead of unconditionally every second, which doubled the traffic
+    // and made the client parse and discard a duplicate per fix.
+    private static final long KEEPALIVE_TICK_MS = 250;
+    private static final long KEEPALIVE_IDLE_MS = 1500;
+    private volatile long lastResponseSentElapsed = 0;
 
     private static boolean running = false;
     private static GNSSServerService instance = null;
@@ -310,7 +316,7 @@ public class GNSSServerService extends Service {
                 return;
             }
 
-            mainHandler.post(() -> mainHandler.postDelayed(keepaliveRunnable, KEEPALIVE_INTERVAL_MS));
+            mainHandler.post(() -> mainHandler.postDelayed(keepaliveRunnable, KEEPALIVE_TICK_MS));
             mainHandler.post(this::startMetricsSampler);
 
             byte[] buffer = new byte[Protocol.MAX_PACKET_BYTES];
@@ -656,6 +662,7 @@ public class GNSSServerService extends Service {
         if (dest == null) {
             return;
         }
+        lastResponseSentElapsed = SystemClock.elapsedRealtime();
         sendPacket(Protocol.buildPacket(Protocol.TYPE_RESPONSE, serverResponse.toByteArray()), dest);
     }
 
@@ -669,14 +676,14 @@ public class GNSSServerService extends Service {
                     clientAddr = null;
                     onClientGone();
                 }
-            } else {
-                // Resend the latest response so the client's recency clock stays fresh.
+            } else if (SystemClock.elapsedRealtime() - lastResponseSentElapsed >= KEEPALIVE_IDLE_MS) {
+                // Nothing sent for a while: resend the latest response so the client stays connected.
                 LocationProto.ServerResponse resp = lastServerResponse.build();
                 executor.execute(() -> broadcastLocationUpdate(resp));
             }
         }
         if (running) {
-            mainHandler.postDelayed(keepaliveRunnable, KEEPALIVE_INTERVAL_MS);
+            mainHandler.postDelayed(keepaliveRunnable, KEEPALIVE_TICK_MS);
         }
     }
 

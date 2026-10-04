@@ -122,6 +122,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private static final long CONNECTED_TIMEOUT_MS = 3000;
     private static final String BROADCAST_ADDR = "255.255.255.255";
     private final Runnable helloTick = this::sendHelloTick;
+    private static final byte[] HELLO_PACKET = Protocol.buildPacket(Protocol.TYPE_HELLO, null); // never changes
 
     private static final String WIDGET_SATELLITE_STATUS_ACTION = "dezz.gnssshare.action.SATELLITE_STATUS";
     private static final String WIDGET_PACKAGE = "dezz.status.widget";
@@ -327,10 +328,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             final String dest = (target != null) ? target : BROADCAST_ADDR;
             executor.execute(() -> {
                 try {
-                    byte[] hello = Protocol.buildPacket(Protocol.TYPE_HELLO, null);
-                    sock.send(new DatagramPacket(hello, hello.length,
+                    sock.send(new DatagramPacket(HELLO_PACKET, HELLO_PACKET.length,
                             InetAddress.getByName(dest), Protocol.PORT));
-                    metrics.recordPacketSent(hello.length);
+                    metrics.recordPacketSent(HELLO_PACKET.length);
                 } catch (IOException e) {
                     Log.w(TAG, "Failed to send HELLO to " + dest, e);
                 }
@@ -393,9 +393,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         metrics.recordPacketRecv(packet.getLength(), SystemClock.elapsedRealtime());
 
         try {
+            // Parse in place from the receive buffer (no copy); handled synchronously before the
+            // buffer is reused for the next datagram.
             LocationProto.ServerResponse response = LocationProto.ServerResponse.parseFrom(
-                    java.util.Arrays.copyOfRange(packet.getData(),
-                            header.payloadOffset, header.payloadOffset + header.payloadLength));
+                    java.nio.ByteBuffer.wrap(packet.getData(), header.payloadOffset, header.payloadLength));
 
             lastResponseTime = SystemClock.elapsedRealtime();   // monotonic, immune to clock changes
             String srcAddr = packet.getAddress().getHostAddress();
