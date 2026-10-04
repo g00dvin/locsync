@@ -174,4 +174,10 @@
     <string name="filter_accuracy_mode">Accuracy sent to navigator</string>
     <string name="filter_accuracy_mode_68">68% radius + speed/bearing</string>
     <string name="filter_accuracy_mode_legacy">legacy 1σ, no speed/bearing</string>
+
+    <string name="filter_network_delay_comp">Compensate Wi-Fi delay</string>
+    <string name="filter_network_delay_comp_sub">Use the phone\'s fix timestamps to tell how long each fix spent in Wi-Fi; late packets no longer make the icon jump back and forth.</string>
+    <string name="wifi_low_latency">Wi-Fi without power saving</string>
+    <string name="wifi_low_latency_sub">Keep the Wi-Fi radio awake while running so fixes arrive on time, not in delayed pairs. Applies on the next start.</string>
+    <string name="filter_network_delay">Wi-Fi delay of last fix</string>
 </resources>

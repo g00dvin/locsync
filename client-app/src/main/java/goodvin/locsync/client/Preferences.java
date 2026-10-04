@@ -243,12 +243,33 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_FILTER_ADAPTIVE_NOISE, true);
     }
 
+    private static final String PREF_FILTER_NETWORK_DELAY = "filterNetworkDelayCompensation";
+    private static final String PREF_WIFI_LOW_LATENCY = "wifiLowLatency";
+
+    public static void setFilterNetworkDelay(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_NETWORK_DELAY, enabled).apply();
+    }
+
+    public static boolean filterNetworkDelay(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_NETWORK_DELAY, true);
+    }
+
+    public static void setWifiLowLatency(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_WIFI_LOW_LATENCY, enabled).apply();
+    }
+
+    public static boolean wifiLowLatency(Context context) {
+        return getPrefs(context).getBoolean(PREF_WIFI_LOW_LATENCY, true);
+    }
+
     /** Current smoothing options; cheap enough to re-read on every fix so changes apply live. */
     public static FilterConfig filterConfig(Context context) {
         FilterConfig c = new FilterConfig();
         c.reportUncertainty = filterReportUncertainty(context);
         c.latencyCompensation = filterLatencyCompensation(context);
         c.extraLatencyMs = filterExtraLatencyMs(context);
+        c.networkDelayCompensation = filterNetworkDelay(context);
+        c.wifiLowLatency = wifiLowLatency(context);
         c.turnModel = filterTurnModel(context);
         c.gating = filterGating(context);
         c.gateThreshold = filterGateThreshold(context);

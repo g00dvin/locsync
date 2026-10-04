@@ -36,6 +36,10 @@
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowLatencyComp" />
             <include layout="@layout/row_setting_input" android:id="@+id/rowExtraLatency" />
             <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowNetworkDelay" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowWifiLowLatency" />
+            <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowTurnModel" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowGating" />

@@ -167,4 +167,10 @@
     <string name="filter_accuracy_mode">Точность для навигатора</string>
     <string name="filter_accuracy_mode_68">радиус 68% + скорость/курс</string>
     <string name="filter_accuracy_mode_legacy">прежняя 1σ, без скорости/курса</string>
+
+    <string name="filter_network_delay_comp">Компенсация задержки Wi-Fi</string>
+    <string name="filter_network_delay_comp_sub">По меткам времени телефона определять, сколько фикс шёл по Wi-Fi; опоздавшие пакеты больше не заставляют значок прыгать назад-вперёд.</string>
+    <string name="wifi_low_latency">Wi-Fi без энергосбережения</string>
+    <string name="wifi_low_latency_sub">Не давать Wi-Fi засыпать, пока клиент работает, чтобы фиксы приходили вовремя, а не пачками. Применяется при следующем запуске.</string>
+    <string name="filter_network_delay">Задержка Wi-Fi последнего фикса</string>
 </resources>

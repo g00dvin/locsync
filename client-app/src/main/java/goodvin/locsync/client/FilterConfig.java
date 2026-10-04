@@ -28,6 +28,10 @@ public final class FilterConfig {
     public boolean latencyCompensation = true;
     /** Extra delay (ms) on top of the reported fix age, e.g. provider/transport latency. */
     public double extraLatencyMs = 0;
+    /** Add the fix's Wi-Fi delivery delay (from the phone's fix timestamps) to its reported age. */
+    public boolean networkDelayCompensation = true;
+    /** Hold Wi-Fi locks so the radio stays out of power save (avoids delayed, bunched packets). */
+    public boolean wifiLowLatency = true;
     /** Coordinated-turn motion model (predict along an arc) instead of straight lines. */
     public boolean turnModel = true;
     /** De-weight fixes whose position innovation fails a χ² gate (multipath outliers). */

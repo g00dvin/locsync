@@ -436,6 +436,12 @@ public class MainActivity extends AppCompatActivity {
         bindNumberInput(R.id.rowExtraLatency, getString(R.string.filter_extra_latency),
                 Preferences.filterExtraLatencyMs(this), 0, 1000,
                 v -> Preferences.setFilterExtraLatencyMs(this, (float) v));
+        bindToggle(R.id.rowNetworkDelay, getString(R.string.filter_network_delay_comp),
+                getString(R.string.filter_network_delay_comp_sub), Preferences.filterNetworkDelay(this),
+                checked -> Preferences.setFilterNetworkDelay(this, checked));
+        bindToggle(R.id.rowWifiLowLatency, getString(R.string.wifi_low_latency),
+                getString(R.string.wifi_low_latency_sub), Preferences.wifiLowLatency(this),
+                checked -> Preferences.setWifiLowLatency(this, checked));
         bindToggle(R.id.rowTurnModel, getString(R.string.filter_turn_model),
                 getString(R.string.filter_turn_model_sub), Preferences.filterTurnModel(this),
                 checked -> Preferences.setFilterTurnModel(this, checked));
