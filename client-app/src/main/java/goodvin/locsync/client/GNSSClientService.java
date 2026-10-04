@@ -93,6 +93,11 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private double outAccuracy = Double.NaN, outSpeedAcc = Double.NaN, outBearingAcc = Double.NaN;
     private double lastLatencyMs = Double.NaN, lastHorizonMs = Double.NaN, lastNetworkDelayMs = Double.NaN;
     private final FixClock fixClock = new FixClock();
+    private static final double MOVING_SHOW_FACTOR = 1.6, MOVING_HIDE_FACTOR = 0.8; // × standstill speed
+    private boolean outputMoving = false;
+    private long nextTickUptimeMs = 0;              // fixed 10 Hz grid for output ticks
+    private static final long NOTIFICATION_MIN_INTERVAL_MS = 5000;
+    private long lastNotificationElapsedMs = 0;
     private android.net.wifi.WifiManager.WifiLock wifiLockLowLatency, wifiLockHighPerf;
     // Monitor-only diagnostics, independent of what the "Honest accuracy" setting injects: the
     // filter's own speed/bearing accuracy, and what the phone reported for the last fix.
@@ -263,6 +268,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         if (filterConfig.wifiLowLatency) {
             acquireWifiLocks();
         }
+        nextTickUptimeMs = 0;
+        outputMoving = false;
         mainHandler.post(smoothingTick);
 
         lastTickWallMs = 0;
@@ -323,6 +330,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     byte[] hello = Protocol.buildPacket(Protocol.TYPE_HELLO, null);
                     sock.send(new DatagramPacket(hello, hello.length,
                             InetAddress.getByName(dest), Protocol.PORT));
+                    metrics.recordPacketSent(hello.length);
                 } catch (IOException e) {
                     Log.w(TAG, "Failed to send HELLO to " + dest, e);
                 }
@@ -436,7 +444,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             lastUpdateTime = System.currentTimeMillis();
 
             // Update notification with new location data
-            updateNotification();
+            updateNotificationThrottled();
 
             // Broadcast location update to activity
             Intent intent = new Intent("goodvin.locsync.LOCATION_UPDATE");
@@ -569,7 +577,13 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
         // When GPS is lost, we simply stop advancing/injecting (freeze) until fixes resume.
 
-        mainHandler.postDelayed(smoothingTick, OUTPUT_INTERVAL_MS);
+        // Schedule on a fixed grid: postDelayed after the work drifted the rate down to ~8.7 Hz.
+        long nowUptime = SystemClock.uptimeMillis();
+        nextTickUptimeMs += OUTPUT_INTERVAL_MS;
+        if (nextTickUptimeMs <= nowUptime || nextTickUptimeMs > nowUptime + OUTPUT_INTERVAL_MS) {
+            nextTickUptimeMs = nowUptime + OUTPUT_INTERVAL_MS; // fell behind (or first tick): resync
+        }
+        mainHandler.postAtTime(smoothingTick, nextTickUptimeMs);
     }
 
     private void injectSmoothed(LocationKalmanFilter.Estimate est) {
@@ -578,7 +592,14 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         loc.setLongitude(est.longitude);
         loc.setAltitude(lastAltitude);
         double speed = est.speed;
-        boolean moving = speed >= filterConfig.standstillSpeed;
+        // Hysteresis around the standstill threshold: without it speed/bearing flickered on and off
+        // 126 times in an hour of driving (creeping in traffic, pulling away).
+        if (outputMoving) {
+            outputMoving = speed >= filterConfig.standstillSpeed * MOVING_HIDE_FACTOR;
+        } else {
+            outputMoving = speed >= filterConfig.standstillSpeed * MOVING_SHOW_FACTOR;
+        }
+        boolean moving = outputMoving;
         filtSpeedAcc = est.speedAccuracy;
         filtBearingAcc = moving ? est.bearingAccuracyDeg : Double.NaN;
         if (filterConfig.reportUncertainty) {
@@ -831,7 +852,16 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                 .build();
     }
 
+    /** For per-fix refreshes (the age text): at most every few seconds, not on every packet. */
+    private void updateNotificationThrottled() {
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastNotificationElapsedMs >= NOTIFICATION_MIN_INTERVAL_MS) {
+            updateNotification();
+        }
+    }
+
     private void updateNotification() {
+        lastNotificationElapsedMs = SystemClock.elapsedRealtime();
         boolean isConnected = connectionManager != null && connectionManager.isConnected();
 
         notificationManager.notify(NOTIFICATION_ID, createNotification(isConnected));

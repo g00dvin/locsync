@@ -506,7 +506,12 @@ public class GNSSServerService extends Service {
         lastServerResponse.setStatus(LocationProto.Status.TRANSMITTING_LOCATION)
                 .setLocationUpdate(builder.build());
 
-        updateNotification("Received location update");
+        // Per-fix refresh at most every few seconds; state changes still update immediately.
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastFixNotificationElapsedMs >= FIX_NOTIFICATION_MIN_INTERVAL_MS) {
+            lastFixNotificationElapsedMs = now;
+            updateNotification("Received location update");
+        }
 
         // Broadcast to the connected client
         AppLog.d(TAG, "Broadcasting location: " + location);
@@ -678,6 +683,9 @@ public class GNSSServerService extends Service {
                 .setOngoing(true)
                 .build();
     }
+
+    private static final long FIX_NOTIFICATION_MIN_INTERVAL_MS = 5000;
+    private long lastFixNotificationElapsedMs = 0;
 
     private void updateNotification(String reason) {
         if (notificationManager == null) {

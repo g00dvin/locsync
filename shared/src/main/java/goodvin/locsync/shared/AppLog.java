@@ -34,7 +34,7 @@ import java.util.List;
 public final class AppLog {
     private static volatile boolean debug = false;
 
-    private static final int RING_CAPACITY = 200;
+    private static final int RING_CAPACITY = 1000;   // also exported with the logs
     private static final Deque<Entry> RING = new ArrayDeque<>(RING_CAPACITY);
 
     /** One captured log line. {@code level} is 'I' | 'W' | 'D' | 'V'. */

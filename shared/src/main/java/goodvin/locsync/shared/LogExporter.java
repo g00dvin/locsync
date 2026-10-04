@@ -66,6 +66,7 @@ public class LogExporter {
                 writer.append(line).append("\n");
             }
 
+            appendInAppLog(writer);
             writer.close();
             output.close();
             reader.close();
@@ -87,6 +88,22 @@ public class LogExporter {
         }
     }
 
+    /**
+     * Appends the app's own log ring. Some head-unit ROMs drop app log lines below error level from
+     * logcat entirely, so without this an export contained nothing from the app itself.
+     */
+    private static void appendInAppLog(BufferedWriter writer) throws IOException {
+        java.util.List<AppLog.Entry> entries = AppLog.snapshot();
+        SimpleDateFormat fmt = new SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US);
+        writer.append("\n--------- in-app log (oldest first, ").append(String.valueOf(entries.size()))
+                .append(" entries) ---------\n");
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            AppLog.Entry e = entries.get(i);
+            writer.append(fmt.format(new Date(e.timeMillis))).append(' ').append(e.level).append(' ')
+                    .append(e.tag).append(": ").append(e.message).append('\n');
+        }
+    }
+
     private static File exportUnfiltered(Context context, File logFile) throws IOException, InterruptedException {
         Process process = startLogcat(context, false);
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
@@ -95,6 +112,7 @@ public class LogExporter {
             while ((line = reader.readLine()) != null) {
                 writer.append(line).append("\n");
             }
+            appendInAppLog(writer);
         }
         return process.waitFor() == 0 ? logFile : null;
     }
