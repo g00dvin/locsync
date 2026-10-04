@@ -80,7 +80,7 @@ public class GNSSServerService extends Service {
 
     private volatile DatagramSocket udpSocket;
     private volatile SocketAddress clientAddr = null;   // the single current client
-    private volatile long lastHeard = 0;                // last HELLO time from clientAddr
+    private volatile long lastHeard = 0;                // elapsedRealtime of the last HELLO from clientAddr
     private final Runnable keepaliveRunnable = this::keepaliveTick;
     private LocationManager locationManager = null;
     private FusedLocationProviderClient fusedLocationProviderClient = null;
@@ -347,7 +347,7 @@ public class GNSSServerService extends Service {
         if (header.type == Protocol.TYPE_HELLO) {
             boolean isNewClient = (clientAddr == null);
             clientAddr = packet.getSocketAddress();
-            lastHeard = System.currentTimeMillis();
+            lastHeard = SystemClock.elapsedRealtime();   // monotonic: wall-clock changes can't fake a timeout
             if (isNewClient) {
                 AppLog.i(TAG, "Client present: " + clientAddr);
                 mainHandler.post(this::startLocationUpdates);
@@ -572,7 +572,7 @@ public class GNSSServerService extends Service {
                 .setLatitude(location.getLatitude())
                 .setLongitude(location.getLongitude())
                 .setProvider(location.getProvider())
-                .setLocationAge((System.currentTimeMillis() - location.getTime()) / 1000.0f);
+                .setLocationAge(fixAgeSeconds(location));
 
         if (location.hasAltitude()) {
             builder.setAltitude(location.getAltitude());
@@ -638,6 +638,19 @@ public class GNSSServerService extends Service {
         }
     }
 
+    /**
+     * Age of the fix now. From the monotonic fix timestamp: Location.getTime() is GNSS (UTC) time
+     * for the GPS provider, and a phone clock seconds off would have shifted the client's latency
+     * compensation by those seconds.
+     */
+    static float fixAgeSeconds(Location location) {
+        long fixNanos = location.getElapsedRealtimeNanos();
+        if (fixNanos > 0) {
+            return Math.max(0, (SystemClock.elapsedRealtimeNanos() - fixNanos) / 1e9f);
+        }
+        return Math.max(0, (System.currentTimeMillis() - location.getTime()) / 1000.0f);
+    }
+
     private void broadcastLocationUpdate(LocationProto.ServerResponse serverResponse) {
         SocketAddress dest = clientAddr;
         if (dest == null) {
@@ -649,7 +662,7 @@ public class GNSSServerService extends Service {
     private void keepaliveTick() {
         SocketAddress dest = clientAddr;
         if (dest != null) {
-            long silence = System.currentTimeMillis() - lastHeard;
+            long silence = SystemClock.elapsedRealtime() - lastHeard;
             if (silence > CLIENT_TIMEOUT_MS) {
                 AppLog.i(TAG, "Client timed out (" + silence + "ms), marking gone");
                 if (clientAddr == dest) {          // still the same client we timed out

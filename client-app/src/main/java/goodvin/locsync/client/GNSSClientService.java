@@ -75,7 +75,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private static long lastUpdateTime;
     private int lastBroadcastSatelliteCount = -1;
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private volatile long lastResponseTime = 0;
+    private volatile long lastResponseTime = 0;     // elapsedRealtime of the last RESPONSE
 
     private final LocationKalmanFilter kalman = new LocationKalmanFilter(2.0, 1.0);
     private static final long OUTPUT_INTERVAL_MS = 100;   // 10 Hz
@@ -339,7 +339,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         // Recency check: drop to CONNECTING if no RESPONSE within the window; in Auto mode also
         // forget the learned server so the next ticks broadcast to re-discover.
         if (connectionManager.isConnected()
-                && System.currentTimeMillis() - lastResponseTime > CONNECTED_TIMEOUT_MS) {
+                && SystemClock.elapsedRealtime() - lastResponseTime > CONNECTED_TIMEOUT_MS) {
             connectionManager.setState(ConnectionManager.ConnectionState.CONNECTING,
                     "Waiting for server...", connectionManager.getServerAddress());
             if (connectionManager.isAutoDiscover()) {
@@ -397,7 +397,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     java.util.Arrays.copyOfRange(packet.getData(),
                             header.payloadOffset, header.payloadOffset + header.payloadLength));
 
-            lastResponseTime = System.currentTimeMillis();
+            lastResponseTime = SystemClock.elapsedRealtime();   // monotonic, immune to clock changes
             String srcAddr = packet.getAddress().getHostAddress();
             if (connectionManager.isAutoDiscover()) {
                 connectionManager.setLearnedServerAddress(srcAddr);
