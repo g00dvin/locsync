@@ -184,4 +184,8 @@
     <string name="filter_adaptive_position_sub">Телефон занижает точность своего трека, поэтому фильтр полагался на скорость и отставал. Учиться по фиксам, насколько им можно доверять (до 2× точнее заявленного).</string>
     <string name="filter_position_trust">Погрешность позиции в расчёте</string>
     <string name="filter_turn_responsiveness">Чувствительность к повороту (1 = быстрее всего)</string>
+    <string name="metrics_enabled">Метрики производительности (запись в CSV)</string>
+    <string name="metrics_panel_title">Метрики производительности</string>
+    <string name="export_metrics">Экспорт метрик CSV</string>
+    <string name="metrics_export_none">Файла метрик пока нет — включите метрики и запустите сервис</string>
 </resources>
