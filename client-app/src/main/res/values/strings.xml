@@ -134,4 +134,9 @@
     <string name="filter_process_noise_base">Base process noise σa, m/s² (lower = smoother)</string>
     <string name="filter_nis_avg">Innovation average (≈2 is ideal)</string>
     <string name="filter_process_noise">Process noise σa</string>
+
+    <string name="track_recording">Record track (CSV)</string>
+    <string name="track_recording_sub">Raw fixes from the phone and what was sent to the navigator, for analysing a drive (~4 MB per hour).</string>
+    <string name="export_track">Export track CSV</string>
+    <string name="track_export_none">No track yet — enable recording and drive</string>
 </resources>

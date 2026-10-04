@@ -127,6 +127,17 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_LIVE_MONITORING, false);
     }
 
+    private static final String PREF_TRACK_RECORDING = "trackRecording";
+
+    /** Record raw fixes and filter output to a CSV for offline analysis. Off by default. */
+    public static void setTrackRecording(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_TRACK_RECORDING, enabled).apply();
+    }
+
+    public static boolean trackRecording(Context context) {
+        return getPrefs(context).getBoolean(PREF_TRACK_RECORDING, false);
+    }
+
     private static final String PREF_METRICS_ENABLED = "metricsEnabled";
 
     public static void setMetricsEnabled(Context context, boolean enabled) {
