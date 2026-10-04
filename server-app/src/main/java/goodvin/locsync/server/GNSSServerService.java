@@ -147,6 +147,7 @@ public class GNSSServerService extends Service {
     private GnssStatus gnssStatus = null;
     private boolean isGnssActive = false;
     private boolean hadAccurateFix = true;                 // see Preferences.waitForAccurate
+    private long lastFixElapsedNanos = 0;                  // monotonic time of the fix in lastServerResponse
     private ServerTrackRecorder trackRecorder;             // non-null while "Record track" is on
     private boolean gpsReferenceActive = false;
     // Raw GPS alongside Fused, for the track only: shows how much Fused smooths and lags.
@@ -465,14 +466,21 @@ public class GNSSServerService extends Service {
                                 ? Priority.PRIORITY_BALANCED_POWER_ACCURACY : Priority.PRIORITY_HIGH_ACCURACY)
                         .setGranularity(Granularity.GRANULARITY_FINE)
                         .build();
-                fusedLocationProviderClient.requestLocationUpdates(request, fusedLocationListener, Looper.getMainLooper());
+                final FusedLocationProviderClient fused = fusedLocationProviderClient;
+                fused.requestLocationUpdates(request, fusedLocationListener, Looper.getMainLooper())
+                        .addOnFailureListener(e -> {
+                            // The request was silently ignored before: no fixes at all, forever.
+                            // Fall back to the platform GPS provider instead.
+                            Log.w(TAG, "Fused location request failed, falling back to GPS", e);
+                            AppLog.w(TAG, "Fused location request failed (" + e.getMessage() + "), using GPS");
+                            if (fusedLocationProviderClient == fused && isGnssActive) {
+                                fused.removeLocationUpdates(fusedLocationListener);
+                                fusedLocationProviderClient = null;
+                                requestGpsUpdates(MIN_INTERVAL_MS);
+                            }
+                        });
             } else {
-                locationManager.requestLocationUpdates(
-                        LocationManager.GPS_PROVIDER,
-                        MIN_INTERVAL_MS,
-                        MIN_DISTANCE_M,
-                        locationListener
-                );
+                requestGpsUpdates(MIN_INTERVAL_MS);
             }
 
             if (fusedLocationProviderClient != null && Preferences.trackRecording(this)
@@ -492,6 +500,16 @@ public class GNSSServerService extends Service {
             Log.e(TAG, "Location permission not granted", e);
         } catch (Exception e) {
             Log.e(TAG, "Error starting location updates", e);
+        }
+    }
+
+    private void requestGpsUpdates(int intervalMs) {
+        try {
+            // Explicit main looper: the listener touches main-thread-only state.
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, intervalMs, 0,
+                    locationListener, Looper.getMainLooper());
+        } catch (SecurityException e) {
+            Log.e(TAG, "Location permission not granted", e);
         }
     }
 
@@ -545,7 +563,10 @@ public class GNSSServerService extends Service {
         AppLog.d(TAG, "Location updates stopped");
 
         isGnssActive = false;
-        lastServerResponse.setStatus(LocationProto.Status.LOCATION_STOPPED);
+        // Forget the last fix: it would otherwise be resent (with its age frozen at "fresh") to the
+        // next client before the first new fix, putting the icon where the car was last time.
+        lastServerResponse.setStatus(LocationProto.Status.LOCATION_STOPPED).clearLocationUpdate();
+        lastFixElapsedNanos = 0;
         if (trackRecorder != null) {
             trackRecorder.close();
             trackRecorder = null;
@@ -556,6 +577,13 @@ public class GNSSServerService extends Service {
 
     private void handleLocationUpdate(Location location) {
         long receivedElapsed = SystemClock.elapsedRealtime();
+        long fixNanos = location.getElapsedRealtimeNanos();
+        if (fixNanos > 0 && fixNanos <= lastFixElapsedNanos) {
+            // A repeat or an older fix (Fused re-delivers its last location when a request is
+            // re-issued): the client already has something newer.
+            AppLog.d(TAG, "Ignoring repeated/older fix");
+            return;
+        }
         updateTrackRecorder();
         if (!hadAccurateFix) {
             // "Wait for an accurate fix": hold back the coarse first fixes so the client's icon
@@ -601,6 +629,7 @@ public class GNSSServerService extends Service {
 
         lastServerResponse.setStatus(LocationProto.Status.TRANSMITTING_LOCATION)
                 .setLocationUpdate(builder.build());
+        lastFixElapsedNanos = fixNanos;
 
         // Per-fix refresh at most every few seconds; state changes still update immediately.
         long now = SystemClock.elapsedRealtime();
@@ -677,7 +706,13 @@ public class GNSSServerService extends Service {
                     onClientGone();
                 }
             } else if (SystemClock.elapsedRealtime() - lastResponseSentElapsed >= KEEPALIVE_IDLE_MS) {
-                // Nothing sent for a while: resend the latest response so the client stays connected.
+                // Nothing sent for a while: resend the latest response so the client stays connected,
+                // with the fix's age as of now (not as of when it was first sent).
+                if (lastServerResponse.hasLocationUpdate() && lastFixElapsedNanos > 0) {
+                    float age = Math.max(0, (SystemClock.elapsedRealtimeNanos() - lastFixElapsedNanos) / 1e9f);
+                    lastServerResponse.setLocationUpdate(
+                            lastServerResponse.getLocationUpdate().toBuilder().setLocationAge(age));
+                }
                 LocationProto.ServerResponse resp = lastServerResponse.build();
                 executor.execute(() -> broadcastLocationUpdate(resp));
             }
