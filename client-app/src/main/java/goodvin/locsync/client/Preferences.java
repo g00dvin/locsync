@@ -248,8 +248,24 @@ public class Preferences {
         return c;
     }
 
+    // Cached: settings are read on every 10 Hz output tick and on every fix. Resolving the
+    // device-protected context each time is wasteful, and some head-unit ROMs log a full stack trace
+    // for every getApplicationContext() call (~26 lines/s), flooding logcat so exported logs lose
+    // everything else.
+    private static volatile SharedPreferences prefs;
+
     private static SharedPreferences getPrefs(Context context) {
-        final Context deviceContext = context.getApplicationContext().createDeviceProtectedStorageContext();
-        return deviceContext.getSharedPreferences(context.getPackageName() + "_preferences", Context.MODE_PRIVATE);
+        SharedPreferences p = prefs;
+        if (p == null) {
+            synchronized (Preferences.class) {
+                p = prefs;
+                if (p == null) {
+                    final Context deviceContext = context.getApplicationContext().createDeviceProtectedStorageContext();
+                    p = deviceContext.getSharedPreferences(context.getPackageName() + "_preferences", Context.MODE_PRIVATE);
+                    prefs = p;
+                }
+            }
+        }
+        return p;
     }
 }

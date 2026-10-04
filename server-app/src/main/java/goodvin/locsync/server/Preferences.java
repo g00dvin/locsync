@@ -175,7 +175,21 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_METRICS_ENABLED, false);
     }
 
+    // Cached: read on hot paths; avoids re-resolving the prefs file on every call.
+    private static volatile SharedPreferences prefs;
+
     private static SharedPreferences getPrefs(Context context) {
-        return context.getSharedPreferences(context.getPackageName() + "_preferences", Context.MODE_PRIVATE);
+        SharedPreferences p = prefs;
+        if (p == null) {
+            synchronized (Preferences.class) {
+                p = prefs;
+                if (p == null) {
+                    p = context.getApplicationContext()
+                            .getSharedPreferences(context.getPackageName() + "_preferences", Context.MODE_PRIVATE);
+                    prefs = p;
+                }
+            }
+        }
+        return p;
     }
 }
