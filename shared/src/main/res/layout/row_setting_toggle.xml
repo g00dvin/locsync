@@ -38,8 +38,12 @@
             android:visibility="gone" />
     </LinearLayout>
 
+    <!-- saveEnabled=false: every toggle row shares this id, so Android's view-state restore (the
+         activity is recreated right away by setDefaultNightMode) would stamp the LAST switch's state
+         onto all of them, overriding the values bound from Preferences. -->
     <Switch
         android:id="@+id/row_switch"
+        android:saveEnabled="false"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:clickable="false"
