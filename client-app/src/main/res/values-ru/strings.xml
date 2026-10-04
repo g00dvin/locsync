@@ -132,4 +132,34 @@
     <string name="track_recording_sub">Сырые фиксы с телефона и то, что ушло в навигатор, — для разбора поездки (~4 МБ в час).</string>
     <string name="export_track">Экспорт трека CSV</string>
     <string name="track_export_none">Трека пока нет — включите запись и проедьтесь</string>
+
+    <string name="sub_client_connected_fmt">Телефон %1$s · на связи %2$s</string>
+    <string name="tile_speed">Скорость</string>
+    <string name="tile_accuracy">Точность</string>
+    <string name="tile_fresh">Возраст данных</string>
+    <string name="unit_kmh">км/ч</string>
+    <string name="unit_m">м</string>
+    <string name="unit_s_ago">с назад</string>
+    <string name="hint_speed">по GPS телефона</string>
+    <string name="hint_speed_stopped">стоим</string>
+    <string name="hint_speed_none">телефон не сообщает скорость</string>
+    <string name="acc_excellent">отличная</string>
+    <string name="acc_good">хорошая</string>
+    <string name="acc_fair">средняя — возможно дрожание</string>
+    <string name="acc_poor">плохая — возможны скачки</string>
+    <string name="hint_provider_fused">Fused: GPS + датчики телефона</string>
+    <string name="hint_provider_gps">только GPS</string>
+    <string name="hint_fresh">обновляются каждую секунду</string>
+    <string name="hint_stale">телефон перестал присылать координаты</string>
+    <string name="hint_no_fix">ждём первый фикс с телефона</string>
+    <string name="nav_ok_title">Навигатор получает координаты</string>
+    <string name="nav_ok_detail">LocSync подменяет GPS магнитолы</string>
+    <string name="nav_stale_title">Нет свежих координат</string>
+    <string name="nav_stale_detail">Навигатор держит последнюю позицию — проверьте GPS на телефоне</string>
+    <string name="nav_waiting_title">Ищем телефон</string>
+    <string name="nav_waiting_detail">Запустите LocSync Server на телефоне и подключитесь к его точке доступа Wi-Fi</string>
+    <string name="nav_off_title">Координаты не передаются</string>
+    <string name="nav_off_detail">Нажмите на круг, чтобы запустить</string>
+    <string name="nav_mock_title">Подмена GPS не настроена</string>
+    <string name="nav_mock_detail">Нажмите: «Для разработчиков» → «Приложение для фиктивных местоположений» → LocSync Client</string>
 </resources>
