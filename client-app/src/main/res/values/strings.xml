@@ -137,8 +137,6 @@
 
     <string name="track_recording">Record track (CSV)</string>
     <string name="track_recording_sub">Raw fixes from the phone and what was sent to the navigator, for analysing a drive (~4 MB per hour).</string>
-    <string name="export_track">Export track CSV</string>
-    <string name="track_export_none">No track yet — enable recording and drive</string>
 
     <string name="sub_client_connected_fmt">Phone %1$s · online %2$s</string>
     <string name="tile_speed">Speed</string>
@@ -174,4 +172,23 @@
     <string name="filter_accuracy_mode">Accuracy sent to navigator</string>
     <string name="filter_accuracy_mode_68">68% radius + speed/bearing</string>
     <string name="filter_accuracy_mode_legacy">legacy 1σ, no speed/bearing</string>
+
+    <string name="filter_network_delay_comp">Compensate Wi-Fi delay</string>
+    <string name="filter_network_delay_comp_sub">Use the phone\'s fix timestamps to tell how long each fix spent in Wi-Fi; late packets no longer make the icon jump back and forth.</string>
+    <string name="wifi_low_latency">Wi-Fi without power saving</string>
+    <string name="wifi_low_latency_sub">Keep the Wi-Fi radio awake while running so fixes arrive on time, not in delayed pairs. Applies on the next start.</string>
+    <string name="filter_network_delay">Wi-Fi delay of last fix</string>
+
+    <string name="filter_bearing_comp">Correct bearing rounding</string>
+    <string name="filter_bearing_comp_sub">The phone reports bearing in whole degrees, rounded down; trusted as precise, that shifted the icon ~1.4 m to the left. Adds 0.5° once rounding is detected.</string>
+    <string name="filter_min_bearing_acc">Min. bearing error, °</string>
+    <string name="filter_bearing_quantized">Phone bearing in whole degrees</string>
+    <string name="filter_bearing_quantized_yes">yes (not corrected)</string>
+    <string name="filter_bearing_quantized_fixed">yes, corrected +0.5°</string>
+    <string name="filter_bearing_quantized_no">no</string>
+
+    <string name="filter_adaptive_position">Adaptive position trust</string>
+    <string name="filter_adaptive_position_sub">The phone understates how precise its track is, so the filter leaned on speed and lagged behind. Learn from the fixes how much to trust them (up to 2× tighter).</string>
+    <string name="filter_position_trust">Position error used</string>
+    <string name="filter_turn_responsiveness">Turn responsiveness (1 = fastest)</string>
 </resources>

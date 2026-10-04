@@ -57,10 +57,9 @@ public class LocationKalmanFilter {
     private static final double MIN_SPEED_FOR_HEADING = 0.1; // m/s; below this heading is undefined
 
     // Turn-rate estimation. Below TURN_MIN_SPEED the heading is too noisy to differentiate, so ω
-    // decays to zero. TURN_ALPHA smooths the per-fix estimate; MAX_TURN_RATE (~46°/s) bounds it to
+    // decays to zero. turnAlpha smooths the per-fix estimate; MAX_TURN_RATE (~46°/s) bounds it to
     // what a car can do (a U-turn at walking pace) so a heading glitch can't spin the prediction.
     private static final double TURN_MIN_SPEED = 2.0;   // m/s
-    private static final double TURN_ALPHA = 0.5;
     private static final double MAX_TURN_RATE = 0.8;    // rad/s
     private static final double MAX_TURN_DT = 3.0;      // s; older heading is too stale to difference
 
@@ -81,12 +80,30 @@ public class LocationKalmanFilter {
     private static final double TURN_ACCEL_GAIN = 1.0;
     private static final double MAX_LATERAL_ACCEL = 8.0; // m/s², ~0.8 g: beyond this it isn't a car
 
+    // Adaptive position noise (see adaptPositionNoise).
+    private static final double POS_NIS_ALPHA = 0.1;
+    private static final double POS_R_RATE = 0.1;
+    private static final double MIN_POS_R_SCALE = 0.25;   // trust positions at most 4x more than claimed
+    private boolean adaptivePosition = true;
+    private double posRScale = 1.0;
+    private double posNisEma = 2.0;
+
     private double sigmaA;                  // base process acceleration noise (m/s^2)
     private boolean adaptiveNoise = true;
     private double sigmaAEff;               // σa actually used by the motion model
     private double nisEma = NIS_EXPECTED;
     private final double defaultSpeedSigma; // fallback velocity measurement noise (m/s)
     private boolean turnModel = true;
+    // Weight of the newest heading change in the turn-rate estimate (1 = no smoothing). 0.5 left
+    // the estimate at about half the real rate through a turn on a recorded drive.
+    private double turnAlpha = 0.85;
+    // Bearing quantization (whole degrees) detection and compensation, plus a floor on the bearing
+    // accuracy a source may claim. Detection: running share of whole-degree bearings.
+    private static final double BEARING_QUANT_ALPHA = 0.05;
+    private static final double BEARING_QUANT_DETECT = 0.9;
+    private boolean bearingCompensation = true;
+    private double minBearingAccuracyDeg = 2.0;
+    private double integerBearingShare = 0;
     private boolean gating = true;
     private double gateThreshold = 9.21;    // χ² with 2 dof at 99%
     private boolean standstillHold = true;
@@ -142,12 +159,44 @@ public class LocationKalmanFilter {
         updateProcessNoise();
     }
 
+    /** How fast the turn-rate estimate follows heading changes (0.1 = sluggish, 1 = no smoothing). */
+    public void setTurnResponsiveness(double alpha) {
+        turnAlpha = Math.max(0.1, Math.min(1.0, alpha));
+    }
+
     /** Enables the coordinated-turn motion model; when off, the filter is constant-velocity. */
     public void setTurnModel(boolean enabled) {
         turnModel = enabled;
         if (!enabled) {
             omega = 0;
         }
+    }
+
+    /**
+     * Compensates whole-degree bearing truncation (+0.5° once detected) and never trusts a bearing
+     * more than {@code minAccuracyDeg}.
+     */
+    public void setBearingHandling(boolean compensateQuantization, double minAccuracyDeg) {
+        bearingCompensation = compensateQuantization;
+        minBearingAccuracyDeg = Math.max(0, minAccuracyDeg);
+    }
+
+    /** Adapt how much reported position accuracy is trusted from the innovation statistics. */
+    public void setAdaptivePosition(boolean enabled) {
+        adaptivePosition = enabled;
+        if (!enabled) {
+            posRScale = 1.0;
+        }
+    }
+
+    /** Factor applied to the reported position variance (1 = as reported, 0.25 = 2x tighter σ). */
+    public double getPositionNoiseScale() {
+        return posRScale;
+    }
+
+    /** Whether incoming bearings look truncated to whole degrees (and are being compensated). */
+    public boolean isBearingQuantized() {
+        return integerBearingShare > BEARING_QUANT_DETECT;
     }
 
     /** Mahalanobis gating of position fixes; {@code threshold} is χ² with 2 degrees of freedom. */
@@ -197,6 +246,23 @@ public class LocationKalmanFilter {
     public void update(double lat, double lon, double speed, double bearingDeg,
                        double accuracy, double speedAccuracy, double bearingAccuracyDeg,
                        boolean hasSpeed, boolean hasBearing) {
+        if (hasBearing) {
+            // Track whether the source quantizes bearing to whole degrees.
+            boolean whole = Math.abs(bearingDeg - Math.rint(bearingDeg)) < 1e-6;
+            integerBearingShare += BEARING_QUANT_ALPHA * ((whole ? 1 : 0) - integerBearingShare);
+            if (bearingCompensation && integerBearingShare > BEARING_QUANT_DETECT) {
+                // Fused truncates bearing to whole degrees: on average it reads 0.5° left of the
+                // true course. Trusted at ±0.7°, that bias steered the estimate ~1.4 m to the left.
+                bearingDeg += 0.5;
+            }
+            bearingAccuracyDeg = Math.max(bearingAccuracyDeg, minBearingAccuracyDeg);
+        }
+        updateInternal(lat, lon, speed, bearingDeg, accuracy, speedAccuracy, bearingAccuracyDeg, hasSpeed, hasBearing);
+    }
+
+    private void updateInternal(double lat, double lon, double speed, double bearingDeg,
+                                double accuracy, double speedAccuracy, double bearingAccuracyDeg,
+                                boolean hasSpeed, boolean hasBearing) {
         boolean applyVel = hasSpeed && hasBearing;
         if (!initialized) {
             setAnchor(lat, lon);
@@ -230,7 +296,7 @@ public class LocationKalmanFilter {
         double em = (lon - lon0) * mPerDegLon;
         double nm = (lat - lat0) * M_PER_DEG_LAT;
         double sp = posSigma(accuracy);
-        double r = sp * sp;
+        double r = sp * sp * posRScale;
         // Only a real Doppler speed can say "stopped" (no speed, e.g. in a tunnel, is not zero).
         stationary = standstillHold && hasSpeed && speed < standstillSpeed
                 && (speedAccuracy <= 0 || speedAccuracy <= STANDSTILL_MAX_SPEED_ACC);
@@ -250,7 +316,7 @@ public class LocationKalmanFilter {
                 // jumped, e.g. after a ferry). Start over from this fix.
                 reinitCount++;
                 reset();
-                update(lat, lon, speed, bearingDeg, accuracy, speedAccuracy, bearingAccuracyDeg, hasSpeed, hasBearing);
+                updateInternal(lat, lon, speed, bearingDeg, accuracy, speedAccuracy, bearingAccuracyDeg, hasSpeed, hasBearing);
                 return;
             }
             // Inflating R by d²/τ puts the fix exactly on the gate: it still pulls, but gently.
@@ -261,6 +327,9 @@ public class LocationKalmanFilter {
         // Outliers are the gate's job; don't let them also loosen the motion model.
         double nisSample = gating ? Math.min(lastNis, gateThreshold) : lastNis;
         nisEma += NIS_EMA_ALPHA * (nisSample - nisEma);
+        if (!stationary && consecutiveOutliers == 0) {
+            adaptPositionNoise();
+        }
         scalarUpdate(0, em, r);
         scalarUpdate(1, nm, r);
 
@@ -283,6 +352,22 @@ public class LocationKalmanFilter {
         }
         updateTurnRate(applyVel, speed, bearingDeg);
         updateProcessNoise();
+    }
+
+    /**
+     * Fused claims ±4–10 m but its track is far smoother than that (position NIS median 0.05 on a
+     * real drive, where 2 is expected), so the filter leaned on velocity and lagged the fixes. Scale
+     * the position noise down, slowly and within [MIN_POS_R_SCALE, 1], until the NIS mean of moving,
+     * non-outlier fixes approaches its expected value. Learned once per source, kept across resets.
+     */
+    private void adaptPositionNoise() {
+        posNisEma += POS_NIS_ALPHA * (lastNis - posNisEma);
+        if (adaptivePosition) {
+            posRScale *= Math.pow(Math.max(1e-3, posNisEma) / NIS_EXPECTED, POS_R_RATE);
+            posRScale = Math.max(MIN_POS_R_SCALE, Math.min(1.0, posRScale));
+        } else {
+            posRScale = 1.0;
+        }
     }
 
     private void updateProcessNoise() {
@@ -418,9 +503,9 @@ public class LocationKalmanFilter {
             if (Math.abs(raw) > 2 * MAX_TURN_RATE) {
                 // Physically implausible for a car (e.g. a heading flip from position noise with no
                 // Doppler bearing): not a turn, so decay towards straight rather than chase it.
-                omega *= 1 - TURN_ALPHA;
+                omega *= 1 - turnAlpha;
             } else {
-                omega += TURN_ALPHA * (raw - omega);
+                omega += turnAlpha * (raw - omega);
                 omega = Math.max(-MAX_TURN_RATE, Math.min(MAX_TURN_RATE, omega));
             }
         }

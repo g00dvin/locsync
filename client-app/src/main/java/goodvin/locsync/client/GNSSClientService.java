@@ -91,7 +91,14 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private FilterConfig filterConfig = new FilterConfig();  // re-read from Preferences on every fix
     // Last injected output, for the Monitor screen's filter card (NaN = nothing injected yet).
     private double outAccuracy = Double.NaN, outSpeedAcc = Double.NaN, outBearingAcc = Double.NaN;
-    private double lastLatencyMs = Double.NaN, lastHorizonMs = Double.NaN;
+    private double lastLatencyMs = Double.NaN, lastHorizonMs = Double.NaN, lastNetworkDelayMs = Double.NaN;
+    private final FixClock fixClock = new FixClock();
+    private static final double MOVING_SHOW_FACTOR = 1.6, MOVING_HIDE_FACTOR = 0.8; // × standstill speed
+    private boolean outputMoving = false;
+    private long nextTickUptimeMs = 0;              // fixed 10 Hz grid for output ticks
+    private static final long NOTIFICATION_MIN_INTERVAL_MS = 5000;
+    private long lastNotificationElapsedMs = 0;
+    private android.net.wifi.WifiManager.WifiLock wifiLockLowLatency, wifiLockHighPerf;
     // Monitor-only diagnostics, independent of what the "Honest accuracy" setting injects: the
     // filter's own speed/bearing accuracy, and what the phone reported for the last fix.
     private double filtSpeedAcc = Double.NaN, filtBearingAcc = Double.NaN;
@@ -258,6 +265,11 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
         stateElapsedMs = 0;
         filterConfig = Preferences.filterConfig(this);
+        if (filterConfig.wifiLowLatency) {
+            acquireWifiLocks();
+        }
+        nextTickUptimeMs = 0;
+        outputMoving = false;
         mainHandler.post(smoothingTick);
 
         lastTickWallMs = 0;
@@ -280,6 +292,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         lastFixElapsedMs = 0;
         stateElapsedMs = 0;
         kalman.reset();
+        fixClock.reset();
+        releaseWifiLocks();
         outAccuracy = outSpeedAcc = outBearingAcc = Double.NaN;
         filtSpeedAcc = filtBearingAcc = inSpeedAcc = inBearingAcc = Double.NaN;
         if (trackRecorder != null) {
@@ -316,6 +330,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     byte[] hello = Protocol.buildPacket(Protocol.TYPE_HELLO, null);
                     sock.send(new DatagramPacket(hello, hello.length,
                             InetAddress.getByName(dest), Protocol.PORT));
+                    metrics.recordPacketSent(hello.length);
                 } catch (IOException e) {
                     Log.w(TAG, "Failed to send HELLO to " + dest, e);
                 }
@@ -429,7 +444,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             lastUpdateTime = System.currentTimeMillis();
 
             // Update notification with new location data
-            updateNotification();
+            updateNotificationThrottled();
 
             // Broadcast location update to activity
             Intent intent = new Intent("goodvin.locsync.LOCATION_UPDATE");
@@ -459,12 +474,17 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             final float ageS = locationUpdate.getLocationAge();
             final String provider = locationUpdate.getProvider();
             final int sats = response.getSatellites();
+            // Taken on the receive thread, before the hop to the main thread, so queueing there
+            // doesn't count as network delay.
+            final long arrivalElapsed = SystemClock.elapsedRealtime();
             mainHandler.post(() -> {
                 try {
                     // Skip keepalive resends of a fix already fed to the filter. The server re-sends the
                     // last response ~1 Hz to keep the connection live; re-feeding that same stale fix (and,
                     // in a tunnel, its phantom speed=0) is what pinned velocity and froze the icon.
-                    if (fixTs == lastFedFixTimestampMs) {
+                    // Older than what we already have (a delayed packet overtaken by a newer one): the
+                    // filter has moved past it, feeding it would step the state backwards.
+                    if (fixTs <= lastFedFixTimestampMs) {
                         return;
                     }
                     long prevFixTs = lastFedFixTimestampMs;
@@ -474,16 +494,24 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     inBearingAcc = hasBrgAcc ? brgAcc : Double.NaN;
                     filterConfig = Preferences.filterConfig(this);
                     kalman.setTurnModel(filterConfig.turnModel);
+                    kalman.setTurnResponsiveness(filterConfig.turnResponsiveness);
+                    kalman.setBearingHandling(filterConfig.bearingCompensation, filterConfig.minBearingAccuracyDeg);
+                    kalman.setAdaptivePosition(filterConfig.adaptivePosition);
                     kalman.setGating(filterConfig.gating, filterConfig.gateThreshold);
                     kalman.setStandstill(filterConfig.standstillHold, filterConfig.standstillSpeed);
                     kalman.setProcessNoise(filterConfig.processNoise, filterConfig.adaptiveNoise);
 
-                    long nowElapsed = SystemClock.elapsedRealtime();
-                    // When the fix was taken, on our clock: it is already ageS old on arrival (phone-side
-                    // fix age), plus any user-configured extra latency (provider/transport delay).
+                    long nowElapsed = arrivalElapsed;
+                    // When the fix was taken, on our clock: its age on arrival is the phone-side age
+                    // plus Wi-Fi delivery delay (FixClock), plus any user-configured extra latency.
+                    long ageMs = Math.round(Math.max(0, ageS) * 1000);
+                    long arrivalLatencyMs = filterConfig.networkDelayCompensation
+                            ? fixClock.latencyMs(arrivalElapsed, fixTs, ageMs) : ageMs;
+                    lastNetworkDelayMs = filterConfig.networkDelayCompensation
+                            ? fixClock.lastExtraDelayMs() : Double.NaN;
                     long latencyMs = 0;
                     if (filterConfig.latencyCompensation) {
-                        latencyMs = Math.round(Math.max(0, ageS) * 1000 + filterConfig.extraLatencyMs);
+                        latencyMs = Math.round(arrivalLatencyMs + filterConfig.extraLatencyMs);
                         latencyMs = Math.max(0, Math.min(latencyMs, MAX_LATENCY_MS));
                     }
                     long measElapsed = nowElapsed - latencyMs;
@@ -549,7 +577,13 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
         // When GPS is lost, we simply stop advancing/injecting (freeze) until fixes resume.
 
-        mainHandler.postDelayed(smoothingTick, OUTPUT_INTERVAL_MS);
+        // Schedule on a fixed grid: postDelayed after the work drifted the rate down to ~8.7 Hz.
+        long nowUptime = SystemClock.uptimeMillis();
+        nextTickUptimeMs += OUTPUT_INTERVAL_MS;
+        if (nextTickUptimeMs <= nowUptime || nextTickUptimeMs > nowUptime + OUTPUT_INTERVAL_MS) {
+            nextTickUptimeMs = nowUptime + OUTPUT_INTERVAL_MS; // fell behind (or first tick): resync
+        }
+        mainHandler.postAtTime(smoothingTick, nextTickUptimeMs);
     }
 
     private void injectSmoothed(LocationKalmanFilter.Estimate est) {
@@ -558,7 +592,14 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         loc.setLongitude(est.longitude);
         loc.setAltitude(lastAltitude);
         double speed = est.speed;
-        boolean moving = speed >= filterConfig.standstillSpeed;
+        // Hysteresis around the standstill threshold: without it speed/bearing flickered on and off
+        // 126 times in an hour of driving (creeping in traffic, pulling away).
+        if (outputMoving) {
+            outputMoving = speed >= filterConfig.standstillSpeed * MOVING_HIDE_FACTOR;
+        } else {
+            outputMoving = speed >= filterConfig.standstillSpeed * MOVING_SHOW_FACTOR;
+        }
+        boolean moving = outputMoving;
         filtSpeedAcc = est.speedAccuracy;
         filtBearingAcc = moving ? est.bearingAccuracyDeg : Double.NaN;
         if (filterConfig.reportUncertainty) {
@@ -648,6 +689,44 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         mainHandler.postDelayed(metricsTick, METRICS_INTERVAL_MS);
     }
 
+    /**
+     * Keeps the Wi-Fi radio out of power save while we run. In power save the access point buffers
+     * downlink packets until the next beacon, which delivered fixes hundreds of ms late and in pairs.
+     * LOW_LATENCY (API 29+) only applies while our app is in the foreground with the screen on, so
+     * HIGH_PERF is held as well for the usual case of the navigator being on screen.
+     */
+    @SuppressWarnings("deprecation")
+    private void acquireWifiLocks() {
+        android.net.wifi.WifiManager wm = getApplicationContext().getSystemService(android.net.wifi.WifiManager.class);
+        if (wm == null) return;
+        try {
+            if (wifiLockHighPerf == null) {
+                wifiLockHighPerf = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "locsync:hiperf");
+                wifiLockHighPerf.setReferenceCounted(false);
+            }
+            wifiLockHighPerf.acquire();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (wifiLockLowLatency == null) {
+                    wifiLockLowLatency = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "locsync:lowlat");
+                    wifiLockLowLatency.setReferenceCounted(false);
+                }
+                wifiLockLowLatency.acquire();
+            }
+            AppLog.i(TAG, "Wi-Fi power save disabled (Wi-Fi locks held)");
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Failed to acquire Wi-Fi locks", e);
+        }
+    }
+
+    private void releaseWifiLocks() {
+        try {
+            if (wifiLockHighPerf != null && wifiLockHighPerf.isHeld()) wifiLockHighPerf.release();
+            if (wifiLockLowLatency != null && wifiLockLowLatency.isHeld()) wifiLockLowLatency.release();
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Failed to release Wi-Fi locks", e);
+        }
+    }
+
     /** Opens/closes the track file to follow the "Record track" setting (checked on every fix). */
     private void updateTrackRecorder() {
         boolean wanted = Preferences.trackRecording(this);
@@ -676,7 +755,12 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         addStat(labels, values, R.string.filter_out_bearing_acc, filtBearingAcc, "±%.1f°");
         addStat(labels, values, R.string.filter_in_speed_acc, inSpeedAcc, "±%.2f m/s");
         addStat(labels, values, R.string.filter_in_bearing_acc, inBearingAcc, "±%.1f°");
+        labels.add(getString(R.string.filter_bearing_quantized));
+        values.add(!kalman.isInitialized() ? "—" : getString(kalman.isBearingQuantized()
+                ? (filterConfig.bearingCompensation ? R.string.filter_bearing_quantized_fixed : R.string.filter_bearing_quantized_yes)
+                : R.string.filter_bearing_quantized_no));
         addStat(labels, values, R.string.filter_latency, lastLatencyMs, "%.0f ms");
+        addStat(labels, values, R.string.filter_network_delay, lastNetworkDelayMs, "%.0f ms");
         addStat(labels, values, R.string.filter_horizon, lastHorizonMs, "%.0f ms");
         addStat(labels, values, R.string.filter_turn_rate,
                 kalman.isInitialized() && filterConfig.turnModel ? kalman.getTurnRateDegPerSec() : Double.NaN,
@@ -685,6 +769,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         values.add(!kalman.isInitialized() ? "—" : getString(kalman.isStationary()
                 ? R.string.filter_motion_stopped : R.string.filter_motion_moving));
         addStat(labels, values, R.string.filter_nis, kalman.getLastNis(), "%.1f");
+        addStat(labels, values, R.string.filter_position_trust,
+                kalman.isInitialized() ? Math.sqrt(kalman.getPositionNoiseScale()) : Double.NaN, "σ ×%.2f");
         addStat(labels, values, R.string.filter_nis_avg,
                 kalman.isInitialized() ? kalman.getNisAverage() : Double.NaN, "%.1f");
         addStat(labels, values, R.string.filter_process_noise,
@@ -766,7 +852,16 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                 .build();
     }
 
+    /** For per-fix refreshes (the age text): at most every few seconds, not on every packet. */
+    private void updateNotificationThrottled() {
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastNotificationElapsedMs >= NOTIFICATION_MIN_INTERVAL_MS) {
+            updateNotification();
+        }
+    }
+
     private void updateNotification() {
+        lastNotificationElapsedMs = SystemClock.elapsedRealtime();
         boolean isConnected = connectionManager != null && connectionManager.isConnected();
 
         notificationManager.notify(NOTIFICATION_ID, createNotification(isConnected));

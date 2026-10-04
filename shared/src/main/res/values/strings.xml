@@ -30,4 +30,9 @@
     <string name="clear_logs_confirm">Delete all logs, metrics and recorded tracks? Tap “Clear” to confirm.</string>
     <string name="clear_logs_action">Clear</string>
     <string name="clear_logs_done">Logs cleared (%s freed)</string>
+    <string name="export_all">Export all data (ZIP)</string>
+    <string name="export_all_sub">Log, metrics, recorded track and settings in one archive to send for analysis</string>
+    <string name="export_all_short">Export all data</string>
+    <string name="export_all_in_progress">Preparing the archive…</string>
+    <string name="export_all_failed">Could not create the archive</string>
 </resources>

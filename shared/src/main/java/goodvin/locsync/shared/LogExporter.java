@@ -66,6 +66,7 @@ public class LogExporter {
                 writer.append(line).append("\n");
             }
 
+            appendInAppLog(writer);
             writer.close();
             output.close();
             reader.close();
@@ -87,6 +88,22 @@ public class LogExporter {
         }
     }
 
+    /**
+     * Appends the app's own log ring. Some head-unit ROMs drop app log lines below error level from
+     * logcat entirely, so without this an export contained nothing from the app itself.
+     */
+    private static void appendInAppLog(BufferedWriter writer) throws IOException {
+        java.util.List<AppLog.Entry> entries = AppLog.snapshot();
+        SimpleDateFormat fmt = new SimpleDateFormat("MM-dd HH:mm:ss.SSS", Locale.US);
+        writer.append("\n--------- in-app log (oldest first, ").append(String.valueOf(entries.size()))
+                .append(" entries) ---------\n");
+        for (int i = entries.size() - 1; i >= 0; i--) {
+            AppLog.Entry e = entries.get(i);
+            writer.append(fmt.format(new Date(e.timeMillis))).append(' ').append(e.level).append(' ')
+                    .append(e.tag).append(": ").append(e.message).append('\n');
+        }
+    }
+
     private static File exportUnfiltered(Context context, File logFile) throws IOException, InterruptedException {
         Process process = startLogcat(context, false);
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
@@ -95,6 +112,7 @@ public class LogExporter {
             while ((line = reader.readLine()) != null) {
                 writer.append(line).append("\n");
             }
+            appendInAppLog(writer);
         }
         return process.waitFor() == 0 ? logFile : null;
     }
@@ -110,6 +128,84 @@ public class LogExporter {
         cmd.add("*:V");
         cmd.add("--pid=" + android.os.Process.myPid());
         return Runtime.getRuntime().exec(cmd.toArray(new String[0]));
+    }
+
+    /**
+     * Everything needed to analyse a drive, in one ZIP for sharing: a fresh log export (logcat +
+     * in-app log), every CSV in the logs directory (metrics, recorded track and its rotated part),
+     * and info.txt with app/device details and the given settings. The previous archive is deleted.
+     *
+     * @return the archive, or null if it could not be written
+     */
+    public static File exportAll(Context context, String appName, String appVersion,
+                                 java.util.Map<String, ?> settings) {
+        File dir = getLogDir(context);
+        //noinspection ResultOfMethodCallIgnored
+        dir.mkdirs();
+        File log = exportLogs(context, appName);
+        cleanupOldLogs(context, appName);
+        File[] old = dir.listFiles((d, name) -> name.endsWith(".zip"));
+        if (old != null) {
+            for (File f : old) {
+                //noinspection ResultOfMethodCallIgnored
+                f.delete();
+            }
+        }
+        String ts = DATE_FORMAT.format(new Date());
+        File zip = new File(dir, appName + "-data--" + ts + ".zip");
+        try (java.util.zip.ZipOutputStream out =
+                     new java.util.zip.ZipOutputStream(new java.io.FileOutputStream(zip))) {
+            out.putNextEntry(new java.util.zip.ZipEntry("info.txt"));
+            out.write(info(appName, appVersion, settings).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            out.closeEntry();
+            if (log != null) {
+                addFile(out, log);
+            }
+            File[] data = dir.listFiles((d, name) -> name.endsWith(".csv") || name.endsWith(".csv.old"));
+            if (data != null) {
+                Arrays.sort(data);
+                for (File f : data) {
+                    addFile(out, f);
+                }
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Error writing data archive", e);
+            //noinspection ResultOfMethodCallIgnored
+            zip.delete();
+            return null;
+        }
+        AppLog.i(TAG, "Data exported to " + zip.getName() + " (" + zip.length() + " bytes)");
+        return zip;
+    }
+
+    private static void addFile(java.util.zip.ZipOutputStream out, File f) throws IOException {
+        out.putNextEntry(new java.util.zip.ZipEntry(f.getName()));
+        try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+        }
+        out.closeEntry();
+    }
+
+    private static String info(String appName, String appVersion, java.util.Map<String, ?> settings) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("app: ").append(appName).append(' ').append(appVersion).append('\n');
+        sb.append("exported: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(new Date())).append('\n');
+        sb.append("device: ").append(android.os.Build.MANUFACTURER).append(' ').append(android.os.Build.MODEL)
+                .append(", Android ").append(android.os.Build.VERSION.RELEASE)
+                .append(" (API ").append(android.os.Build.VERSION.SDK_INT).append(")\n");
+        sb.append("\nsettings:\n");
+        if (settings != null) {
+            java.util.List<String> keys = new ArrayList<>(settings.keySet());
+            java.util.Collections.sort(keys);
+            for (String k : keys) {
+                sb.append("  ").append(k).append(" = ").append(settings.get(k)).append('\n');
+            }
+        }
+        return sb.toString();
     }
 
     private static final String PREFS = "locsync_log_exporter";

@@ -349,8 +349,10 @@ public class MainActivity extends AppCompatActivity {
             AppLog.clearRing();
             renderLog();
         });
-        findViewById(R.id.btnExportLogs).setOnClickListener(v -> exportLogs("locsync-server"));
-        findViewById(R.id.btnExportCsv).setOnClickListener(v -> shareMetricsCsv());
+        TextView exportBtn = findViewById(R.id.btnExportLogs);
+        exportBtn.setText(R.string.export_all_short);
+        exportBtn.setOnClickListener(v -> exportAllData());
+        findViewById(R.id.btnExportCsv).setVisibility(View.GONE);
     }
 
     private void bindSettings() {
@@ -407,8 +409,8 @@ public class MainActivity extends AppCompatActivity {
                 });
         bindToggle(R.id.rowMetrics, getString(R.string.metrics_enabled), null,
                 Preferences.metricsEnabled(this), checked -> Preferences.setMetricsEnabled(this, checked));
-        bindActionChevron(R.id.rowExportMetrics, getString(R.string.export_metrics),
-                lastMetricsFileName(), this::shareMetricsCsv);
+        bindActionChevron(R.id.rowExportAll, getString(R.string.export_all),
+                getString(R.string.export_all_sub), this::exportAllData);
         bindActionChevron(R.id.rowClearLogs, getString(R.string.clear_logs),
                 getString(R.string.clear_logs_sub), this::confirmClearLogs);
 
@@ -800,34 +802,6 @@ public class MainActivity extends AppCompatActivity {
 
     // --- exports (behaviour preserved) ---
 
-    private String lastMetricsFileName() {
-        File csv = MetricsCsvWriter.fileFor(new File(getCacheDir(), "logs"), "server");
-        return (csv.exists() && csv.length() > 0) ? csv.getName() : "";
-    }
-
-    private void exportLogs(String appName) {
-        Toast.makeText(this, goodvin.locsync.logexporter.R.string.export_logs_in_progress, Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
-            try {
-                File logFile = LogExporter.exportLogs(this, appName);
-                LogExporter.cleanupOldLogs(this, appName);
-                runOnUiThread(() -> {
-                    if (logFile != null) {
-                        shareFile(logFile, "text/plain", getString(goodvin.locsync.logexporter.R.string.share_logs));
-                        Toast.makeText(this, goodvin.locsync.logexporter.R.string.export_logs_success, Toast.LENGTH_SHORT).show();
-                    } else {
-                        Toast.makeText(this, goodvin.locsync.logexporter.R.string.export_logs_no_logs, Toast.LENGTH_SHORT).show();
-                    }
-                });
-            } catch (Exception e) {
-                Log.e(TAG, "Error exporting logs", e);
-                runOnUiThread(() -> Toast.makeText(this,
-                        String.format(getString(goodvin.locsync.logexporter.R.string.export_logs_error), e.getMessage()),
-                        Toast.LENGTH_LONG).show());
-            }
-        }).start();
-    }
-
     private final Runnable disarmClearLogs = this::disarmClearLogs;
 
     /**
@@ -846,7 +820,6 @@ public class MainActivity extends AppCompatActivity {
             disarmClearLogs();
             long freed = LogExporter.clearAll(this);
             renderLog();
-            setText(findViewById(R.id.rowExportMetrics), R.id.row_sub, "");
             Toast.makeText(this, getString(R.string.clear_logs_done,
                     android.text.format.Formatter.formatShortFileSize(this, freed)), Toast.LENGTH_SHORT).show();
         });
@@ -862,13 +835,25 @@ public class MainActivity extends AppCompatActivity {
         row.findViewById(R.id.row_chevron).setVisibility(View.VISIBLE);
     }
 
-    private void shareMetricsCsv() {
-        File csv = MetricsCsvWriter.fileFor(new File(getCacheDir(), "logs"), "server");
-        if (!csv.exists() || csv.length() == 0) {
-            Toast.makeText(this, R.string.metrics_export_none, Toast.LENGTH_SHORT).show();
-            return;
-        }
-        shareFile(csv, "text/csv", getString(R.string.export_metrics));
+    /** Settings → Diagnostics / Monitor: one archive with logs, metrics, track and settings. */
+    private void exportAllData() {
+        Toast.makeText(this, R.string.export_all_in_progress, Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            File zip = null;
+            try {
+                zip = LogExporter.exportAll(this, "locsync-server", appVersion, Preferences.dump(this));
+            } catch (Exception e) {
+                Log.e(TAG, "Error exporting data", e);
+            }
+            final File result = zip;
+            runOnUiThread(() -> {
+                if (result != null) {
+                    shareFile(result, "application/zip", getString(R.string.export_all));
+                } else {
+                    Toast.makeText(this, R.string.export_all_failed, Toast.LENGTH_LONG).show();
+                }
+            });
+        }).start();
     }
 
     private void shareFile(File file, String mime, String chooserTitle) {

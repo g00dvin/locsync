@@ -130,8 +130,6 @@
 
     <string name="track_recording">Запись трека (CSV)</string>
     <string name="track_recording_sub">Сырые фиксы с телефона и то, что ушло в навигатор, — для разбора поездки (~4 МБ в час).</string>
-    <string name="export_track">Экспорт трека CSV</string>
-    <string name="track_export_none">Трека пока нет — включите запись и проедьтесь</string>
 
     <string name="sub_client_connected_fmt">Телефон %1$s · на связи %2$s</string>
     <string name="tile_speed">Скорость</string>
@@ -167,4 +165,23 @@
     <string name="filter_accuracy_mode">Точность для навигатора</string>
     <string name="filter_accuracy_mode_68">радиус 68% + скорость/курс</string>
     <string name="filter_accuracy_mode_legacy">прежняя 1σ, без скорости/курса</string>
+
+    <string name="filter_network_delay_comp">Компенсация задержки Wi-Fi</string>
+    <string name="filter_network_delay_comp_sub">По меткам времени телефона определять, сколько фикс шёл по Wi-Fi; опоздавшие пакеты больше не заставляют значок прыгать назад-вперёд.</string>
+    <string name="wifi_low_latency">Wi-Fi без энергосбережения</string>
+    <string name="wifi_low_latency_sub">Не давать Wi-Fi засыпать, пока клиент работает, чтобы фиксы приходили вовремя, а не пачками. Применяется при следующем запуске.</string>
+    <string name="filter_network_delay">Задержка Wi-Fi последнего фикса</string>
+
+    <string name="filter_bearing_comp">Поправка округления курса</string>
+    <string name="filter_bearing_comp_sub">Телефон отдаёт курс целыми градусами с округлением вниз; фильтр верил ему как точному, и значок смещался примерно на 1.4 м влево. Добавляет 0.5°, когда округление обнаружено.</string>
+    <string name="filter_min_bearing_acc">Мин. погрешность курса, °</string>
+    <string name="filter_bearing_quantized">Курс телефона целыми градусами</string>
+    <string name="filter_bearing_quantized_yes">да (без поправки)</string>
+    <string name="filter_bearing_quantized_fixed">да, поправка +0.5°</string>
+    <string name="filter_bearing_quantized_no">нет</string>
+
+    <string name="filter_adaptive_position">Адаптивное доверие к позиции</string>
+    <string name="filter_adaptive_position_sub">Телефон занижает точность своего трека, поэтому фильтр полагался на скорость и отставал. Учиться по фиксам, насколько им можно доверять (до 2× точнее заявленного).</string>
+    <string name="filter_position_trust">Погрешность позиции в расчёте</string>
+    <string name="filter_turn_responsiveness">Чувствительность к повороту (1 = быстрее всего)</string>
 </resources>

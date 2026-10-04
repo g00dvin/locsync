@@ -28,8 +28,20 @@ public final class FilterConfig {
     public boolean latencyCompensation = true;
     /** Extra delay (ms) on top of the reported fix age, e.g. provider/transport latency. */
     public double extraLatencyMs = 0;
+    /** Add the fix's Wi-Fi delivery delay (from the phone's fix timestamps) to its reported age. */
+    public boolean networkDelayCompensation = true;
+    /** Hold Wi-Fi locks so the radio stays out of power save (avoids delayed, bunched packets). */
+    public boolean wifiLowLatency = true;
     /** Coordinated-turn motion model (predict along an arc) instead of straight lines. */
     public boolean turnModel = true;
+    /** Weight of the newest heading change in the turn-rate estimate (0.1–1). */
+    public double turnResponsiveness = 0.85;
+    /** Add 0.5° to bearings once the source is seen to truncate them to whole degrees. */
+    public boolean bearingCompensation = true;
+    /** Never trust a bearing more than this (degrees, 1-sigma). */
+    public double minBearingAccuracyDeg = 2.0;
+    /** Learn how much to trust reported position accuracy from the innovation statistics. */
+    public boolean adaptivePosition = true;
     /** De-weight fixes whose position innovation fails a χ² gate (multipath outliers). */
     public boolean gating = true;
     /** Gate threshold: χ² with 2 degrees of freedom (9.21 = 99%). */

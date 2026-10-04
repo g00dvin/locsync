@@ -243,13 +243,77 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_FILTER_ADAPTIVE_NOISE, true);
     }
 
+    private static final String PREF_FILTER_NETWORK_DELAY = "filterNetworkDelayCompensation";
+    private static final String PREF_WIFI_LOW_LATENCY = "wifiLowLatency";
+
+    public static void setFilterNetworkDelay(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_NETWORK_DELAY, enabled).apply();
+    }
+
+    public static boolean filterNetworkDelay(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_NETWORK_DELAY, true);
+    }
+
+    public static void setWifiLowLatency(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_WIFI_LOW_LATENCY, enabled).apply();
+    }
+
+    public static boolean wifiLowLatency(Context context) {
+        return getPrefs(context).getBoolean(PREF_WIFI_LOW_LATENCY, true);
+    }
+
+    private static final String PREF_FILTER_BEARING_COMP = "filterBearingCompensation";
+    private static final String PREF_FILTER_MIN_BEARING_ACC = "filterMinBearingAccuracy";
+
+    public static void setFilterBearingCompensation(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_BEARING_COMP, enabled).apply();
+    }
+
+    public static boolean filterBearingCompensation(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_BEARING_COMP, true);
+    }
+
+    public static void setFilterMinBearingAccuracy(Context context, float deg) {
+        getPrefs(context).edit().putFloat(PREF_FILTER_MIN_BEARING_ACC, deg).apply();
+    }
+
+    public static float filterMinBearingAccuracy(Context context) {
+        return getPrefs(context).getFloat(PREF_FILTER_MIN_BEARING_ACC, 2.0f);
+    }
+
+    private static final String PREF_FILTER_ADAPTIVE_POSITION = "filterAdaptivePosition";
+
+    public static void setFilterAdaptivePosition(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_ADAPTIVE_POSITION, enabled).apply();
+    }
+
+    public static boolean filterAdaptivePosition(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_ADAPTIVE_POSITION, true);
+    }
+
+    private static final String PREF_FILTER_TURN_RESPONSIVENESS = "filterTurnResponsiveness";
+
+    public static void setFilterTurnResponsiveness(Context context, float alpha) {
+        getPrefs(context).edit().putFloat(PREF_FILTER_TURN_RESPONSIVENESS, alpha).apply();
+    }
+
+    public static float filterTurnResponsiveness(Context context) {
+        return getPrefs(context).getFloat(PREF_FILTER_TURN_RESPONSIVENESS, 0.85f);
+    }
+
     /** Current smoothing options; cheap enough to re-read on every fix so changes apply live. */
     public static FilterConfig filterConfig(Context context) {
         FilterConfig c = new FilterConfig();
         c.reportUncertainty = filterReportUncertainty(context);
         c.latencyCompensation = filterLatencyCompensation(context);
         c.extraLatencyMs = filterExtraLatencyMs(context);
+        c.networkDelayCompensation = filterNetworkDelay(context);
+        c.wifiLowLatency = wifiLowLatency(context);
         c.turnModel = filterTurnModel(context);
+        c.turnResponsiveness = filterTurnResponsiveness(context);
+        c.bearingCompensation = filterBearingCompensation(context);
+        c.minBearingAccuracyDeg = filterMinBearingAccuracy(context);
+        c.adaptivePosition = filterAdaptivePosition(context);
         c.gating = filterGating(context);
         c.gateThreshold = filterGateThreshold(context);
         c.standstillHold = filterStandstillHold(context);
@@ -263,6 +327,11 @@ public class Preferences {
     // device-protected context each time is wasteful, and some head-unit ROMs log a full stack trace
     // for every getApplicationContext() call (~26 lines/s), flooding logcat so exported logs lose
     // everything else.
+    /** All stored settings, for the diagnostics export. */
+    public static java.util.Map<String, ?> dump(Context context) {
+        return new java.util.TreeMap<>(getPrefs(context).getAll());
+    }
+
     private static volatile SharedPreferences prefs;
 
     private static SharedPreferences getPrefs(Context context) {

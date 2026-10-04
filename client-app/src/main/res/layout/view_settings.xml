@@ -36,7 +36,17 @@
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowLatencyComp" />
             <include layout="@layout/row_setting_input" android:id="@+id/rowExtraLatency" />
             <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowNetworkDelay" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowWifiLowLatency" />
+            <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowTurnModel" />
+            <include layout="@layout/row_setting_input" android:id="@+id/rowTurnResponsiveness" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowBearingComp" />
+            <include layout="@layout/row_setting_input" android:id="@+id/rowMinBearingAcc" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowAdaptivePosition" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowGating" />
             <include layout="@layout/row_setting_input" android:id="@+id/rowGateThreshold" />
@@ -55,11 +65,9 @@
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowMetrics" />
             <View style="@style/LsDivider" />
-            <include layout="@layout/row_setting_action" android:id="@+id/rowExportMetrics" />
-            <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowTrackRecording" />
             <View style="@style/LsDivider" />
-            <include layout="@layout/row_setting_action" android:id="@+id/rowExportTrack" />
+            <include layout="@layout/row_setting_action" android:id="@+id/rowExportAll" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowClearLogs" />
         </LinearLayout>
