@@ -139,6 +139,7 @@ public class GNSSServerService extends Service {
     private GnssStatus gnssStatus = null;
     private boolean isGnssActive = false;
     private boolean hadAccurateFix = true;                 // see Preferences.waitForAccurate
+    private ServerTrackRecorder trackRecorder;             // non-null while "Record track" is on
     private static final float ACCURATE_FIX_M = 20f;
     private WifiManager.MulticastLock multicastLock;
 
@@ -397,6 +398,9 @@ public class GNSSServerService extends Service {
         } catch (Exception e) {
             Log.w(TAG, "metrics sampling failed", e);
         }
+        if (trackRecorder != null) {
+            trackRecorder.flush();
+        }
         mainHandler.postDelayed(metricsTick, METRICS_INTERVAL_MS);
     }
 
@@ -500,20 +504,28 @@ public class GNSSServerService extends Service {
 
         isGnssActive = false;
         lastServerResponse.setStatus(LocationProto.Status.LOCATION_STOPPED);
+        if (trackRecorder != null) {
+            trackRecorder.close();
+            trackRecorder = null;
+        }
 
         updateNotification("Stopped location updates");
     }
 
     private void handleLocationUpdate(Location location) {
+        long receivedElapsed = SystemClock.elapsedRealtime();
+        updateTrackRecorder();
         if (!hadAccurateFix) {
             // "Wait for an accurate fix": hold back the coarse first fixes so the client's icon
             // doesn't start tens of metres off and then jump.
             if (!location.hasAccuracy() || location.getAccuracy() > ACCURATE_FIX_M) {
                 AppLog.d(TAG, "Skipping coarse fix while waiting for an accurate one: " + location.getAccuracy() + " m");
+                recordFix(receivedElapsed, location, false);
                 return;
             }
             hadAccurateFix = true;
         }
+        recordFix(receivedElapsed, location, clientAddr != null);
         metrics.recordFix();
 
         AppLog.d(TAG, String.format("Handling location update: %s", location));
@@ -558,6 +570,26 @@ public class GNSSServerService extends Service {
         // Broadcast to the connected client
         AppLog.d(TAG, "Broadcasting location: " + location);
         executor.execute(() -> broadcastLocationUpdate(lastServerResponse.build()));
+    }
+
+    private void recordFix(long receivedElapsed, Location location, boolean sent) {
+        if (trackRecorder != null) {
+            String source = "fused".equals(location.getProvider()) ? "fused" : "gps";
+            trackRecorder.fix(receivedElapsed, source, location, getSatelliteCount(), sent, clientAddr != null);
+        }
+    }
+
+    /** Opens/closes track-server.csv to follow the "Record track" setting (checked on every fix). */
+    private void updateTrackRecorder() {
+        boolean wanted = Preferences.trackRecording(this);
+        if (wanted && trackRecorder == null) {
+            trackRecorder = new ServerTrackRecorder(new java.io.File(getCacheDir(), "logs"));
+            AppLog.i(TAG, "Track recording started");
+        } else if (!wanted && trackRecorder != null) {
+            trackRecorder.close();
+            trackRecorder = null;
+            AppLog.i(TAG, "Track recording stopped");
+        }
     }
 
     private void broadcastLocationUpdate(LocationProto.ServerResponse serverResponse) {

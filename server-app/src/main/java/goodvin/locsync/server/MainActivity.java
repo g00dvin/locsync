@@ -429,6 +429,9 @@ public class MainActivity extends AppCompatActivity {
                 });
         bindToggle(R.id.rowMetrics, getString(R.string.metrics_enabled), null,
                 Preferences.metricsEnabled(this), checked -> Preferences.setMetricsEnabled(this, checked));
+        bindToggle(R.id.rowTrackRecording, getString(R.string.server_track_recording),
+                getString(R.string.server_track_recording_sub), Preferences.trackRecording(this),
+                checked -> Preferences.setTrackRecording(this, checked));
         bindActionChevron(R.id.rowExportAll, getString(R.string.export_all),
                 getString(R.string.export_all_sub), this::exportAllData);
         bindActionChevron(R.id.rowClearLogs, getString(R.string.clear_logs),

@@ -228,6 +228,17 @@ public class Preferences {
         return getPrefs(context).getInt(PREF_BT_STOP_DELAY_S, 10);
     }
 
+    private static final String PREF_TRACK_RECORDING = "trackRecording";
+
+    /** Record every fix the phone gets to track-server.csv for drive analysis. Off by default. */
+    public static void setTrackRecording(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_TRACK_RECORDING, enabled).apply();
+    }
+
+    public static boolean trackRecording(Context context) {
+        return getPrefs(context).getBoolean(PREF_TRACK_RECORDING, false);
+    }
+
     /** All stored settings, for the diagnostics export. */
     public static java.util.Map<String, ?> dump(Context context) {
         return new java.util.TreeMap<>(getPrefs(context).getAll());
