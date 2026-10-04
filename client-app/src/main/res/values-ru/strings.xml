@@ -181,4 +181,8 @@
     <string name="filter_bearing_quantized_yes">да (без поправки)</string>
     <string name="filter_bearing_quantized_fixed">да, поправка +0.5°</string>
     <string name="filter_bearing_quantized_no">нет</string>
+
+    <string name="filter_adaptive_position">Адаптивное доверие к позиции</string>
+    <string name="filter_adaptive_position_sub">Телефон занижает точность своего трека, поэтому фильтр полагался на скорость и отставал. Учиться по фиксам, насколько им можно доверять (до 2× точнее заявленного).</string>
+    <string name="filter_position_trust">Погрешность позиции в расчёте</string>
 </resources>

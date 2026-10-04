@@ -451,6 +451,9 @@ public class MainActivity extends AppCompatActivity {
         bindNumberInput(R.id.rowMinBearingAcc, getString(R.string.filter_min_bearing_acc),
                 Preferences.filterMinBearingAccuracy(this), 0, 20,
                 v -> Preferences.setFilterMinBearingAccuracy(this, (float) v));
+        bindToggle(R.id.rowAdaptivePosition, getString(R.string.filter_adaptive_position),
+                getString(R.string.filter_adaptive_position_sub), Preferences.filterAdaptivePosition(this),
+                checked -> Preferences.setFilterAdaptivePosition(this, checked));
         bindToggle(R.id.rowGating, getString(R.string.filter_gating),
                 getString(R.string.filter_gating_sub), Preferences.filterGating(this),
                 checked -> Preferences.setFilterGating(this, checked));

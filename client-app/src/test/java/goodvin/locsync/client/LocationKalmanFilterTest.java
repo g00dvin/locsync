@@ -414,4 +414,41 @@ public class LocationKalmanFilterTest {
         assertTrue(!f.isBearingQuantized());
         assertEquals(45.37, f.getBearingDeg(), 0.1);
     }
+
+    // A source whose positions are far steadier than the accuracy it claims (like Fused): the filter
+    // must learn to trust them more, within its 4x variance bound.
+    @Test
+    public void adaptivePositionTightensForOverstatedAccuracy() {
+        LocationKalmanFilter f = newFilter();
+        f.setStandstill(false, 0);
+        java.util.Random rnd = new java.util.Random(1);
+        double n = 0;
+        for (int i = 0; i < 200; i++) {
+            if (i > 0) f.predict(1.0);
+            double noise = rnd.nextGaussian() * 0.5; // real error 0.5 m, claimed 5 m
+            f.update(59.0 + (n + noise) / M_PER_DEG_LAT, 30.0, 10.0, 0.0, 5.0, 0.2, 2.0);
+            n += 10.0;
+        }
+        assertTrue("should trust positions more: " + f.getPositionNoiseScale(), f.getPositionNoiseScale() < 0.5);
+        assertTrue(f.getPositionNoiseScale() >= 0.25);
+    }
+
+    // Accuracy that matches reality must leave the trust unchanged.
+    @Test
+    public void adaptivePositionLeavesHonestAccuracyAlone() {
+        LocationKalmanFilter f = newFilter();
+        f.setStandstill(false, 0);
+        f.setGating(false, 0);
+        java.util.Random rnd = new java.util.Random(2);
+        double n = 0;
+        for (int i = 0; i < 300; i++) {
+            if (i > 0) f.predict(1.0);
+            f.update(59.0 + (n + rnd.nextGaussian() * 5.0) / M_PER_DEG_LAT,
+                    30.0 + rnd.nextGaussian() * 5.0 / (M_PER_DEG_LAT * Math.cos(Math.toRadians(59.0))),
+                    10.0, 0.0, 5.0, 0.2, 2.0);
+            n += 10.0;
+        }
+        assertTrue("honest accuracy should not be tightened much: " + f.getPositionNoiseScale(),
+                f.getPositionNoiseScale() > 0.7);
+    }
 }

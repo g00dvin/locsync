@@ -45,6 +45,8 @@
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowBearingComp" />
             <include layout="@layout/row_setting_input" android:id="@+id/rowMinBearingAcc" />
             <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowAdaptivePosition" />
+            <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowGating" />
             <include layout="@layout/row_setting_input" android:id="@+id/rowGateThreshold" />
             <View style="@style/LsDivider" />

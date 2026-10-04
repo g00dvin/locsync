@@ -188,4 +188,8 @@
     <string name="filter_bearing_quantized_yes">yes (not corrected)</string>
     <string name="filter_bearing_quantized_fixed">yes, corrected +0.5°</string>
     <string name="filter_bearing_quantized_no">no</string>
+
+    <string name="filter_adaptive_position">Adaptive position trust</string>
+    <string name="filter_adaptive_position_sub">The phone understates how precise its track is, so the filter leaned on speed and lagged behind. Learn from the fixes how much to trust them (up to 2× tighter).</string>
+    <string name="filter_position_trust">Position error used</string>
 </resources>

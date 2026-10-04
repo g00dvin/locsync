@@ -38,6 +38,8 @@ public final class FilterConfig {
     public boolean bearingCompensation = true;
     /** Never trust a bearing more than this (degrees, 1-sigma). */
     public double minBearingAccuracyDeg = 2.0;
+    /** Learn how much to trust reported position accuracy from the innovation statistics. */
+    public boolean adaptivePosition = true;
     /** De-weight fixes whose position innovation fails a χ² gate (multipath outliers). */
     public boolean gating = true;
     /** Gate threshold: χ² with 2 degrees of freedom (9.21 = 99%). */

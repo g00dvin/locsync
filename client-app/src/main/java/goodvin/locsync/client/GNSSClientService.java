@@ -487,6 +487,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     filterConfig = Preferences.filterConfig(this);
                     kalman.setTurnModel(filterConfig.turnModel);
                     kalman.setBearingHandling(filterConfig.bearingCompensation, filterConfig.minBearingAccuracyDeg);
+                    kalman.setAdaptivePosition(filterConfig.adaptivePosition);
                     kalman.setGating(filterConfig.gating, filterConfig.gateThreshold);
                     kalman.setStandstill(filterConfig.standstillHold, filterConfig.standstillSpeed);
                     kalman.setProcessNoise(filterConfig.processNoise, filterConfig.adaptiveNoise);
@@ -746,6 +747,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         values.add(!kalman.isInitialized() ? "—" : getString(kalman.isStationary()
                 ? R.string.filter_motion_stopped : R.string.filter_motion_moving));
         addStat(labels, values, R.string.filter_nis, kalman.getLastNis(), "%.1f");
+        addStat(labels, values, R.string.filter_position_trust,
+                kalman.isInitialized() ? Math.sqrt(kalman.getPositionNoiseScale()) : Double.NaN, "σ ×%.2f");
         addStat(labels, values, R.string.filter_nis_avg,
                 kalman.isInitialized() ? kalman.getNisAverage() : Double.NaN, "%.1f");
         addStat(labels, values, R.string.filter_process_noise,

@@ -281,6 +281,16 @@ public class Preferences {
         return getPrefs(context).getFloat(PREF_FILTER_MIN_BEARING_ACC, 2.0f);
     }
 
+    private static final String PREF_FILTER_ADAPTIVE_POSITION = "filterAdaptivePosition";
+
+    public static void setFilterAdaptivePosition(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_ADAPTIVE_POSITION, enabled).apply();
+    }
+
+    public static boolean filterAdaptivePosition(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_ADAPTIVE_POSITION, true);
+    }
+
     /** Current smoothing options; cheap enough to re-read on every fix so changes apply live. */
     public static FilterConfig filterConfig(Context context) {
         FilterConfig c = new FilterConfig();
@@ -292,6 +302,7 @@ public class Preferences {
         c.turnModel = filterTurnModel(context);
         c.bearingCompensation = filterBearingCompensation(context);
         c.minBearingAccuracyDeg = filterMinBearingAccuracy(context);
+        c.adaptivePosition = filterAdaptivePosition(context);
         c.gating = filterGating(context);
         c.gateThreshold = filterGateThreshold(context);
         c.standstillHold = filterStandstillHold(context);

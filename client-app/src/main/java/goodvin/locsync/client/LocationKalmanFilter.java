@@ -81,6 +81,14 @@ public class LocationKalmanFilter {
     private static final double TURN_ACCEL_GAIN = 1.0;
     private static final double MAX_LATERAL_ACCEL = 8.0; // m/s², ~0.8 g: beyond this it isn't a car
 
+    // Adaptive position noise (see adaptPositionNoise).
+    private static final double POS_NIS_ALPHA = 0.1;
+    private static final double POS_R_RATE = 0.1;
+    private static final double MIN_POS_R_SCALE = 0.25;   // trust positions at most 4x more than claimed
+    private boolean adaptivePosition = true;
+    private double posRScale = 1.0;
+    private double posNisEma = 2.0;
+
     private double sigmaA;                  // base process acceleration noise (m/s^2)
     private boolean adaptiveNoise = true;
     private double sigmaAEff;               // σa actually used by the motion model
@@ -164,6 +172,19 @@ public class LocationKalmanFilter {
     public void setBearingHandling(boolean compensateQuantization, double minAccuracyDeg) {
         bearingCompensation = compensateQuantization;
         minBearingAccuracyDeg = Math.max(0, minAccuracyDeg);
+    }
+
+    /** Adapt how much reported position accuracy is trusted from the innovation statistics. */
+    public void setAdaptivePosition(boolean enabled) {
+        adaptivePosition = enabled;
+        if (!enabled) {
+            posRScale = 1.0;
+        }
+    }
+
+    /** Factor applied to the reported position variance (1 = as reported, 0.25 = 2x tighter σ). */
+    public double getPositionNoiseScale() {
+        return posRScale;
     }
 
     /** Whether incoming bearings look truncated to whole degrees (and are being compensated). */
@@ -268,7 +289,7 @@ public class LocationKalmanFilter {
         double em = (lon - lon0) * mPerDegLon;
         double nm = (lat - lat0) * M_PER_DEG_LAT;
         double sp = posSigma(accuracy);
-        double r = sp * sp;
+        double r = sp * sp * posRScale;
         // Only a real Doppler speed can say "stopped" (no speed, e.g. in a tunnel, is not zero).
         stationary = standstillHold && hasSpeed && speed < standstillSpeed
                 && (speedAccuracy <= 0 || speedAccuracy <= STANDSTILL_MAX_SPEED_ACC);
@@ -299,6 +320,9 @@ public class LocationKalmanFilter {
         // Outliers are the gate's job; don't let them also loosen the motion model.
         double nisSample = gating ? Math.min(lastNis, gateThreshold) : lastNis;
         nisEma += NIS_EMA_ALPHA * (nisSample - nisEma);
+        if (!stationary && consecutiveOutliers == 0) {
+            adaptPositionNoise();
+        }
         scalarUpdate(0, em, r);
         scalarUpdate(1, nm, r);
 
@@ -321,6 +345,22 @@ public class LocationKalmanFilter {
         }
         updateTurnRate(applyVel, speed, bearingDeg);
         updateProcessNoise();
+    }
+
+    /**
+     * Fused claims ±4–10 m but its track is far smoother than that (position NIS median 0.05 on a
+     * real drive, where 2 is expected), so the filter leaned on velocity and lagged the fixes. Scale
+     * the position noise down, slowly and within [MIN_POS_R_SCALE, 1], until the NIS mean of moving,
+     * non-outlier fixes approaches its expected value. Learned once per source, kept across resets.
+     */
+    private void adaptPositionNoise() {
+        posNisEma += POS_NIS_ALPHA * (lastNis - posNisEma);
+        if (adaptivePosition) {
+            posRScale *= Math.pow(Math.max(1e-3, posNisEma) / NIS_EXPECTED, POS_R_RATE);
+            posRScale = Math.max(MIN_POS_R_SCALE, Math.min(1.0, posRScale));
+        } else {
+            posRScale = 1.0;
+        }
     }
 
     private void updateProcessNoise() {

@@ -162,9 +162,16 @@ public class TrackReplayTest {
         String path = System.getenv("LOCSYNC_TRACK");
         assumeTrue("set LOCSYNC_TRACK to a recorded track-client.csv", path != null);
         List<Fix> fixes = load(Path.of(path));
-        System.out.println(replay(fixes, false, kf -> kf.setBearingHandling(false, 0)).summary("v3.4 (age only)"));
-        System.out.println(replay(fixes, true, kf -> kf.setBearingHandling(false, 0)).summary("+ Wi-Fi delay sync"));
-        System.out.println(replay(fixes, true, kf -> { }).summary("+ bearing rounding fix"));
+        System.out.println(replay(fixes, false, TrackReplayTest::v34).summary("v3.4 (age only)"));
+        System.out.println(replay(fixes, true, TrackReplayTest::v34).summary("+ Wi-Fi delay sync"));
+        System.out.println(replay(fixes, true, kf -> kf.setAdaptivePosition(false)).summary("+ bearing rounding fix"));
+        System.out.println(replay(fixes, true, kf -> { }).summary("+ adaptive position trust"));
+    }
+
+    /** Filter settings as shipped in v3.4.x, for comparison. */
+    static void v34(LocationKalmanFilter kf) {
+        kf.setBearingHandling(false, 0);
+        kf.setAdaptivePosition(false);
     }
 
     static double[] alongCross(double lat, double lon, Fix f) {
