@@ -139,6 +139,8 @@ public class GNSSServerService extends Service {
 
     private GnssStatus gnssStatus = null;
     private boolean isGnssActive = false;
+    private boolean hadAccurateFix = true;                 // see Preferences.waitForAccurate
+    private static final float ACCURATE_FIX_M = 20f;
     private WifiManager.MulticastLock multicastLock;
 
     @Override
@@ -411,15 +413,20 @@ public class GNSSServerService extends Service {
 
             lastServerResponse.setStatus(LocationProto.Status.AWAITING_LOCATION);
 
-            // The fused/GPS chip delivers ~1 fix/s in practice (measured), and the client re-smooths to
-            // 10 Hz regardless — so requesting 5 Hz (200 ms) only burned battery for fixes that never came.
-            final int MIN_INTERVAL_MS = 1000;
+            // Default 1 s: most phones' GNSS delivers ~1 fix/s whatever is asked. Configurable because
+            // some deliver 2-5 Hz, and every extra fix lets the client see a turn sooner.
+            final int MIN_INTERVAL_MS = Math.max(100, Preferences.locationIntervalMs(this));
             final int MIN_DISTANCE_M = 0;
+            boolean waitAccurate = Preferences.waitForAccurate(this);
+            hadAccurateFix = !waitAccurate;
             if (fusedLocationProviderClient != null) {
                 LocationRequest request = new LocationRequest.Builder(MIN_INTERVAL_MS)
+                        .setMinUpdateIntervalMillis(MIN_INTERVAL_MS)
+                        .setMaxUpdateDelayMillis(0)                 // never batch: every fix at once
                         .setMinUpdateDistanceMeters(MIN_DISTANCE_M)
-                        .setWaitForAccurateLocation(false)
-                        .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+                        .setWaitForAccurateLocation(waitAccurate)
+                        .setPriority(Preferences.balancedPower(this)
+                                ? Priority.PRIORITY_BALANCED_POWER_ACCURACY : Priority.PRIORITY_HIGH_ACCURACY)
                         .setGranularity(Granularity.GRANULARITY_FINE)
                         .build();
                 fusedLocationProviderClient.requestLocationUpdates(request, fusedLocationListener, Looper.getMainLooper());
@@ -432,7 +439,8 @@ public class GNSSServerService extends Service {
                 );
             }
 
-            AppLog.d(TAG, "Location updates started");
+            AppLog.i(TAG, "Location updates started: " + (fusedLocationProviderClient != null ? "fused" : "gps")
+                    + ", interval " + MIN_INTERVAL_MS + " ms" + (waitAccurate ? ", waiting for an accurate fix" : ""));
 
             isGnssActive = true;
 
@@ -442,6 +450,32 @@ public class GNSSServerService extends Service {
         } catch (Exception e) {
             Log.e(TAG, "Error starting location updates", e);
         }
+    }
+
+    /**
+     * Re-issues the location request with the current settings (interval, priority, provider) if
+     * updates are running, so changes in Settings apply without restarting the server.
+     */
+    public static void reapplyLocationSettings() {
+        GNSSServerService s = instance;
+        if (s != null) {
+            s.mainHandler.post(s::restartLocationUpdates);
+        }
+    }
+
+    private void restartLocationUpdates() {
+        if (!isGnssActive) {
+            return;
+        }
+        AppLog.i(TAG, "Re-applying location settings");
+        if (locationManager != null) {
+            locationManager.removeUpdates(locationListener);
+        }
+        if (fusedLocationProviderClient != null) {
+            fusedLocationProviderClient.removeLocationUpdates(fusedLocationListener);
+            fusedLocationProviderClient = null;   // re-evaluated: the Fused toggle may have changed
+        }
+        startLocationUpdates();
     }
 
     private void stopLocationUpdates() {
@@ -472,6 +506,15 @@ public class GNSSServerService extends Service {
     }
 
     private void handleLocationUpdate(Location location) {
+        if (!hadAccurateFix) {
+            // "Wait for an accurate fix": hold back the coarse first fixes so the client's icon
+            // doesn't start tens of metres off and then jump.
+            if (!location.hasAccuracy() || location.getAccuracy() > ACCURATE_FIX_M) {
+                AppLog.d(TAG, "Skipping coarse fix while waiting for an accurate one: " + location.getAccuracy() + " m");
+                return;
+            }
+            hadAccurateFix = true;
+        }
         metrics.recordFix();
 
         AppLog.d(TAG, String.format("Handling location update: %s", location));

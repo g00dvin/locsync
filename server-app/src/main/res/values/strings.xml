@@ -90,4 +90,9 @@
     <string name="speed_format">%.1f m/s</string>
     <string name="bearing_format" translatable="false">%.1f°</string>
     <string name="age_format">%.1fs</string>
+    <string name="location_interval">Location update interval, ms</string>
+    <string name="location_balanced">Battery saving</string>
+    <string name="location_balanced_sub">Balanced accuracy instead of the highest (Fused only). Less precise, the phone runs cooler.</string>
+    <string name="location_wait_accurate">Wait for an accurate fix</string>
+    <string name="location_wait_accurate_sub">After start, send nothing until the phone has a fix better than 20 m — no jump from a rough first position. Applies on the next start.</string>
 </resources>

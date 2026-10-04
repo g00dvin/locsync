@@ -22,6 +22,12 @@
         <TextView style="@style/LsGroupLabel" android:text="@string/group_location_provider" />
         <LinearLayout style="@style/LsGroupCard">
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowFusedLocation" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_input" android:id="@+id/rowLocationInterval" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowBalancedPower" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowWaitAccurate" />
         </LinearLayout>
 
         <!-- Automation -->

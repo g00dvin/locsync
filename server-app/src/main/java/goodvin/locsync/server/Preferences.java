@@ -176,6 +176,37 @@ public class Preferences {
     }
 
     // Cached: read on hot paths; avoids re-resolving the prefs file on every call.
+    private static final String PREF_LOCATION_INTERVAL_MS = "locationIntervalMs";
+    private static final String PREF_BALANCED_POWER = "locationBalancedPower";
+    private static final String PREF_WAIT_ACCURATE = "locationWaitForAccurate";
+
+    /** Requested time between location updates (ms). Phones often deliver no faster than 1 s. */
+    public static void setLocationIntervalMs(Context context, int ms) {
+        getPrefs(context).edit().putInt(PREF_LOCATION_INTERVAL_MS, ms).apply();
+    }
+
+    public static int locationIntervalMs(Context context) {
+        return getPrefs(context).getInt(PREF_LOCATION_INTERVAL_MS, 1000);
+    }
+
+    /** Balanced power/accuracy instead of high accuracy (Fused only). */
+    public static void setBalancedPower(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_BALANCED_POWER, enabled).apply();
+    }
+
+    public static boolean balancedPower(Context context) {
+        return getPrefs(context).getBoolean(PREF_BALANCED_POWER, false);
+    }
+
+    /** Don't send anything until the first accurate fix after (re)starting location updates. */
+    public static void setWaitForAccurate(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_WAIT_ACCURATE, enabled).apply();
+    }
+
+    public static boolean waitForAccurate(Context context) {
+        return getPrefs(context).getBoolean(PREF_WAIT_ACCURATE, false);
+    }
+
     /** All stored settings, for the diagnostics export. */
     public static java.util.Map<String, ?> dump(Context context) {
         return new java.util.TreeMap<>(getPrefs(context).getAll());

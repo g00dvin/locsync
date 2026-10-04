@@ -383,7 +383,21 @@ public class MainActivity extends AppCompatActivity {
             boolean next = !fusedSwitch.isChecked();
             fusedSwitch.setChecked(next);
             Preferences.setFusedLocationEnabled(this, next);
+            GNSSServerService.reapplyLocationSettings();
         });
+        bindNumberInput(R.id.rowLocationInterval, getString(R.string.location_interval),
+                Preferences.locationIntervalMs(this), 100, 5000, v -> {
+                    Preferences.setLocationIntervalMs(this, (int) Math.round(v));
+                    GNSSServerService.reapplyLocationSettings();
+                });
+        bindToggle(R.id.rowBalancedPower, getString(R.string.location_balanced),
+                getString(R.string.location_balanced_sub), Preferences.balancedPower(this), checked -> {
+                    Preferences.setBalancedPower(this, checked);
+                    GNSSServerService.reapplyLocationSettings();
+                });
+        bindToggle(R.id.rowWaitAccurate, getString(R.string.location_wait_accurate),
+                getString(R.string.location_wait_accurate_sub), Preferences.waitForAccurate(this),
+                checked -> Preferences.setWaitForAccurate(this, checked));
 
         // Automation
         View rowBt = findViewById(R.id.rowBluetooth);
@@ -887,6 +901,42 @@ public class MainActivity extends AppCompatActivity {
     private void setText(View root, int childId, CharSequence text) {
         TextView tv = root.findViewById(childId);
         if (tv != null) tv.setText(text);
+    }
+
+    /**
+     * Numeric setting: saves every valid edit immediately; out-of-range or unparsable input is
+     * flagged and not saved.
+     */
+    private void bindNumberInput(int rowId, String label, double value, double min, double max,
+                                 java.util.function.DoubleConsumer onChange) {
+        View row = findViewById(rowId);
+        setText(row, R.id.row_label, String.format(Locale.US, "%s (%s–%s)", label, fmtNum(min), fmtNum(max)));
+        android.widget.EditText input = row.findViewById(R.id.row_input);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
+                | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        input.setText(fmtNum(value));
+        input.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
+                double v;
+                try {
+                    v = Double.parseDouble(s.toString().trim().replace(',', '.'));
+                } catch (NumberFormatException e) {
+                    v = Double.NaN;
+                }
+                if (Double.isNaN(v) || v < min || v > max) {
+                    input.setError(String.format(Locale.US, "%s–%s", fmtNum(min), fmtNum(max)));
+                } else {
+                    input.setError(null);
+                    onChange.accept(v);
+                }
+            }
+        });
+    }
+
+    private static String fmtNum(double v) {
+        return v == Math.rint(v) ? String.valueOf((long) v) : String.format(Locale.US, "%.2f", v);
     }
 
     private void bindToggle(int rowId, String label, String sub, boolean checked,
