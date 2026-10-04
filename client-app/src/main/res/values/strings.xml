@@ -103,8 +103,8 @@
     <string name="filter_report_uncertainty">Honest accuracy (68%)</string>
     <string name="filter_report_uncertainty_sub">Report accuracy as Android expects (68% radius) and add speed/bearing accuracy. Off: legacy 1σ value.</string>
     <string name="filter_out_accuracy">Output accuracy</string>
-    <string name="filter_out_speed_acc">Speed accuracy</string>
-    <string name="filter_out_bearing_acc">Bearing accuracy</string>
+    <string name="filter_out_speed_acc">Speed accuracy (filter)</string>
+    <string name="filter_out_bearing_acc">Bearing accuracy (filter)</string>
 
     <string name="filter_latency_comp">Latency compensation</string>
     <string name="filter_latency_comp_sub">Move each fix forward by its age so the icon keeps up with the car instead of trailing it.</string>
@@ -169,4 +169,9 @@
     <string name="nav_off_detail">Tap the circle to start</string>
     <string name="nav_mock_title">GPS substitution is not set up</string>
     <string name="nav_mock_detail">Tap: Developer options → Select mock location app → LocSync Client</string>
+    <string name="filter_in_speed_acc">Speed accuracy (phone)</string>
+    <string name="filter_in_bearing_acc">Bearing accuracy (phone)</string>
+    <string name="filter_accuracy_mode">Accuracy sent to navigator</string>
+    <string name="filter_accuracy_mode_68">68% radius + speed/bearing</string>
+    <string name="filter_accuracy_mode_legacy">legacy 1σ, no speed/bearing</string>
 </resources>

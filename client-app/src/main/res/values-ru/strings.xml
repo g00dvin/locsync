@@ -96,8 +96,8 @@
     <string name="filter_report_uncertainty">Честная точность (68%)</string>
     <string name="filter_report_uncertainty_sub">Отдавать точность так, как её понимает Android (радиус 68%), плюс точность скорости и курса. Выкл.: прежнее значение 1σ.</string>
     <string name="filter_out_accuracy">Точность на выходе</string>
-    <string name="filter_out_speed_acc">Точность скорости</string>
-    <string name="filter_out_bearing_acc">Точность курса</string>
+    <string name="filter_out_speed_acc">Точность скорости (фильтр)</string>
+    <string name="filter_out_bearing_acc">Точность курса (фильтр)</string>
 
     <string name="filter_latency_comp">Компенсация задержки</string>
     <string name="filter_latency_comp_sub">Сдвигать каждый фикс вперёд на его возраст, чтобы значок не отставал от машины.</string>
@@ -162,4 +162,9 @@
     <string name="nav_off_detail">Нажмите на круг, чтобы запустить</string>
     <string name="nav_mock_title">Подмена GPS не настроена</string>
     <string name="nav_mock_detail">Нажмите: «Для разработчиков» → «Приложение для фиктивных местоположений» → LocSync Client</string>
+    <string name="filter_in_speed_acc">Точность скорости (телефон)</string>
+    <string name="filter_in_bearing_acc">Точность курса (телефон)</string>
+    <string name="filter_accuracy_mode">Точность для навигатора</string>
+    <string name="filter_accuracy_mode_68">радиус 68% + скорость/курс</string>
+    <string name="filter_accuracy_mode_legacy">прежняя 1σ, без скорости/курса</string>
 </resources>
