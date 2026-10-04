@@ -27,7 +27,7 @@
     <string name="copyright_notice" translatable="false">© 2025-2026 Dezz (Telegram: <a href="https://t.me/DezzK">DezzK</a>)\n© 2026 LocSync</string>
     <string name="clear_logs">Clear logs &amp; metrics</string>
     <string name="clear_logs_sub">Delete exported logs, metrics and track CSVs; the next log export starts from now. Settings are kept.</string>
-    <string name="clear_logs_confirm">Delete all logs, metrics and recorded tracks of this app?</string>
+    <string name="clear_logs_confirm">Delete all logs, metrics and recorded tracks? Tap “Clear” to confirm.</string>
     <string name="clear_logs_action">Clear</string>
     <string name="clear_logs_done">Logs cleared (%s freed)</string>
 </resources>
