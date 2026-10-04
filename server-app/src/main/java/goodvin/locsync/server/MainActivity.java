@@ -412,6 +412,12 @@ public class MainActivity extends AppCompatActivity {
             bluetoothSwitch.setChecked(next);
             Preferences.setBluetoothAutoStartEnabled(this, next);
         });
+        bindNumberInput(R.id.rowBtStopDelay, getString(R.string.bt_stop_delay),
+                Preferences.bluetoothStopDelaySeconds(this), 0, 600,
+                v -> Preferences.setBluetoothStopDelaySeconds(this, (int) Math.round(v)));
+        bindNumberInput(R.id.rowGpsIdleStop, getString(R.string.gps_idle_stop),
+                Preferences.gpsIdleStopSeconds(this), 5, 600,
+                v -> Preferences.setGpsIdleStopSeconds(this, (int) Math.round(v)));
         bindActionChevron(R.id.rowTriggerDevices, getString(R.string.trigger_devices),
                 triggerDevicesSummary(), this::showTriggerDevicesDialog);
 

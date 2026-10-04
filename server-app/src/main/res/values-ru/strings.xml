@@ -88,4 +88,6 @@
     <string name="location_balanced_sub">Сбалансированная точность вместо максимальной (только Fused). Менее точно, телефон меньше греется.</string>
     <string name="location_wait_accurate">Ждать точный фикс</string>
     <string name="location_wait_accurate_sub">После запуска ничего не отправлять, пока у телефона нет фикса точнее 20 м — без прыжка с грубой первой позиции. Применяется при следующем запуске.</string>
+    <string name="bt_stop_delay">Остановка после отключения Bluetooth, с</string>
+    <string name="gps_idle_stop">Выключать GPS без клиента через, с</string>
 </resources>

@@ -95,4 +95,6 @@
     <string name="location_balanced_sub">Balanced accuracy instead of the highest (Fused only). Less precise, the phone runs cooler.</string>
     <string name="location_wait_accurate">Wait for an accurate fix</string>
     <string name="location_wait_accurate_sub">After start, send nothing until the phone has a fix better than 20 m — no jump from a rough first position. Applies on the next start.</string>
+    <string name="bt_stop_delay">Stop after Bluetooth disconnects, s</string>
+    <string name="gps_idle_stop">Turn GPS off without a client after, s</string>
 </resources>

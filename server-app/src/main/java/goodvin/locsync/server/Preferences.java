@@ -207,6 +207,27 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_WAIT_ACCURATE, false);
     }
 
+    private static final String PREF_GPS_IDLE_STOP_S = "gpsIdleStopSeconds";
+    private static final String PREF_BT_STOP_DELAY_S = "bluetoothStopDelaySeconds";
+
+    /** Seconds without a client before location updates are switched off. */
+    public static void setGpsIdleStopSeconds(Context context, int s) {
+        getPrefs(context).edit().putInt(PREF_GPS_IDLE_STOP_S, s).apply();
+    }
+
+    public static int gpsIdleStopSeconds(Context context) {
+        return getPrefs(context).getInt(PREF_GPS_IDLE_STOP_S, 15);
+    }
+
+    /** Seconds after the last trigger device (and client) is gone before the server stops. */
+    public static void setBluetoothStopDelaySeconds(Context context, int s) {
+        getPrefs(context).edit().putInt(PREF_BT_STOP_DELAY_S, s).apply();
+    }
+
+    public static int bluetoothStopDelaySeconds(Context context) {
+        return getPrefs(context).getInt(PREF_BT_STOP_DELAY_S, 10);
+    }
+
     /** All stored settings, for the diagnostics export. */
     public static java.util.Map<String, ?> dump(Context context) {
         return new java.util.TreeMap<>(getPrefs(context).getAll());

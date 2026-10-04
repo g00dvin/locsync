@@ -70,7 +70,6 @@ public class GNSSServerService extends Service {
     private static final String CHANNEL_ID = "GNSSServerChannel";
     private static final int NOTIFICATION_ID = 1;
     private static final String PREF_IS_SERVICE_ENABLED = "isServiceEnabled";
-    private static final long BT_AUTO_STOP_DELAY_MS = 10000; // 10 seconds
     private static final long CLIENT_TIMEOUT_MS = 5000;   // no HELLO for this long => client gone
     private static final long KEEPALIVE_INTERVAL_MS = 1000; // resend latest response at least this often
 
@@ -591,9 +590,10 @@ public class GNSSServerService extends Service {
     }
 
     private void onClientGone() {
-        AppLog.d(TAG, "No client; scheduling stop of location updates in 15 seconds");
+        long idleMs = Preferences.gpsIdleStopSeconds(this) * 1000L;
+        AppLog.d(TAG, "No client; scheduling stop of location updates in " + idleMs + " ms");
         mainHandler.removeCallbacks(this.stopLocationUpdates);
-        mainHandler.postDelayed(this.stopLocationUpdates, 15000);
+        mainHandler.postDelayed(this.stopLocationUpdates, idleMs);
         evaluateAutoStop();
         mainHandler.post(() -> updateNotification("Client disconnected"));
     }
@@ -764,7 +764,7 @@ public class GNSSServerService extends Service {
     //
     // Unified logic:
     //   - evaluateAutoStop() is called on BT disconnect and on last client disconnect.
-    //     Schedules a 10s stop only when BOTH all BT trigger devices AND all clients are gone.
+    //     Schedules a stop (Settings: Bluetooth stop delay) only when BOTH all BT trigger devices AND all clients are gone.
     //   - cancelBluetoothAutoStop() is called on BT reconnect and on new client connect.
     //   - btAutoStopService() re-checks conditions as a safety net before actually stopping.
 
@@ -798,9 +798,10 @@ public class GNSSServerService extends Service {
         boolean clientsGone = (clientAddr == null);
 
         if (btGone && clientsGone) {
-            AppLog.d(TAG, "All BT devices and clients disconnected, scheduling auto-stop in " + BT_AUTO_STOP_DELAY_MS + "ms");
+            long delayMs = Preferences.bluetoothStopDelaySeconds(this) * 1000L;
+            AppLog.d(TAG, "All BT devices and clients disconnected, scheduling auto-stop in " + delayMs + "ms");
             mainHandler.removeCallbacks(btAutoStopRunnable);
-            mainHandler.postDelayed(btAutoStopRunnable, BT_AUTO_STOP_DELAY_MS);
+            mainHandler.postDelayed(btAutoStopRunnable, delayMs);
         } else {
             AppLog.d(TAG, "Auto-stop not needed (BT connected: " + !btGone + ", clients connected: " + !clientsGone + ")");
         }
