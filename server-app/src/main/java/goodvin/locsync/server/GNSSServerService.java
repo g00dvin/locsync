@@ -125,10 +125,15 @@ public class GNSSServerService extends Service {
         @Override
         public void onSatelliteStatusChanged(@NonNull GnssStatus status) {
             gnssStatus = status;
-            lastServerResponse.setSatellites(getSatelliteCount());
+            int previous = satellitesUsed;
+            satellitesUsed = countUsedInFix(status);   // once per status (~1 Hz), not per lookup
+            lastServerResponse.setSatellites(satellitesUsed);
 
-            if (isServiceRunning() && clientAddr != null && !lastServerResponse.hasLocationUpdate()) {
-                mainHandler.post(() -> updateNotification("GNSS status changed"));
+            // While waiting for the first fix the notification shows the satellite count: refresh it
+            // when that count changes, not on every (~1 Hz) status callback.
+            if (satellitesUsed != previous && isServiceRunning() && clientAddr != null
+                    && !lastServerResponse.hasLocationUpdate()) {
+                updateNotification("GNSS status changed");
             }
         }
     };
@@ -145,6 +150,7 @@ public class GNSSServerService extends Service {
     private final Runnable btAutoStopRunnable = this::btAutoStopService;
 
     private GnssStatus gnssStatus = null;
+    private volatile int satellitesUsed = 0;
     private boolean isGnssActive = false;
     private boolean hadAccurateFix = true;                 // see Preferences.waitForAccurate
     private long lastFixElapsedNanos = 0;                  // monotonic time of the fix in lastServerResponse
@@ -441,6 +447,12 @@ public class GNSSServerService extends Service {
     private void startLocationUpdates() {
         // If location updates were scheduled to be stopped, remove the scheduled action
         mainHandler.removeCallbacks(this.stopLocationUpdates);
+        if (isGnssActive) {
+            // Client came back while GPS was still running (within the idle-stop window): keep the
+            // running request instead of restarting GNSS (and re-waiting for an accurate fix).
+            AppLog.d(TAG, "Location updates already running");
+            return;
+        }
 
         initializeLocationManager();
         initializeFusedLocationProviderClient();
@@ -529,6 +541,7 @@ public class GNSSServerService extends Service {
             return;
         }
         AppLog.i(TAG, "Re-applying location settings");
+        isGnssActive = false;   // let startLocationUpdates re-issue the request
         if (locationManager != null) {
             locationManager.removeUpdates(locationListener);
             stopGpsReference();
@@ -598,7 +611,7 @@ public class GNSSServerService extends Service {
         recordFix(receivedElapsed, location, clientAddr != null);
         metrics.recordFix();
 
-        AppLog.d(TAG, String.format("Handling location update: %s", location));
+        AppLog.d(TAG, "Handling location update: " + location);
 
         // Create protobuf message
         LocationProto.LocationUpdate.Builder builder = LocationProto.LocationUpdate.newBuilder()
@@ -639,7 +652,6 @@ public class GNSSServerService extends Service {
         }
 
         // Broadcast to the connected client
-        AppLog.d(TAG, "Broadcasting location: " + location);
         // Build on this (main) thread: the builder is mutated here (fixes, GNSS status callbacks), so
         // building it on the executor thread raced with those writes.
         LocationProto.ServerResponse resp = lastServerResponse.build();
@@ -872,15 +884,16 @@ public class GNSSServerService extends Service {
     }
 
     public int getSatelliteCount() {
-        if (gnssStatus == null) {
-            return 0;
-        }
-        // Report satellites actually used in the fix rather than every satellite tracked, so the
-        // count is meaningful (e.g. ~8-14) instead of the raw all-constellation total (~80+).
+        return satellitesUsed;
+    }
+
+    // Report satellites actually used in the fix rather than every satellite tracked, so the count
+    // is meaningful (e.g. ~8-14) instead of the raw all-constellation total (~80+).
+    private static int countUsedInFix(GnssStatus status) {
         int used = 0;
-        int total = gnssStatus.getSatelliteCount();
+        int total = status.getSatelliteCount();
         for (int i = 0; i < total; i++) {
-            if (gnssStatus.usedInFix(i)) {
+            if (status.usedInFix(i)) {
                 used++;
             }
         }
