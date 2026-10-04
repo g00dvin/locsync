@@ -50,7 +50,6 @@ import android.widget.ViewFlipper;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.content.ContextCompat;
@@ -889,19 +888,39 @@ public class MainActivity extends AppCompatActivity {
         }).start();
     }
 
+    private final Runnable disarmClearLogs = this::disarmClearLogs;
+
+    /**
+     * First tap on "Clear logs" arms an inline confirmation (a "Clear" button in the row) instead of
+     * an AlertDialog: some head-unit ROMs restyle system dialogs so their buttons are invisible.
+     * Disarms by itself after a few seconds.
+     */
     private void confirmClearLogs() {
-        new AlertDialog.Builder(this)
-                .setMessage(R.string.clear_logs_confirm)
-                .setPositiveButton(R.string.clear_logs_action, (d, w) -> {
-                    long freed = LogExporter.clearAll(this);
-                    renderLog();
-                    setText(findViewById(R.id.rowExportMetrics), R.id.row_sub, "");
-                    refreshTrackRow();
-                    Toast.makeText(this, getString(R.string.clear_logs_done,
-                            android.text.format.Formatter.formatShortFileSize(this, freed)), Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
+        View row = findViewById(R.id.rowClearLogs);
+        setText(row, R.id.row_sub, getString(R.string.clear_logs_confirm));
+        TextView button = row.findViewById(R.id.row_button);
+        button.setText(R.string.clear_logs_action);
+        button.setVisibility(View.VISIBLE);
+        row.findViewById(R.id.row_chevron).setVisibility(View.GONE);
+        button.setOnClickListener(v -> {
+            disarmClearLogs();
+            long freed = LogExporter.clearAll(this);
+            renderLog();
+            setText(findViewById(R.id.rowExportMetrics), R.id.row_sub, "");
+            refreshTrackRow();
+            Toast.makeText(this, getString(R.string.clear_logs_done,
+                    android.text.format.Formatter.formatShortFileSize(this, freed)), Toast.LENGTH_SHORT).show();
+        });
+        uiHandler.removeCallbacks(disarmClearLogs);
+        uiHandler.postDelayed(disarmClearLogs, 5000);
+    }
+
+    private void disarmClearLogs() {
+        uiHandler.removeCallbacks(disarmClearLogs);
+        View row = findViewById(R.id.rowClearLogs);
+        setText(row, R.id.row_sub, getString(R.string.clear_logs_sub));
+        row.findViewById(R.id.row_button).setVisibility(View.GONE);
+        row.findViewById(R.id.row_chevron).setVisibility(View.VISIBLE);
     }
 
     private void shareMetricsCsv() {
