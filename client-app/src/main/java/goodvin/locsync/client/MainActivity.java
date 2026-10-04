@@ -33,16 +33,12 @@ import android.os.Handler;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.provider.Settings;
-import android.text.Editable;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
-import android.text.TextWatcher;
 import android.text.style.ForegroundColorSpan;
 import android.util.Log;
 import android.view.View;
-import android.widget.EditText;
 import android.widget.ImageView;
-import android.widget.RadioButton;
 import android.widget.CompoundButton;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -65,8 +61,8 @@ import java.util.Locale;
 import goodvin.locsync.shared.AppLog;
 import goodvin.locsync.shared.LinkState;
 import goodvin.locsync.shared.LogExporter;
-import goodvin.locsync.shared.MetricsCsvWriter;
 import goodvin.locsync.shared.PowerOrbView;
+import goodvin.locsync.shared.SettingsRows;
 import goodvin.locsync.shared.SparklineView;
 import goodvin.locsync.shared.VersionGetter;
 
@@ -1088,68 +1084,16 @@ public class MainActivity extends AppCompatActivity {
 
     private void bindToggle(int rowId, String label, String sub, boolean checked,
                             java.util.function.Consumer<Boolean> onChange) {
-        View row = findViewById(rowId);
-        setText(row, R.id.row_label, label);
-        TextView subView = row.findViewById(R.id.row_sub);
-        if (sub != null) {
-            subView.setText(sub);
-            subView.setVisibility(View.VISIBLE);
-        }
-        CompoundButton sw = row.findViewById(R.id.row_switch);
-        sw.setChecked(checked);
-        row.setOnClickListener(v -> {
-            boolean next = !sw.isChecked();
-            sw.setChecked(next);
-            onChange.accept(next);
-        });
+        SettingsRows.bindToggle(findViewById(rowId), label, sub, checked, onChange);
     }
 
-    /**
-     * Numeric setting: saves every valid edit immediately (the service re-reads settings on each
-     * fix); out-of-range or unparsable input is flagged and not saved.
-     */
     private void bindNumberInput(int rowId, String label, double value, double min, double max,
                                  java.util.function.DoubleConsumer onChange) {
-        View row = findViewById(rowId);
-        setText(row, R.id.row_label, String.format(Locale.US, "%s (%s–%s)", label, fmtNum(min), fmtNum(max)));
-        EditText input = row.findViewById(R.id.row_input);
-        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER
-                | android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL);
-        input.setText(fmtNum(value));
-        input.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
-            @Override public void afterTextChanged(Editable s) {
-                double v;
-                try {
-                    v = Double.parseDouble(s.toString().trim().replace(',', '.'));
-                } catch (NumberFormatException e) {
-                    v = Double.NaN;
-                }
-                if (Double.isNaN(v) || v < min || v > max) {
-                    input.setError(String.format(Locale.US, "%s–%s", fmtNum(min), fmtNum(max)));
-                } else {
-                    input.setError(null);
-                    onChange.accept(v);
-                }
-            }
-        });
-    }
-
-    private static String fmtNum(double v) {
-        return v == Math.rint(v) ? String.valueOf((long) v) : String.format(Locale.US, "%.2f", v);
+        SettingsRows.bindNumber(findViewById(rowId), label, value, min, max, onChange);
     }
 
     private void bindAction(int rowId, String label, String sub, boolean chevron, Runnable click) {
-        View row = findViewById(rowId);
-        setText(row, R.id.row_label, label);
-        TextView subView = row.findViewById(R.id.row_sub);
-        if (sub != null && !sub.isEmpty()) {
-            subView.setText(sub);
-            subView.setVisibility(View.VISIBLE);
-        }
-        if (chevron) row.findViewById(R.id.row_chevron).setVisibility(View.VISIBLE);
-        if (click != null) row.setOnClickListener(v -> click.run());
+        SettingsRows.bindAction(findViewById(rowId), label, sub, chevron, click);
     }
 
     private void bindActionChevron(int rowId, String label, String sub, Runnable click) {
@@ -1157,16 +1101,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bindActionButton(int rowId, String label, String sub, String buttonLabel, Runnable buttonClick) {
-        View row = findViewById(rowId);
-        if (!label.isEmpty()) setText(row, R.id.row_label, label);
-        TextView subView = row.findViewById(R.id.row_sub);
-        if (sub != null && !sub.isEmpty()) {
-            subView.setText(sub);
-            subView.setVisibility(View.VISIBLE);
-        }
-        TextView button = row.findViewById(R.id.row_button);
-        button.setText(buttonLabel);
-        button.setVisibility(View.VISIBLE);
-        button.setOnClickListener(v -> buttonClick.run());
+        SettingsRows.bindActionButton(findViewById(rowId), label, sub, buttonLabel, buttonClick);
     }
 }
