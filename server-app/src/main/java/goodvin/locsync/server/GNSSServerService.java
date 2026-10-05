@@ -125,10 +125,15 @@ public class GNSSServerService extends Service {
         @Override
         public void onSatelliteStatusChanged(@NonNull GnssStatus status) {
             gnssStatus = status;
-            lastServerResponse.setSatellites(getSatelliteCount());
+            int previous = satellitesUsed;
+            satellitesUsed = countUsedInFix(status);   // once per status (~1 Hz), not per lookup
+            lastServerResponse.setSatellites(satellitesUsed);
 
-            if (isServiceRunning() && clientAddr != null && !lastServerResponse.hasLocationUpdate()) {
-                mainHandler.post(() -> updateNotification("GNSS status changed"));
+            // While waiting for the first fix the notification shows the satellite count: refresh it
+            // when that count changes, not on every (~1 Hz) status callback.
+            if (satellitesUsed != previous && isServiceRunning() && clientAddr != null
+                    && !lastServerResponse.hasLocationUpdate()) {
+                updateNotification("GNSS status changed");
             }
         }
     };
@@ -145,8 +150,10 @@ public class GNSSServerService extends Service {
     private final Runnable btAutoStopRunnable = this::btAutoStopService;
 
     private GnssStatus gnssStatus = null;
+    private volatile int satellitesUsed = 0;
     private boolean isGnssActive = false;
     private boolean hadAccurateFix = true;                 // see Preferences.waitForAccurate
+    private long lastFixElapsedNanos = 0;                  // monotonic time of the fix in lastServerResponse
     private ServerTrackRecorder trackRecorder;             // non-null while "Record track" is on
     private boolean gpsReferenceActive = false;
     // Raw GPS alongside Fused, for the track only: shows how much Fused smooths and lags.
@@ -440,6 +447,12 @@ public class GNSSServerService extends Service {
     private void startLocationUpdates() {
         // If location updates were scheduled to be stopped, remove the scheduled action
         mainHandler.removeCallbacks(this.stopLocationUpdates);
+        if (isGnssActive) {
+            // Client came back while GPS was still running (within the idle-stop window): keep the
+            // running request instead of restarting GNSS (and re-waiting for an accurate fix).
+            AppLog.d(TAG, "Location updates already running");
+            return;
+        }
 
         initializeLocationManager();
         initializeFusedLocationProviderClient();
@@ -465,14 +478,21 @@ public class GNSSServerService extends Service {
                                 ? Priority.PRIORITY_BALANCED_POWER_ACCURACY : Priority.PRIORITY_HIGH_ACCURACY)
                         .setGranularity(Granularity.GRANULARITY_FINE)
                         .build();
-                fusedLocationProviderClient.requestLocationUpdates(request, fusedLocationListener, Looper.getMainLooper());
+                final FusedLocationProviderClient fused = fusedLocationProviderClient;
+                fused.requestLocationUpdates(request, fusedLocationListener, Looper.getMainLooper())
+                        .addOnFailureListener(e -> {
+                            // The request was silently ignored before: no fixes at all, forever.
+                            // Fall back to the platform GPS provider instead.
+                            Log.w(TAG, "Fused location request failed, falling back to GPS", e);
+                            AppLog.w(TAG, "Fused location request failed (" + e.getMessage() + "), using GPS");
+                            if (fusedLocationProviderClient == fused && isGnssActive) {
+                                fused.removeLocationUpdates(fusedLocationListener);
+                                fusedLocationProviderClient = null;
+                                requestGpsUpdates(MIN_INTERVAL_MS);
+                            }
+                        });
             } else {
-                locationManager.requestLocationUpdates(
-                        LocationManager.GPS_PROVIDER,
-                        MIN_INTERVAL_MS,
-                        MIN_DISTANCE_M,
-                        locationListener
-                );
+                requestGpsUpdates(MIN_INTERVAL_MS);
             }
 
             if (fusedLocationProviderClient != null && Preferences.trackRecording(this)
@@ -495,6 +515,16 @@ public class GNSSServerService extends Service {
         }
     }
 
+    private void requestGpsUpdates(int intervalMs) {
+        try {
+            // Explicit main looper: the listener touches main-thread-only state.
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, intervalMs, 0,
+                    locationListener, Looper.getMainLooper());
+        } catch (SecurityException e) {
+            Log.e(TAG, "Location permission not granted", e);
+        }
+    }
+
     /**
      * Re-issues the location request with the current settings (interval, priority, provider) if
      * updates are running, so changes in Settings apply without restarting the server.
@@ -511,6 +541,7 @@ public class GNSSServerService extends Service {
             return;
         }
         AppLog.i(TAG, "Re-applying location settings");
+        isGnssActive = false;   // let startLocationUpdates re-issue the request
         if (locationManager != null) {
             locationManager.removeUpdates(locationListener);
             stopGpsReference();
@@ -545,7 +576,14 @@ public class GNSSServerService extends Service {
         AppLog.d(TAG, "Location updates stopped");
 
         isGnssActive = false;
-        lastServerResponse.setStatus(LocationProto.Status.LOCATION_STOPPED);
+        // Forget the last fix: it would otherwise be resent (with its age frozen at "fresh") to the
+        // next client before the first new fix, putting the icon where the car was last time.
+        lastServerResponse.setStatus(LocationProto.Status.LOCATION_STOPPED).clearLocationUpdate();
+        lastFixElapsedNanos = 0;
+        // The status callback is unregistered above: drop the last count instead of showing it frozen.
+        gnssStatus = null;
+        satellitesUsed = 0;
+        lastServerResponse.setSatellites(0);
         if (trackRecorder != null) {
             trackRecorder.close();
             trackRecorder = null;
@@ -556,6 +594,13 @@ public class GNSSServerService extends Service {
 
     private void handleLocationUpdate(Location location) {
         long receivedElapsed = SystemClock.elapsedRealtime();
+        long fixNanos = location.getElapsedRealtimeNanos();
+        if (fixNanos > 0 && fixNanos <= lastFixElapsedNanos) {
+            // A repeat or an older fix (Fused re-delivers its last location when a request is
+            // re-issued): the client already has something newer.
+            AppLog.d(TAG, "Ignoring repeated/older fix");
+            return;
+        }
         updateTrackRecorder();
         if (!hadAccurateFix) {
             // "Wait for an accurate fix": hold back the coarse first fixes so the client's icon
@@ -570,7 +615,7 @@ public class GNSSServerService extends Service {
         recordFix(receivedElapsed, location, clientAddr != null);
         metrics.recordFix();
 
-        AppLog.d(TAG, String.format("Handling location update: %s", location));
+        AppLog.d(TAG, "Handling location update: " + location);
 
         // Create protobuf message
         LocationProto.LocationUpdate.Builder builder = LocationProto.LocationUpdate.newBuilder()
@@ -601,6 +646,7 @@ public class GNSSServerService extends Service {
 
         lastServerResponse.setStatus(LocationProto.Status.TRANSMITTING_LOCATION)
                 .setLocationUpdate(builder.build());
+        lastFixElapsedNanos = fixNanos;
 
         // Per-fix refresh at most every few seconds; state changes still update immediately.
         long now = SystemClock.elapsedRealtime();
@@ -610,7 +656,6 @@ public class GNSSServerService extends Service {
         }
 
         // Broadcast to the connected client
-        AppLog.d(TAG, "Broadcasting location: " + location);
         // Build on this (main) thread: the builder is mutated here (fixes, GNSS status callbacks), so
         // building it on the executor thread raced with those writes.
         LocationProto.ServerResponse resp = lastServerResponse.build();
@@ -677,7 +722,13 @@ public class GNSSServerService extends Service {
                     onClientGone();
                 }
             } else if (SystemClock.elapsedRealtime() - lastResponseSentElapsed >= KEEPALIVE_IDLE_MS) {
-                // Nothing sent for a while: resend the latest response so the client stays connected.
+                // Nothing sent for a while: resend the latest response so the client stays connected,
+                // with the fix's age as of now (not as of when it was first sent).
+                if (lastServerResponse.hasLocationUpdate() && lastFixElapsedNanos > 0) {
+                    float age = Math.max(0, (SystemClock.elapsedRealtimeNanos() - lastFixElapsedNanos) / 1e9f);
+                    lastServerResponse.setLocationUpdate(
+                            lastServerResponse.getLocationUpdate().toBuilder().setLocationAge(age));
+                }
                 LocationProto.ServerResponse resp = lastServerResponse.build();
                 executor.execute(() -> broadcastLocationUpdate(resp));
             }
@@ -796,10 +847,12 @@ public class GNSSServerService extends Service {
                 );
 
 
-                if (lastServerResponse.hasLocationUpdate()) {
+                if (lastServerResponse.hasLocationUpdate() && lastFixElapsedNanos > 0) {
+                    // Monotonic, like the age sent to the client: the fix timestamp is GPS time and
+                    // the phone's wall clock can be off by seconds.
                     content += getString(R.string.notification_divider) + String.format(
                             getString(R.string.notification_age),
-                            (System.currentTimeMillis() - lastServerResponse.getLocationUpdate().getTimestamp()) / 1000.0
+                            (SystemClock.elapsedRealtimeNanos() - lastFixElapsedNanos) / 1e9
                     );
                 }
             } else {
@@ -837,15 +890,16 @@ public class GNSSServerService extends Service {
     }
 
     public int getSatelliteCount() {
-        if (gnssStatus == null) {
-            return 0;
-        }
-        // Report satellites actually used in the fix rather than every satellite tracked, so the
-        // count is meaningful (e.g. ~8-14) instead of the raw all-constellation total (~80+).
+        return satellitesUsed;
+    }
+
+    // Report satellites actually used in the fix rather than every satellite tracked, so the count
+    // is meaningful (e.g. ~8-14) instead of the raw all-constellation total (~80+).
+    private static int countUsedInFix(GnssStatus status) {
         int used = 0;
-        int total = gnssStatus.getSatelliteCount();
+        int total = status.getSatelliteCount();
         for (int i = 0; i < total; i++) {
-            if (gnssStatus.usedInFix(i)) {
+            if (status.usedInFix(i)) {
                 used++;
             }
         }
