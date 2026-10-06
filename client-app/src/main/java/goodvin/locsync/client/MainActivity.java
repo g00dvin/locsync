@@ -561,9 +561,10 @@ public class MainActivity extends AppCompatActivity {
         String shown = buildLabel.isEmpty() ? appVersion : buildLabel;
         bindAction(R.id.rowVersion, String.format(getString(R.string.version_label), shown),
                 getString(R.string.about_protocol), false, null);
-        // Branch/CI builds (with a build label) aren't releases: different signature, no updates.
+        // Local, branch and CI builds aren't releases (different signature, placeholder version):
+        // only release-workflow builds look for updates.
         updateRow = new UpdateRow(this, findViewById(R.id.rowUpdate), "locsync-client-", appVersion,
-                buildLabel.isEmpty(), this::refreshState);
+                getResources().getBoolean(R.bool.release_build), this::refreshState);
         updateRow.autoCheck();
         bindActionChevron(R.id.rowLicense, getString(R.string.license_gpl3),
                 getString(R.string.license_view),
