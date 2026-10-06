@@ -54,6 +54,9 @@ public final class UpdateChecker {
 
     /** Asks GitHub for the latest release; null when it has no APK for this app ({@code apkPrefix}). */
     public static Release fetchLatest(Context context, String apkPrefix) throws IOException {
+        // Count the attempt, not just a success: offline or rate-limited (60/h) checks must not
+        // retry on every screen start.
+        prefs(context).edit().putLong(KEY_CHECKED_AT, System.currentTimeMillis()).apply();
         HttpURLConnection conn = open(LATEST_RELEASE_URL);
         conn.setRequestProperty("Accept", "application/vnd.github+json");
         try {
@@ -84,8 +87,10 @@ public final class UpdateChecker {
         for (int i = 0; i < assets.length(); i++) {
             JSONObject a = assets.getJSONObject(i);
             String name = a.optString("name");
-            if (name.startsWith(apkPrefix) && name.endsWith(".apk") && !name.endsWith("-debug.apk")) {
-                return new Release(tag, a.getString("browser_download_url"));
+            String url = a.optString("browser_download_url");
+            if (name.startsWith(apkPrefix) && name.endsWith(".apk") && !name.endsWith("-debug.apk")
+                    && url.startsWith("https://")) {
+                return new Release(tag, url);
             }
         }
         return null;
@@ -133,7 +138,6 @@ public final class UpdateChecker {
 
     private static void remember(Context context, Release release) {
         prefs(context).edit()
-                .putLong(KEY_CHECKED_AT, System.currentTimeMillis())
                 .putString(KEY_TAG, release != null ? release.tag() : null)
                 .putString(KEY_APK_URL, release != null ? release.apkUrl() : null)
                 .apply();
@@ -145,21 +149,21 @@ public final class UpdateChecker {
 
     /** Downloads the APK into cache/updates (shared through the app's FileProvider). */
     public static File download(Context context, Release release, Progress progress) throws IOException {
-        File dir = new File(context.getCacheDir(), "updates");
-        File[] old = dir.listFiles();
-        if (old != null) for (File f : old) f.delete();   // one APK at a time
+        clearDownloads(context);   // one APK at a time
+        File dir = downloadsDir(context);
         if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("Cannot create " + dir);
-        File out = new File(dir, "locsync-" + release.tag() + ".apk");
-        File part = new File(dir, out.getName() + ".part");
+        File out = new File(dir, "update.apk");   // fixed name: the tag comes from the network
+        File part = new File(dir, "update.apk.part");
         HttpURLConnection conn = open(release.apkUrl());   // follows GitHub's redirect to its CDN
+        boolean ok = false;
         try {
             if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-                throw new IOException("Download failed: HTTP " + conn.getResponseCode());
+                throw new IOException("HTTP " + conn.getResponseCode());
             }
             long total = conn.getContentLengthLong();
+            long done = 0;
             try (InputStream in = conn.getInputStream(); OutputStream os = new FileOutputStream(part)) {
                 byte[] buf = new byte[64 * 1024];
-                long done = 0;
                 int lastPct = -1, n;
                 while ((n = in.read(buf)) > 0) {
                     os.write(buf, 0, n);
@@ -171,11 +175,24 @@ public final class UpdateChecker {
                     }
                 }
             }
+            if (total > 0 && done != total) throw new IOException("Download interrupted");
+            if (!part.renameTo(out)) throw new IOException("Cannot save " + out);
+            ok = true;
+            return out;
         } finally {
             conn.disconnect();
+            if (!ok) part.delete();
         }
-        if (!part.renameTo(out)) throw new IOException("Cannot save " + out);
-        return out;
+    }
+
+    /** Removes downloaded APKs (after an update is installed, or before a new download). */
+    public static void clearDownloads(Context context) {
+        File[] old = downloadsDir(context).listFiles();
+        if (old != null) for (File f : old) f.delete();
+    }
+
+    private static File downloadsDir(Context context) {
+        return new File(context.getCacheDir(), "updates");
     }
 
     private static HttpURLConnection open(String url) throws IOException {

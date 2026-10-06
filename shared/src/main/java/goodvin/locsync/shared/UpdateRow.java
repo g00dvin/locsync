@@ -19,6 +19,7 @@ package goodvin.locsync.shared;
 
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
@@ -46,30 +47,45 @@ public final class UpdateRow {
     private static final long AUTO_CHECK_INTERVAL_MS = 24L * 60 * 60 * 1000;
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
 
+    // Process-wide: a check or download outlives the activity when Settings recreate it.
+    private static boolean busy;
+    private static String status;   // subtitle while checking/downloading; null = idle text
+    // The row on screen, to repaint when background work ends (weak: don't keep a closed screen).
+    private static java.lang.ref.WeakReference<UpdateRow> current = new java.lang.ref.WeakReference<>(null);
+
     private final Activity activity;
     private final View row;
     private final String apkPrefix;
     private final String installed;
+    private final boolean releaseBuild;
     private final Runnable onAvailableChanged;
+    private final Context app;
     private final Handler main = new Handler(Looper.getMainLooper());
 
     private UpdateChecker.Release available;
-    private String status;          // subtitle while checking/downloading; null = idle text
-    private boolean busy;
 
     /**
      * @param apkPrefix asset name prefix of this app's APK, e.g. "locsync-client-"
+     * @param releaseBuild false for branch/CI builds: their signature differs from releases, so
+     *                     they can't be updated in place and offer nothing
      * @param onAvailableChanged called when an update appears (e.g. to show a banner); may be null
      */
     public UpdateRow(Activity activity, View row, String apkPrefix, String installedVersion,
-                     Runnable onAvailableChanged) {
+                     boolean releaseBuild, Runnable onAvailableChanged) {
         this.activity = activity;
         this.row = row;
         this.apkPrefix = apkPrefix;
         this.installed = installedVersion;
+        this.releaseBuild = releaseBuild && UpdateChecker.parseVersion(installedVersion) != null;
         this.onAvailableChanged = onAvailableChanged;
-        UpdateChecker.Release cached = UpdateChecker.cached(activity);
-        if (cached != null && UpdateChecker.isNewer(cached.tag(), installed)) available = cached;
+        this.app = activity.getApplicationContext();
+        current = new java.lang.ref.WeakReference<>(this);
+        UpdateChecker.Release cached = this.releaseBuild ? UpdateChecker.cached(app) : null;
+        if (cached != null && UpdateChecker.isNewer(cached.tag(), installed)) {
+            available = cached;
+        } else if (!busy) {
+            EXECUTOR.execute(() -> UpdateChecker.clearDownloads(app));   // the update is installed
+        }
         render();
     }
 
@@ -78,22 +94,21 @@ public final class UpdateRow {
         return available;
     }
 
-    /** Once a day, for release builds (branch/debug builds have no comparable version). */
+    /** Once a day, for release builds. */
     public void autoCheck() {
-        if (UpdateChecker.parseVersion(installed) == null) return;
-        if (UpdateChecker.autoCheckDue(activity, AUTO_CHECK_INTERVAL_MS)) check(false);
+        if (releaseBuild && UpdateChecker.autoCheckDue(app, AUTO_CHECK_INTERVAL_MS)) check(false);
     }
 
     private void check(boolean manual) {
         if (busy) return;
         busy = true;
-        status = activity.getString(R.string.update_checking);
+        status = app.getString(R.string.update_checking);
         render();
         EXECUTOR.execute(() -> {
             UpdateChecker.Release latest = null;
             Exception error = null;
             try {
-                latest = UpdateChecker.fetchLatest(activity, apkPrefix);
+                latest = UpdateChecker.fetchLatest(app, apkPrefix);
             } catch (Exception e) {
                 error = e;
             }
@@ -103,23 +118,21 @@ public final class UpdateRow {
                 busy = false;
                 status = null;
                 if (err != null) {
-                    AppLog.w(TAG, "Update check failed: " + err.getMessage());
-                    if (manual && alive()) {
-                        Toast.makeText(activity, activity.getString(R.string.update_error, err.getMessage()),
-                                Toast.LENGTH_LONG).show();
-                    }
+                    AppLog.w(TAG, "Update check failed: " + err);
+                    if (manual) toast(app.getString(R.string.update_error, describe(err)));
                 } else {
-                    boolean had = available != null;
-                    available = result != null && UpdateChecker.isNewer(result.tag(), installed) ? result : null;
-                    if (available != null) AppLog.i(TAG, "Update available: " + available.tag());
-                    if (manual && available == null && alive()) {
-                        Toast.makeText(activity, R.string.update_latest_toast, Toast.LENGTH_SHORT).show();
-                    }
-                    if (had != (available != null) && onAvailableChanged != null && alive()) {
-                        onAvailableChanged.run();
+                    UpdateChecker.Release newer =
+                            result != null && UpdateChecker.isNewer(result.tag(), installed) ? result : null;
+                    if (newer != null) AppLog.i(TAG, "Update available: " + newer.tag());
+                    if (manual && newer == null) toast(app.getString(R.string.update_latest_toast));
+                    UpdateRow row = current.get();   // the screen may have been recreated meanwhile
+                    if (row != null && row.alive()) {
+                        boolean had = row.available != null;
+                        row.available = newer;
+                        if (had != (newer != null) && row.onAvailableChanged != null) row.onAvailableChanged.run();
                     }
                 }
-                render();
+                repaint();
             });
         });
     }
@@ -127,7 +140,11 @@ public final class UpdateRow {
     /** Downloads the newer APK and opens the system installer (asks to allow installs first). */
     public void install() {
         UpdateChecker.Release release = available;
-        if (release == null || busy) return;
+        if (release == null) return;
+        if (busy) {
+            toast(app.getString(R.string.update_busy));
+            return;
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 && !activity.getPackageManager().canRequestPackageInstalls()) {
             Toast.makeText(activity, R.string.update_allow_install, Toast.LENGTH_LONG).show();
@@ -140,15 +157,16 @@ public final class UpdateRow {
             return;
         }
         busy = true;
-        status = activity.getString(R.string.update_downloading, 0);
+        status = app.getString(R.string.update_downloading, 0);
         render();
+        Context app = this.app;
         EXECUTOR.execute(() -> {
             File apk = null;
             Exception error = null;
             try {
-                apk = UpdateChecker.download(activity, release, pct -> main.post(() -> {
-                    status = activity.getString(R.string.update_downloading, pct);
-                    render();
+                apk = UpdateChecker.download(app, release, pct -> main.post(() -> {
+                    status = app.getString(R.string.update_downloading, pct);
+                    repaint();
                 }));
             } catch (Exception e) {
                 error = e;
@@ -158,34 +176,50 @@ public final class UpdateRow {
             main.post(() -> {
                 busy = false;
                 status = null;
-                render();
-                if (!alive()) return;
+                repaint();
                 if (err != null) {
-                    AppLog.w(TAG, "Update download failed: " + err.getMessage());
-                    Toast.makeText(activity, activity.getString(R.string.update_error, err.getMessage()),
-                            Toast.LENGTH_LONG).show();
+                    AppLog.w(TAG, "Update download failed: " + err);
+                    toast(app.getString(R.string.update_error, describe(err)));
                     return;
                 }
-                openInstaller(file);
+                openInstaller(app, file);   // app context: still works if the screen was recreated
             });
         });
     }
 
-    private void openInstaller(File apk) {
-        Uri uri = FileProvider.getUriForFile(activity, activity.getPackageName() + ".fileprovider", apk);
+    private static void openInstaller(Context app, File apk) {
+        Uri uri = FileProvider.getUriForFile(app, app.getPackageName() + ".fileprovider", apk);
         Intent intent = new Intent(Intent.ACTION_VIEW)
                 .setDataAndType(uri, "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
-            activity.startActivity(intent);
+            app.startActivity(intent);
         } catch (ActivityNotFoundException e) {
-            Toast.makeText(activity, activity.getString(R.string.update_error, e.getMessage()),
-                    Toast.LENGTH_LONG).show();
+            Toast.makeText(app, app.getString(R.string.update_error, e.getMessage()), Toast.LENGTH_LONG).show();
         }
     }
 
+    /** No network vs. anything else: the raw exception text means nothing to a driver. */
+    private String describe(Exception e) {
+        if (e instanceof java.net.UnknownHostException || e instanceof java.net.ConnectException
+                || e instanceof java.net.SocketTimeoutException) {
+            return app.getString(R.string.update_no_network);
+        }
+        return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+    }
+
+    private void toast(String text) {
+        Toast.makeText(app, text, Toast.LENGTH_LONG).show();
+    }
+
+    /** Repaints the row on screen now (this one, or the one of a recreated activity). */
+    private static void repaint() {
+        UpdateRow row = current.get();
+        if (row != null) row.render();
+    }
+
     private boolean alive() {
-        return !activity.isFinishing() && !activity.isDestroyed();
+        return current.get() == this && !activity.isFinishing() && !activity.isDestroyed();
     }
 
     private void render() {
@@ -193,7 +227,11 @@ public final class UpdateRow {
         String sub;
         String button;
         Runnable click;
-        if (status != null) {
+        if (!releaseBuild) {
+            sub = activity.getString(R.string.update_test_build);
+            button = null;
+            click = null;
+        } else if (status != null) {
             sub = status;
             button = null;
             click = null;

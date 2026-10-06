@@ -89,4 +89,7 @@
     <string name="update_latest_toast">Установлена последняя версия</string>
     <string name="update_allow_install">Разрешите установку из этого приложения и нажмите «Установить» ещё раз</string>
     <string name="update_banner">Доступна версия %1$s — нажмите, чтобы обновить</string>
+    <string name="update_busy">Загрузка уже идёт</string>
+    <string name="update_no_network">нет подключения к интернету</string>
+    <string name="update_test_build">Тестовая сборка: обновления предлагаются только релизным</string>
 </resources>

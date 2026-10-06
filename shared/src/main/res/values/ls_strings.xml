@@ -98,4 +98,7 @@
     <string name="update_latest_toast">You have the latest version</string>
     <string name="update_allow_install">Allow installing from this app, then tap Install again</string>
     <string name="update_banner">Version %1$s is available — tap to update</string>
+    <string name="update_busy">Already downloading</string>
+    <string name="update_no_network">no internet connection</string>
+    <string name="update_test_build">Test build: updates are offered to release builds only</string>
 </resources>

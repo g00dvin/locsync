@@ -116,9 +116,10 @@ public class MainActivity extends AppCompatActivity {
     private String appVersion = "<unknown>";
     private String warningMessage = null;   // version mismatch / mock-provider error, shown in banner
     private boolean mockError = false;
-    private Runnable bannerAction = null;
+    private Runnable bannerAction = null;    // what tapping the connect banner does (depends on the issue)
     private UpdateRow updateRow;
-    private boolean bannerIsUpdate, updateBannerDismissed;    // what tapping the connect banner does (depends on the issue)
+    private boolean bannerIsUpdate;
+    private static boolean updateBannerDismissed;   // for this app process, across recreates
     private long connectedSinceElapsed = 0;
 
     // Latest values for the connect/monitor readouts.
@@ -544,9 +545,10 @@ public class MainActivity extends AppCompatActivity {
         String shown = buildLabel.isEmpty() ? appVersion : buildLabel;
         bindAction(R.id.rowVersion, String.format(getString(R.string.version_label), shown),
                 getString(R.string.about_protocol), false, null);
+        // Branch/CI builds (with a build label) aren't releases: different signature, no updates.
         updateRow = new UpdateRow(this, findViewById(R.id.rowUpdate), "locsync-client-", appVersion,
-                this::refreshState);
-        if (buildLabel.isEmpty()) updateRow.autoCheck();   // branch/CI builds aren't releases
+                buildLabel.isEmpty(), this::refreshState);
+        updateRow.autoCheck();
         bindActionChevron(R.id.rowLicense, getString(R.string.license_gpl3),
                 getString(R.string.license_view),
                 () -> startActivity(new Intent(Intent.ACTION_VIEW,

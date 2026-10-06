@@ -74,9 +74,9 @@ import goodvin.locsync.shared.LogExporter;
 import goodvin.locsync.shared.PowerOrbView;
 import goodvin.locsync.shared.SatelliteBarsView;
 import goodvin.locsync.shared.SettingsRows;
+import goodvin.locsync.shared.SparklineView;
 import goodvin.locsync.shared.UpdateChecker;
 import goodvin.locsync.shared.UpdateRow;
-import goodvin.locsync.shared.SparklineView;
 import goodvin.locsync.shared.VersionGetter;
 
 public class MainActivity extends AppCompatActivity {
@@ -84,7 +84,8 @@ public class MainActivity extends AppCompatActivity {
     private static final int VIEW_CONNECT = 0, VIEW_MONITOR = 1, VIEW_SETTINGS = 2;
     private UpdateRow updateRow;
     private Runnable bannerAction;
-    private boolean bannerIsUpdate, updateBannerDismissed;
+    private boolean bannerIsUpdate;
+    private static boolean updateBannerDismissed;   // for this app process, across recreates
     /** Quick Settings tile fallback: open the app and start the server from the foreground. */
     static final String ACTION_START_SERVER = "goodvin.locsync.server.action.START_FROM_TILE";
 
@@ -495,9 +496,10 @@ public class MainActivity extends AppCompatActivity {
         String shown = buildLabel.isEmpty() ? appVersion : buildLabel;
         bindAction(R.id.rowVersion, String.format(getString(R.string.version_label), shown),
                 getString(R.string.about_protocol), false, null);
+        // Branch/CI builds (with a build label) aren't releases: different signature, no updates.
         updateRow = new UpdateRow(this, findViewById(R.id.rowUpdate), "locsync-server-", appVersion,
-                this::updateBanner);
-        if (buildLabel.isEmpty()) updateRow.autoCheck();   // branch/CI builds aren't releases
+                buildLabel.isEmpty(), this::updateBanner);
+        updateRow.autoCheck();
         bindActionChevron(R.id.rowLicense, getString(R.string.license_gpl3),
                 getString(R.string.license_view),
                 () -> startActivity(new Intent(Intent.ACTION_VIEW,
