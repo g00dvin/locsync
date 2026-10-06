@@ -46,8 +46,8 @@ import android.widget.ViewFlipper;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
@@ -76,8 +76,9 @@ public class MainActivity extends AppCompatActivity {
     // untouched), or the multiplier chosen in Settings → Display.
     private static final float LARGE_SCREEN_UI_SCALE = 2.0f;
     private static final int LARGE_SCREEN_MIN_SW_DP = 600;
-    private static final float[] UI_SCALES = {0f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f};   // 0 = auto
+    private static final float[] UI_SCALES = {0f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f};   // 0 = auto
     private static final String STATE_VIEW = "view";
+    private static final String STATE_SETTINGS_SCROLL = "settingsScroll";
     private static final String STATE_FILTER_ADVANCED = "filterAdvanced";
 
     private static final String[] REQUIRED_PERMISSIONS = {
@@ -235,7 +236,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
-        outState.putInt(STATE_VIEW, viewFlipper.getDisplayedChild());   // survive the settings recreate
+        if (viewFlipper == null) return;   // onCreate failed early; don't mask its error
+        // Settings rows that recreate the activity (interface size, presets) keep the page and position.
+        outState.putInt(STATE_VIEW, viewFlipper.getDisplayedChild());
+        outState.putInt(STATE_SETTINGS_SCROLL, findViewById(R.id.viewSettings).getScrollY());
         outState.putBoolean(STATE_FILTER_ADVANCED,
                 findViewById(R.id.cardFilterAdvanced).getVisibility() == View.VISIBLE);
     }
@@ -256,8 +260,11 @@ public class MainActivity extends AppCompatActivity {
         bindConnect();
         bindMonitor();
         bindSettings();
-        if (savedInstanceState != null && savedInstanceState.getBoolean(STATE_FILTER_ADVANCED)) {
-            setFilterAdvancedVisible(true);
+        if (savedInstanceState != null) {
+            if (savedInstanceState.getBoolean(STATE_FILTER_ADVANCED)) setFilterAdvancedVisible(true);
+            int scrollY = savedInstanceState.getInt(STATE_SETTINGS_SCROLL);
+            View settings = findViewById(R.id.viewSettings);
+            settings.post(() -> settings.scrollTo(0, scrollY));   // after the first layout
         }
         registerReceivers();
 
@@ -602,8 +609,11 @@ public class MainActivity extends AppCompatActivity {
                 });
     }
 
+    private static final java.text.DecimalFormat SCALE_FORMAT =
+            new java.text.DecimalFormat("0.##", java.text.DecimalFormatSymbols.getInstance(Locale.US));
+
     private static String fmtScale(float s) {
-        return "×" + (s == Math.rint(s) ? String.valueOf((int) s) : String.format(Locale.US, "%.2f", s).replaceAll("0$", ""));
+        return "×" + SCALE_FORMAT.format(s);
     }
 
     private void refreshA11yAutostartRow() {
