@@ -16,6 +16,8 @@
         <TextView style="@style/LsGroupLabel" android:text="@string/group_permissions" />
         <LinearLayout style="@style/LsGroupCard">
             <include layout="@layout/row_setting_action" android:id="@+id/rowPermissions" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_action" android:id="@+id/rowSetup" />
         </LinearLayout>
 
         <!-- Location provider -->
@@ -36,6 +38,10 @@
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowBluetooth" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowTriggerDevices" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowWifiAutostart" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_action" android:id="@+id/rowWifiNetwork" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_input" android:id="@+id/rowBtStopDelay" />
             <View style="@style/LsDivider" />
@@ -62,6 +68,8 @@
         <TextView style="@style/LsGroupLabel" android:text="@string/group_about" />
         <LinearLayout style="@style/LsGroupCard">
             <include layout="@layout/row_setting_action" android:id="@+id/rowVersion" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_action" android:id="@+id/rowUpdate" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowLicense" />
         </LinearLayout>

@@ -76,5 +76,6 @@
         <include layout="@layout/view_connect" android:id="@+id/viewConnect" />
         <include layout="@layout/view_monitor" android:id="@+id/viewMonitor" />
         <include layout="@layout/view_settings" android:id="@+id/viewSettings" />
+        <include layout="@layout/view_setup" android:id="@+id/viewSetup" />
     </ViewFlipper>
 </LinearLayout>

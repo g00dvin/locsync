@@ -29,9 +29,11 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.SpannableStringBuilder;
@@ -72,12 +74,21 @@ import goodvin.locsync.shared.LogExporter;
 import goodvin.locsync.shared.PowerOrbView;
 import goodvin.locsync.shared.SatelliteBarsView;
 import goodvin.locsync.shared.SettingsRows;
+import goodvin.locsync.shared.SetupChecklist;
 import goodvin.locsync.shared.SparklineView;
+import goodvin.locsync.shared.UpdateChecker;
+import goodvin.locsync.shared.UpdateRow;
 import goodvin.locsync.shared.VersionGetter;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "GNSSServerActivity";
-    private static final int VIEW_CONNECT = 0, VIEW_MONITOR = 1, VIEW_SETTINGS = 2;
+    private static final int VIEW_CONNECT = 0, VIEW_MONITOR = 1, VIEW_SETTINGS = 2, VIEW_SETUP = 3;
+    private UpdateRow updateRow;
+    private Runnable bannerAction;
+    private boolean bannerIsUpdate;
+    private static boolean updateBannerDismissed;   // for this app process, across recreates
+    /** Quick Settings tile fallback: open the app and start the server from the foreground. */
+    static final String ACTION_START_SERVER = "goodvin.locsync.server.action.START_FROM_TILE";
 
     private static final String[] FOREGROUND_LOCATION_PERMISSIONS = {
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -191,6 +202,25 @@ public class MainActivity extends AppCompatActivity {
     };
 
     @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleStartRequest(intent);
+    }
+
+    /** Start request from the Quick Settings tile (it couldn't start the service itself). */
+    private void handleStartRequest(Intent intent) {
+        if (intent == null || !ACTION_START_SERVER.equals(intent.getAction())) return;
+        intent.setAction(null);   // once: not again on recreate
+        if (GNSSServerService.isServiceRunning()) return;
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
+            startGNSSService();
+        } else {
+            requestPermissions();   // the user starts the server once the permission is granted
+        }
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
@@ -208,11 +238,19 @@ public class MainActivity extends AppCompatActivity {
         ContextCompat.registerReceiver(this, metricsReceiver,
                 new IntentFilter("goodvin.locsync.METRICS"), ContextCompat.RECEIVER_NOT_EXPORTED);
 
-        showView(VIEW_CONNECT);
+        boolean firstRun = savedInstanceState == null && !Preferences.setupShown(this);
+        if (firstRun && !SetupChecklist.isFreshInstall(this)) {
+            Preferences.setSetupShown(this);   // updated from an older version: already set up
+            firstRun = false;
+        }
+        // First start: walk through what the server needs (marked seen in onStart, once visible).
+        showView(firstRun ? VIEW_SETUP : VIEW_CONNECT);
 
         if (GNSSServerService.isServiceEnabled(this) && !GNSSServerService.isServiceRunning()) {
             startGNSSService();
         }
+        handleStartRequest(getIntent());
+        WifiTrigger.sync(this, false);   // arm if missing (e.g. after an app update)
     }
 
     @Override
@@ -225,6 +263,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
+        if (viewFlipper.getDisplayedChild() == VIEW_SETUP) Preferences.setSetupShown(this);
         refreshPermissions();
         refreshState();
         mainHandler.post(tick);
@@ -274,6 +313,11 @@ public class MainActivity extends AppCompatActivity {
                 titleText.setText(R.string.nav_settings);
                 subtitleText.setVisibility(View.GONE);
             }
+            case VIEW_SETUP -> {
+                titleText.setText(R.string.setup_title);
+                subtitleText.setVisibility(View.GONE);
+                renderSetup();
+            }
             default -> {
                 titleText.setText(R.string.app_name);
                 subtitleText.setVisibility(View.VISIBLE);
@@ -300,8 +344,13 @@ public class MainActivity extends AppCompatActivity {
         setText(statCard3, R.id.statLabel, getString(R.string.uptime_label));
 
         powerOrb.setOnClickListener(v -> togglePower());
-        connectBanner.setOnClickListener(v -> requestPermissions());
-        findViewById(R.id.bannerDismiss).setOnClickListener(v -> connectBanner.setVisibility(View.GONE));
+        connectBanner.setOnClickListener(v -> {
+            if (bannerAction != null) bannerAction.run();
+        });
+        findViewById(R.id.bannerDismiss).setOnClickListener(v -> {
+            if (bannerIsUpdate) updateBannerDismissed = true;   // don't bring it back this session
+            connectBanner.setVisibility(View.GONE);
+        });
     }
 
     private void bindMonitor() {
@@ -356,6 +405,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bindSettings() {
+        bindActionChevron(R.id.rowSetup, getString(R.string.setup_row), getString(R.string.setup_row_sub),
+                () -> showView(VIEW_SETUP));
+        setText(R.id.viewSetup, R.id.setupIntro, getString(R.string.setup_intro));
+        findViewById(R.id.btnSetupDone).setOnClickListener(v -> showView(VIEW_CONNECT));
         bindActionButton(R.id.rowPermissions, "",
                 getString(R.string.permission_fine_location) + " · " + getString(R.string.permission_coarse_location)
                         + " · " + getString(R.string.permission_background_location),
@@ -420,6 +473,15 @@ public class MainActivity extends AppCompatActivity {
                 v -> Preferences.setGpsIdleStopSeconds(this, (int) Math.round(v)));
         bindActionChevron(R.id.rowTriggerDevices, getString(R.string.trigger_devices),
                 triggerDevicesSummary(), this::showTriggerDevicesDialog);
+        bindToggle(R.id.rowWifiAutostart, getString(R.string.wifi_autostart),
+                getString(R.string.wifi_autostart_sub), Preferences.wifiAutoStartEnabled(this), checked -> {
+                    Preferences.setWifiAutoStartEnabled(this, checked);
+                    if (checked) warnIfWifiNameHidden();
+                    WifiTrigger.sync(this, false);
+                    GNSSServerService.refreshWifiMonitor();
+                });
+        bindActionButton(R.id.rowWifiNetwork, getString(R.string.wifi_network), wifiNetworkSummary(),
+                getString(R.string.wifi_network_use_current), this::useCurrentWifiAsTrigger);
 
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,
@@ -451,6 +513,11 @@ public class MainActivity extends AppCompatActivity {
         String shown = buildLabel.isEmpty() ? appVersion : buildLabel;
         bindAction(R.id.rowVersion, String.format(getString(R.string.version_label), shown),
                 getString(R.string.about_protocol), false, null);
+        // Local, branch and CI builds aren't releases (different signature, placeholder version):
+        // only release-workflow builds look for updates.
+        updateRow = new UpdateRow(this, findViewById(R.id.rowUpdate), "locsync-server-", appVersion,
+                getResources().getBoolean(R.bool.release_build), this::updateBanner);
+        updateRow.autoCheck();
         bindActionChevron(R.id.rowLicense, getString(R.string.license_gpl3),
                 getString(R.string.license_view),
                 () -> startActivity(new Intent(Intent.ACTION_VIEW,
@@ -501,13 +568,89 @@ public class MainActivity extends AppCompatActivity {
         subtitleText.setText(statusSub.getText());
         updateBanner();
         updateConnectReadouts();
+        if (viewFlipper.getDisplayedChild() == VIEW_SETUP) renderSetup();
+    }
+
+    private final ActivityResultLauncher<String> notificationPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> refreshState());
+
+    /** The setup checklist with each step's current state (re-checked every second while shown). */
+    private void renderSetup() {
+        PowerManager pm = getSystemService(PowerManager.class);
+        boolean background = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION);
+        boolean notifications = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || granted(Manifest.permission.POST_NOTIFICATIONS);
+        List<SetupChecklist.Step> steps = List.of(
+                new SetupChecklist.Step(getString(R.string.setup_location),
+                        getString(R.string.setup_location_sub), granted(Manifest.permission.ACCESS_FINE_LOCATION),
+                        false, this::requestPermissions),
+                new SetupChecklist.Step(getString(R.string.setup_background),
+                        getString(R.string.setup_background_sub), background, false, this::requestPermissions),
+                new SetupChecklist.Step(getString(R.string.setup_battery),
+                        getString(R.string.setup_battery_sub),
+                        pm == null || pm.isIgnoringBatteryOptimizations(getPackageName()), false,
+                        this::checkBatteryOptimization),
+                new SetupChecklist.Step(getString(R.string.setup_notifications),
+                        getString(R.string.setup_notifications_sub), notifications, true,
+                        this::requestNotifications),
+                // Done once the head unit connects; "optional" only because nothing on the phone alone
+                // can complete it.
+                new SetupChecklist.Step(getString(R.string.setup_hotspot),
+                        getString(R.string.setup_hotspot_sub), GNSSServerService.isClientConnected(), true, () -> {
+                            if (!GNSSServerService.isServiceRunning()) startGNSSService();
+                            openHotspotSettings();
+                        }));
+        SetupChecklist.render(findViewById(R.id.setupSteps), steps);
+    }
+
+    private boolean granted(String permission) {
+        return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** Asks once; after two refusals Android stops asking, so then open the app's notification settings. */
+    private void requestNotifications() {
+        if (shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+                || !Preferences.notificationsAsked(this)) {
+            Preferences.setNotificationsAsked(this);
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+        } else {
+            openSettingsScreen(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
+        }
+    }
+
+    /** There is no public action for the hotspot screen; most phones still open it, else Wi-Fi/network. */
+    private void openHotspotSettings() {
+        openSettingsScreen(new Intent("android.settings.TETHER_SETTINGS"),
+                new Intent(Settings.ACTION_WIRELESS_SETTINGS), new Intent(Settings.ACTION_SETTINGS));
+    }
+
+    /** The first screen that opens; OEMs may lack or lock one (ActivityNotFound / SecurityException). */
+    private void openSettingsScreen(Intent... candidates) {
+        for (Intent intent : candidates) {
+            try {
+                startActivity(intent);
+                return;
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Cannot open " + intent.getAction(), e);
+            }
+        }
+        Toast.makeText(this, R.string.setup_no_screen, Toast.LENGTH_LONG).show();
     }
 
     private void updateBanner() {
         boolean bgMissing = ContextCompat.checkSelfPermission(this,
                 Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED;
+        UpdateChecker.Release update = updateRow != null ? updateRow.available() : null;
+        bannerIsUpdate = false;
         if (bgMissing) {
             bannerText.setText(R.string.warn_background_location);
+            bannerAction = this::requestPermissions;
+            connectBanner.setVisibility(View.VISIBLE);
+        } else if (update != null && !updateBannerDismissed) {
+            bannerText.setText(getString(R.string.update_banner, update.tag()));
+            bannerAction = updateRow::install;
+            bannerIsUpdate = true;
             connectBanner.setVisibility(View.VISIBLE);
         } else {
             connectBanner.setVisibility(View.GONE);
@@ -716,7 +859,8 @@ public class MainActivity extends AppCompatActivity {
     @SuppressLint("BatteryLife")
     private void checkBatteryOptimization() {
         String packageName = getPackageName();
-        if (!Settings.System.canWrite(this)) {
+        PowerManager pm = getSystemService(PowerManager.class);
+        if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
             Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                     Uri.parse("package:" + packageName));
             batteryOptimizationLauncher.launch(intent);
@@ -737,6 +881,36 @@ public class MainActivity extends AppCompatActivity {
         // relaunch and Bluetooth auto-start still fires. Automatic BT auto-stop clears the flag.
         stopService(new Intent(this, GNSSServerService.class));
         connectedSinceElapsed = 0;
+    }
+
+    // --- car Wi-Fi trigger ---
+
+    private String wifiNetworkSummary() {
+        String ssid = Preferences.wifiTriggerSsid(this);
+        return ssid != null ? getString(R.string.wifi_network_chosen, ssid) : getString(R.string.wifi_network_none);
+    }
+
+    /** The phone must be on the car's Wi-Fi now; Android reveals the name only with location on. */
+    private void useCurrentWifiAsTrigger() {
+        String ssid = WifiTrigger.currentSsid(this);
+        if (ssid == null) {
+            Toast.makeText(this, R.string.wifi_network_unknown, Toast.LENGTH_LONG).show();
+            return;
+        }
+        Preferences.setWifiTriggerSsid(this, ssid);
+        setText(R.id.rowWifiNetwork, R.id.row_sub, wifiNetworkSummary());
+        warnIfWifiNameHidden();
+        WifiTrigger.sync(this, false);
+        GNSSServerService.refreshWifiMonitor();
+    }
+
+    /** In the background Android reveals the Wi-Fi name only with "Allow all the time" location. */
+    private void warnIfWifiNameHidden() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                && ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, R.string.wifi_needs_background_location, Toast.LENGTH_LONG).show();
+        }
     }
 
     // --- bluetooth trigger devices (behaviour preserved) ---

@@ -1,0 +1,286 @@
+/*
+ * Copyright © 2025-2026 Dezz (https://github.com/DezzK)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+package goodvin.locsync.server;
+
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
+import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
+
+import androidx.annotation.NonNull;
+import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
+
+import goodvin.locsync.shared.AppLog;
+
+/**
+ * Auto-start/stop by the car's Wi-Fi, for cars whose head unit runs the hotspot and the phone joins
+ * it. A PendingIntent network callback (it outlives the app process) starts the server when the
+ * phone joins the configured network; while the server runs, a regular callback follows the
+ * network so the shared auto-stop logic knows when it is gone.
+ */
+public final class WifiTrigger {
+    private static final String TAG = "WifiTrigger";
+
+    /** True while the phone is on the trigger network (kept by the receiver and the service). */
+    private static volatile boolean connected = false;
+
+    private WifiTrigger() {}
+
+    public static boolean isConnected() {
+        return connected;
+    }
+
+    /** The feature is on and a network was chosen (on without a network does nothing). */
+    public static boolean isActive(Context context) {
+        return Preferences.wifiAutoStartEnabled(context) && Preferences.wifiTriggerSsid(context) != null;
+    }
+
+    /**
+     * Registers or removes the background network callback to match the settings. An existing
+     * registration is kept: registering again replays the current network, which would restart a
+     * server the user has just stopped while still on the car's Wi-Fi. {@code force} re-registers
+     * (after a reboot, which drops it while the PendingIntent may still look alive).
+     */
+    public static void sync(Context context, boolean force) {
+        ConnectivityManager cm = context.getSystemService(ConnectivityManager.class);
+        if (cm == null) return;
+        boolean wanted = isActive(context);
+        PendingIntent existing = PendingIntent.getBroadcast(context, 0, new Intent(context, Receiver.class),
+                PendingIntent.FLAG_NO_CREATE | mutableFlag());
+        if (wanted && existing != null && !force) return;   // already armed
+        if (existing != null) {
+            try {
+                cm.unregisterNetworkCallback(existing);
+            } catch (IllegalArgumentException ignored) {
+                // wasn't registered
+            }
+            existing.cancel();
+        }
+        if (!wanted) {
+            connected = false;
+            return;
+        }
+        PendingIntent pi = pendingIntent(context);
+        NetworkRequest request = new NetworkRequest.Builder()
+                .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                .build();
+        try {
+            cm.registerNetworkCallback(request, pi);
+            AppLog.d(TAG, "Watching for Wi-Fi \"" + Preferences.wifiTriggerSsid(context) + "\"");
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Cannot watch Wi-Fi networks", e);
+        }
+    }
+
+    private static PendingIntent pendingIntent(Context context) {
+        Intent intent = new Intent(context, Receiver.class);
+        return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | mutableFlag());
+    }
+
+    // Mutable: the system adds the network to the intent.
+    private static int mutableFlag() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? PendingIntent.FLAG_MUTABLE : 0;
+    }
+
+    /**
+     * SSID of the current Wi-Fi network without quotes, or null when unknown (not on Wi-Fi, or no
+     * location permission / location off — Android hides the SSID then).
+     */
+    @SuppressWarnings("deprecation")   // getConnectionInfo still returns the SSID with location access
+    public static String currentSsid(Context context) {
+        WifiManager wifi = context.getApplicationContext().getSystemService(WifiManager.class);
+        return wifi == null ? null : cleanSsid(wifi.getConnectionInfo());
+    }
+
+    static String cleanSsid(WifiInfo info) {
+        if (info == null) return null;
+        String ssid = info.getSSID();
+        if (ssid == null || ssid.isEmpty() || WifiManager.UNKNOWN_SSID.equals(ssid)) return null;
+        if (ssid.length() >= 2 && ssid.startsWith("\"") && ssid.endsWith("\"")) {
+            ssid = ssid.substring(1, ssid.length() - 1);
+        }
+        return ssid;
+    }
+
+    static boolean isTrigger(Context context, String ssid) {
+        return ssid != null && ssid.equals(Preferences.wifiTriggerSsid(context));
+    }
+
+    /**
+     * Fired by the system when a Wi-Fi network becomes available (even with the app not running).
+     * Right after joining, Android may not report the SSID yet, so it is re-read for a few seconds.
+     */
+    public static class Receiver extends BroadcastReceiver {
+        private static final int SSID_ATTEMPTS = 6;
+        private static final long SSID_RETRY_MS = 1000;
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (!isActive(context) || !intent.hasExtra(ConnectivityManager.EXTRA_NETWORK)) return;
+            PendingResult result = goAsync();
+            Handler handler = new Handler(Looper.getMainLooper());
+            Context app = context.getApplicationContext();
+            handler.post(new Runnable() {
+                int attempt = 0;
+
+                @Override
+                public void run() {
+                    String ssid = currentSsid(app);
+                    if (ssid == null && ++attempt < SSID_ATTEMPTS) {
+                        handler.postDelayed(this, SSID_RETRY_MS);
+                        return;
+                    }
+                    try {
+                        onJoined(app, ssid);
+                    } finally {
+                        result.finish();
+                    }
+                }
+            });
+        }
+
+        private static void onJoined(Context context, String ssid) {
+            if (ssid == null) {
+                AppLog.w(TAG, "Wi-Fi joined but its name is hidden: LocSync Server needs location "
+                        + "\"Allow all the time\" and location turned on");
+                return;
+            }
+            if (!isTrigger(context, ssid)) {
+                AppLog.d(TAG, "Wi-Fi available: " + ssid + " (not the trigger network)");
+                return;
+            }
+            connected = true;
+            if (GNSSServerService.isServiceRunning()) {
+                GNSSServerService.cancelBluetoothAutoStopRequest();
+                return;
+            }
+            AppLog.i(TAG, "Joined trigger Wi-Fi \"" + ssid + "\", starting the server");
+            try {
+                ContextCompat.startForegroundService(context, new Intent(context, GNSSServerService.class));
+                GNSSServerService.setServiceEnabled(context, true);
+            } catch (IllegalStateException | SecurityException e) {
+                AppLog.w(TAG, "Cannot start the server in the background: " + e.getMessage());
+                notifyStartFailed(context);
+            }
+        }
+    }
+
+    private static final String ALERT_CHANNEL_ID = "LocSyncAutostart";
+    private static final int START_FAILED_NOTIFICATION_ID = 2;
+
+    /** Android refused the background start: tell the user how to allow it (tapping opens the app). */
+    private static void notifyStartFailed(Context context) {
+        NotificationManager nm = context.getSystemService(NotificationManager.class);
+        if (nm == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            nm.createNotificationChannel(new NotificationChannel(ALERT_CHANNEL_ID,
+                    context.getString(R.string.autostart_channel), NotificationManager.IMPORTANCE_DEFAULT));
+        }
+        PendingIntent open = PendingIntent.getActivity(context, 0, new Intent(context, MainActivity.class),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        String text = context.getString(R.string.wifi_start_failed_text);
+        try {
+            nm.notify(START_FAILED_NOTIFICATION_ID, new NotificationCompat.Builder(context, ALERT_CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_tile_locsync)
+                    .setContentTitle(context.getString(R.string.wifi_start_failed_title))
+                    .setContentText(text)
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(text))
+                    .setContentIntent(open)
+                    .setAutoCancel(true)
+                    .build());
+        } catch (SecurityException e) {
+            // notifications not allowed: the log line is all we can do
+        }
+    }
+
+    /** While the server runs: follows the trigger network so auto-stop knows when it is gone. */
+    static final class Monitor extends ConnectivityManager.NetworkCallback {
+        private final Context context;
+        private final Runnable onLost;
+        private Network triggerNetwork;
+
+        Monitor(Context context, Runnable onLost) {
+            super(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ? FLAG_INCLUDE_LOCATION_INFO : 0);
+            this.context = context.getApplicationContext();
+            this.onLost = onLost;
+        }
+
+        void start() {
+            String ssid = currentSsid(context);
+            if (ssid != null) connected = isTrigger(context, ssid);   // unreadable: keep the receiver's view
+            ConnectivityManager cm = context.getSystemService(ConnectivityManager.class);
+            if (cm == null) return;
+            try {
+                cm.registerNetworkCallback(new NetworkRequest.Builder()
+                        .addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(), this);
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Cannot follow Wi-Fi", e);
+            }
+        }
+
+        void stop() {
+            connected = false;   // nothing follows the network while the server is off
+            ConnectivityManager cm = context.getSystemService(ConnectivityManager.class);
+            if (cm == null) return;
+            try {
+                cm.unregisterNetworkCallback(this);
+            } catch (IllegalArgumentException ignored) {
+                // never registered
+            }
+        }
+
+        @Override
+        public void onCapabilitiesChanged(@NonNull Network network, @NonNull NetworkCapabilities caps) {
+            String ssid = null;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && caps.getTransportInfo() instanceof WifiInfo info) {
+                ssid = cleanSsid(info);
+            }
+            if (ssid == null && !connected) ssid = currentSsid(context);   // older Android: no TransportInfo
+            if (isTrigger(context, ssid)) {
+                triggerNetwork = network;
+                if (!connected) {
+                    connected = true;
+                    GNSSServerService.cancelBluetoothAutoStopRequest();
+                }
+            }
+        }
+
+        @Override
+        public void onLost(@NonNull Network network) {
+            if (network.equals(triggerNetwork)) {
+                triggerNetwork = null;
+                connected = false;
+                AppLog.i(TAG, "Left the trigger Wi-Fi");
+                onLost.run();
+            }
+        }
+    }
+}

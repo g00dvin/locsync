@@ -78,4 +78,27 @@
     <string name="cd_back">Назад</string>
     <string name="cd_power">Запустить или остановить</string>
     <string name="cd_dismiss">Скрыть</string>
+    <string name="update_title">Обновления</string>
+    <string name="update_check">Проверить</string>
+    <string name="update_install">Установить</string>
+    <string name="update_sub_idle">Установлена %1$s. Проверяется автоматически раз в день.</string>
+    <string name="update_available">Доступна версия %1$s</string>
+    <string name="update_checking">Проверяем…</string>
+    <string name="update_downloading">Загрузка… %1$d%%</string>
+    <string name="update_error">Не удалось обновить: %1$s</string>
+    <string name="update_latest_toast">Установлена последняя версия</string>
+    <string name="update_allow_install">Разрешите установку из этого приложения и нажмите «Установить» ещё раз</string>
+    <string name="update_banner">Доступна версия %1$s — нажмите, чтобы обновить</string>
+    <string name="update_busy">Загрузка уже идёт</string>
+    <string name="update_no_network">нет подключения к интернету</string>
+    <string name="update_test_build">Тестовая сборка: обновления предлагаются только релизным</string>
+    <string name="setup_title">Первая настройка</string>
+    <string name="setup_done">Готово</string>
+    <string name="setup_step_done">✓ %1$d. %2$s</string>
+    <string name="setup_step_todo">%1$d. %2$s</string>
+    <string name="setup_recommended">Рекомендуется. %1$s</string>
+    <string name="setup_open">Открыть</string>
+    <string name="setup_row">Мастер настройки</string>
+    <string name="setup_row_sub">Пошаговая проверка всего, что нужно приложению</string>
+    <string name="setup_no_screen">Этот экран недоступен на устройстве: откройте его в системных настройках</string>
 </resources>

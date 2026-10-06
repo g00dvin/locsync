@@ -27,6 +27,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
@@ -70,6 +71,20 @@
             android:exported="false"
             android:foregroundServiceType="location" />
 
+        <service
+            android:name=".ServerTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_tile_locsync"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
+
         <receiver
             android:name=".BroadcastsReceiver"
             android:enabled="true"
@@ -81,6 +96,10 @@
                 <action android:name="goodvin.locsync.server.STOP" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".WifiTrigger$Receiver"
+            android:exported="false" />
 
         <receiver
             android:name=".BluetoothReceiver"

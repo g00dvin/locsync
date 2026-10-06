@@ -323,15 +323,59 @@ public class Preferences {
         return c;
     }
 
-    // Cached: settings are read on every 10 Hz output tick and on every fix. Resolving the
-    // device-protected context each time is wasteful, and some head-unit ROMs log a full stack trace
-    // for every getApplicationContext() call (~26 lines/s), flooding logcat so exported logs lose
-    // everything else.
+    private static final String PREF_UI_SCALE = "uiScale";
+
+    /** UI scale multiplier for the whole interface; 0 = automatic (×2 on large screens, else ×1). */
+    public static void setUiScale(Context context, float scale) {
+        getPrefs(context).edit().putFloat(PREF_UI_SCALE, scale).apply();
+    }
+
+    public static float uiScale(Context context) {
+        return getPrefs(context).getFloat(PREF_UI_SCALE, 0f);
+    }
+
+    /** "Reset to recommended": forget every smoothing setting so the defaults (BALANCED) apply. */
+    public static void resetFilterSettings(Context context) {
+        getPrefs(context).edit()
+                .remove(PREF_FILTER_REPORT_UNCERTAINTY)
+                .remove(PREF_FILTER_LATENCY_COMP)
+                .remove(PREF_FILTER_EXTRA_LATENCY_MS)
+                .remove(PREF_FILTER_NETWORK_DELAY)
+                .remove(PREF_WIFI_LOW_LATENCY)
+                .remove(PREF_FILTER_TURN_MODEL)
+                .remove(PREF_FILTER_TURN_RESPONSIVENESS)
+                .remove(PREF_FILTER_BEARING_COMP)
+                .remove(PREF_FILTER_MIN_BEARING_ACC)
+                .remove(PREF_FILTER_ADAPTIVE_POSITION)
+                .remove(PREF_FILTER_GATING)
+                .remove(PREF_FILTER_GATE_THRESHOLD)
+                .remove(PREF_FILTER_STANDSTILL_HOLD)
+                .remove(PREF_FILTER_STANDSTILL_SPEED)
+                .remove(PREF_FILTER_ADAPTIVE_NOISE)
+                .remove(PREF_FILTER_PROCESS_NOISE)
+                .apply();
+    }
+
+    private static final String PREF_SETUP_SHOWN = "setupShown";
+
+    /** The setup checklist opens by itself once, on the first start. */
+    public static void setSetupShown(Context context) {
+        getPrefs(context).edit().putBoolean(PREF_SETUP_SHOWN, true).apply();
+    }
+
+    public static boolean setupShown(Context context) {
+        return getPrefs(context).getBoolean(PREF_SETUP_SHOWN, false);
+    }
+
     /** All stored settings, for the diagnostics export. */
     public static java.util.Map<String, ?> dump(Context context) {
         return new java.util.TreeMap<>(getPrefs(context).getAll());
     }
 
+    // Cached: settings are read on every 10 Hz output tick and on every fix. Resolving the
+    // device-protected context each time is wasteful, and some head-unit ROMs log a full stack trace
+    // for every getApplicationContext() call (~26 lines/s), flooding logcat so exported logs lose
+    // everything else.
     private static volatile SharedPreferences prefs;
 
     private static SharedPreferences getPrefs(Context context) {

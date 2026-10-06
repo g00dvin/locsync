@@ -31,6 +31,8 @@ android {
         versionName rootProject.ext.appVersionName
         // Optional build label (branch-shortsha) for debug/CI builds; empty for tagged releases.
         resValue "string", "build_label", (System.getenv("BUILD_LABEL") ?: "")
+        // Built by the release workflow (VERSION_NAME = tag): only these offer in-app updates.
+        resValue "bool", "release_build", (System.getenv("VERSION_NAME") && !System.getenv("BUILD_LABEL") ? "true" : "false")
     }
 
     buildFeatures {

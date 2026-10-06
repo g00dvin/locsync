@@ -9,6 +9,14 @@ message ServerResponse {
     Status status = 1;
     int32 satellites = 2;
     optional LocationUpdate location_update = 3;
+    optional PhoneState phone = 4;   // the phone's battery and heat, so the head unit can warn
+}
+
+message PhoneState {
+    optional int32 battery_percent = 1;   // 0-100; absent when the phone doesn't report it
+    bool charging = 2;
+    optional float battery_temp_c = 3;
+    int32 thermal_status = 4;        // PowerManager.THERMAL_STATUS_* (Android 10+), 0 = none/unknown
 }
 
 enum Status {

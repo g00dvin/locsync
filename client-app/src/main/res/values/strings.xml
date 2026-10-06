@@ -191,4 +191,37 @@
     <string name="filter_adaptive_position_sub">The phone understates how precise its track is, so the filter leaned on speed and lagged behind. Learn from the fixes how much to trust them (up to 2× tighter).</string>
     <string name="filter_position_trust">Position error used</string>
     <string name="filter_turn_responsiveness">Turn responsiveness (1 = fastest)</string>
+    <string name="group_display">Display</string>
+    <string name="ui_scale">Interface size</string>
+    <string name="ui_scale_sub">%1$s · tap to change. For screens where everything looks too small or doesn\'t fit.</string>
+    <string name="ui_scale_auto">Auto (%1$s)</string>
+    <string name="filter_preset">Style</string>
+    <string name="filter_preset_sub">%1$s · tap to switch: Smooth → Balanced → Responsive</string>
+    <string name="filter_preset_smooth">Smooth</string>
+    <string name="filter_preset_balanced">Balanced (recommended)</string>
+    <string name="filter_preset_responsive">Responsive</string>
+    <string name="filter_preset_custom">Custom</string>
+    <string name="filter_advanced">Advanced settings</string>
+    <string name="filter_advanced_sub">Every smoothing parameter, for fine tuning</string>
+    <string name="filter_reset">Reset to recommended</string>
+    <string name="filter_reset_sub">Restore all smoothing settings to their defaults</string>
+    <string name="filter_reset_confirm">All smoothing settings will return to their defaults</string>
+    <string name="filter_reset_action">Reset</string>
+    <string name="filter_reset_done">Smoothing settings reset</string>
+    <string name="phone_battery">Phone: battery %1$d%%</string>
+    <string name="phone_battery_charging">Phone: battery %1$d%%, charging</string>
+    <string name="phone_ok">Battery and temperature are fine</string>
+    <string name="phone_hot">Overheating: GPS may get worse or stop. Keep the phone out of the sun or away from the heater.</string>
+    <string name="phone_low_battery">Battery is low: connect the charger</string>
+    <string name="phone_title">Phone</string>
+    <string name="setup_intro">Go through these steps once. Each one opens the right screen; come back here when done.</string>
+    <string name="setup_location">Location access</string>
+    <string name="setup_location_sub">Needed to give the navigator a position</string>
+    <string name="setup_mock">Mock location app</string>
+    <string name="setup_connect">Connect to the phone</string>
+    <string name="setup_connect_sub">Start LocSync Server on the phone, turn on its hotspot and connect the head unit to it</string>
+    <string name="setup_a11y">Autostart via Accessibility</string>
+    <string name="setup_a11y_sub">The most reliable way to start with the head unit: turn on “LocSync Client autostart”</string>
+    <string name="setup_battery">Unrestricted battery use</string>
+    <string name="setup_battery_sub">So Android doesn\'t stop LocSync in the background</string>
 </resources>

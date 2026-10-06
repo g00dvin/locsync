@@ -46,6 +46,7 @@ import android.widget.ViewFlipper;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.content.ContextCompat;
@@ -58,22 +59,31 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import goodvin.locsync.proto.LocationProto;
 import goodvin.locsync.shared.AppLog;
 import goodvin.locsync.shared.LinkState;
 import goodvin.locsync.shared.LogExporter;
 import goodvin.locsync.shared.PowerOrbView;
 import goodvin.locsync.shared.SettingsRows;
+import goodvin.locsync.shared.SetupChecklist;
 import goodvin.locsync.shared.SparklineView;
+import goodvin.locsync.shared.UpdateChecker;
+import goodvin.locsync.shared.UpdateRow;
 import goodvin.locsync.shared.VersionGetter;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "GNSSClientActivity";
-    private static final int VIEW_CONNECT = 0, VIEW_MONITOR = 1, VIEW_SETTINGS = 2;
+    private static final int VIEW_CONNECT = 0, VIEW_MONITOR = 1, VIEW_SETTINGS = 2, VIEW_SETUP = 3;
 
     // Head units have large, low-density screens where dp-sized UI reads tiny. Scale the whole UI
-    // (dp + sp uniformly) by raising the effective density on large screens; phones are untouched.
+    // (dp + sp uniformly) by raising the effective density: automatically ×2 on large screens (phones
+    // untouched), or the multiplier chosen in Settings → Display.
     private static final float LARGE_SCREEN_UI_SCALE = 2.0f;
     private static final int LARGE_SCREEN_MIN_SW_DP = 600;
+    private static final float[] UI_SCALES = {0f, 1f, 1.25f, 1.5f, 2f, 2.5f, 3f};   // 0 = auto
+    private static final String STATE_VIEW = "view";
+    private static final String STATE_SETTINGS_SCROLL = "settingsScroll";
+    private static final String STATE_FILTER_ADVANCED = "filterAdvanced";
 
     private static final String[] REQUIRED_PERMISSIONS = {
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -108,6 +118,9 @@ public class MainActivity extends AppCompatActivity {
     private String warningMessage = null;   // version mismatch / mock-provider error, shown in banner
     private boolean mockError = false;
     private Runnable bannerAction = null;    // what tapping the connect banner does (depends on the issue)
+    private UpdateRow updateRow;
+    private boolean bannerIsUpdate;
+    private static boolean updateBannerDismissed;   // for this app process, across recreates
     private long connectedSinceElapsed = 0;
 
     // Latest values for the connect/monitor readouts.
@@ -213,11 +226,29 @@ public class MainActivity extends AppCompatActivity {
     protected void attachBaseContext(Context base) {
         android.content.res.Configuration config =
                 new android.content.res.Configuration(base.getResources().getConfiguration());
-        if (config.smallestScreenWidthDp >= LARGE_SCREEN_MIN_SW_DP) {
-            config.densityDpi = Math.round(config.densityDpi * LARGE_SCREEN_UI_SCALE);
+        float scale = effectiveUiScale(Preferences.uiScale(base), config.smallestScreenWidthDp);
+        if (scale != 1f) {
+            config.densityDpi = Math.round(config.densityDpi * scale);
             base = base.createConfigurationContext(config);
         }
         super.attachBaseContext(base);
+    }
+
+    /** The multiplier actually applied: the chosen one, or ×2 on large screens / ×1 on phones for "auto". */
+    static float effectiveUiScale(float chosen, int smallestWidthDp) {
+        if (chosen > 0) return chosen;
+        return smallestWidthDp >= LARGE_SCREEN_MIN_SW_DP ? LARGE_SCREEN_UI_SCALE : 1f;
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (viewFlipper == null) return;   // onCreate failed early; don't mask its error
+        // Settings rows that recreate the activity (interface size, presets) keep the page and position.
+        outState.putInt(STATE_VIEW, viewFlipper.getDisplayedChild());
+        outState.putInt(STATE_SETTINGS_SCROLL, findViewById(R.id.viewSettings).getScrollY());
+        outState.putBoolean(STATE_FILTER_ADVANCED,
+                findViewById(R.id.cardFilterAdvanced).getVisibility() == View.VISIBLE);
     }
 
     @Override
@@ -236,9 +267,23 @@ public class MainActivity extends AppCompatActivity {
         bindConnect();
         bindMonitor();
         bindSettings();
+        if (savedInstanceState != null) {
+            if (savedInstanceState.getBoolean(STATE_FILTER_ADVANCED)) setFilterAdvancedVisible(true);
+            int scrollY = savedInstanceState.getInt(STATE_SETTINGS_SCROLL);
+            View settings = findViewById(R.id.viewSettings);
+            settings.post(() -> settings.scrollTo(0, scrollY));   // after the first layout
+        }
         registerReceivers();
 
-        showView(VIEW_CONNECT);
+        int firstView = savedInstanceState != null ? savedInstanceState.getInt(STATE_VIEW, VIEW_CONNECT) : VIEW_CONNECT;
+        if (savedInstanceState == null && !Preferences.setupShown(this)) {
+            if (SetupChecklist.isFreshInstall(this)) {
+                firstView = VIEW_SETUP;   // first start: walk through what the app needs (marked seen in onResume)
+            } else {
+                Preferences.setSetupShown(this);   // updated from an older version: already set up
+            }
+        }
+        showView(firstView);
         refreshPermissions();
         refreshState();
         startUIUpdates();
@@ -265,6 +310,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        // Seen only once it is actually on screen (not when an autostart creates the activity unseen).
+        if (viewFlipper.getDisplayedChild() == VIEW_SETUP) Preferences.setSetupShown(this);
         mockCheckedElapsed = 0;   // e.g. returning from Developer options
         // Recompute from the service rather than assuming a state; also re-check mock-app selection.
         refreshPermissions();
@@ -316,6 +363,11 @@ public class MainActivity extends AppCompatActivity {
                 titleText.setText(R.string.nav_settings);
                 subtitleText.setVisibility(View.GONE);
             }
+            case VIEW_SETUP -> {
+                titleText.setText(R.string.setup_title);
+                subtitleText.setVisibility(View.GONE);
+                renderSetup();
+            }
             default -> {
                 titleText.setText(R.string.app_name);
                 subtitleText.setVisibility(View.VISIBLE);
@@ -347,8 +399,10 @@ public class MainActivity extends AppCompatActivity {
         connectBanner.setOnClickListener(v -> {
             if (bannerAction != null) bannerAction.run();
         });
-        findViewById(R.id.bannerDismiss).setOnClickListener(v ->
-                connectBanner.setVisibility(View.GONE));
+        findViewById(R.id.bannerDismiss).setOnClickListener(v -> {
+            if (bannerIsUpdate) updateBannerDismissed = true;   // don't bring it back this session
+            connectBanner.setVisibility(View.GONE);
+        });
     }
 
     private void bindMonitor() {
@@ -408,6 +462,14 @@ public class MainActivity extends AppCompatActivity {
                 getString(R.string.permission_fine_location) + " · " + getString(R.string.permission_coarse_location),
                 getString(R.string.request_permissions_short), this::requestPermissions);
 
+        bindActionChevron(R.id.rowSetup, getString(R.string.setup_row), getString(R.string.setup_row_sub),
+                () -> showView(VIEW_SETUP));
+        setText(R.id.viewSetup, R.id.setupIntro, getString(R.string.setup_intro));
+        findViewById(R.id.btnSetupDone).setOnClickListener(v -> showView(VIEW_CONNECT));
+
+        // Display
+        bindUiScaleRow();
+
         // Automation
         bindToggle(R.id.rowAutostart, getString(R.string.autostart_wifi_boot),
                 getString(R.string.autostart_wifi_boot_sub), Preferences.autostartWifiBoot(this),
@@ -425,7 +487,13 @@ public class MainActivity extends AppCompatActivity {
                 Preferences.staticJitterEnabled(this),
                 checked -> Preferences.setStaticJitterEnabled(this, checked));
 
-        // Smoothing
+        // Smoothing: a style preset, the full parameter list behind "Advanced", and a reset
+        bindFilterPresetRow();
+        bindActionChevron(R.id.rowFilterAdvanced, getString(R.string.filter_advanced),
+                getString(R.string.filter_advanced_sub), () -> setFilterAdvancedVisible(
+                        findViewById(R.id.cardFilterAdvanced).getVisibility() != View.VISIBLE));
+        bindActionChevron(R.id.rowFilterReset, getString(R.string.filter_reset),
+                getString(R.string.filter_reset_sub), this::confirmFilterReset);
         bindToggle(R.id.rowReportUncertainty, getString(R.string.filter_report_uncertainty),
                 getString(R.string.filter_report_uncertainty_sub), Preferences.filterReportUncertainty(this),
                 checked -> Preferences.setFilterReportUncertainty(this, checked));
@@ -446,7 +514,7 @@ public class MainActivity extends AppCompatActivity {
                 checked -> Preferences.setFilterTurnModel(this, checked));
         bindNumberInput(R.id.rowTurnResponsiveness, getString(R.string.filter_turn_responsiveness),
                 Preferences.filterTurnResponsiveness(this), 0.1, 1,
-                v -> Preferences.setFilterTurnResponsiveness(this, (float) v));
+                v -> { Preferences.setFilterTurnResponsiveness(this, (float) v); refreshFilterPresetSub(); });
         bindToggle(R.id.rowBearingComp, getString(R.string.filter_bearing_comp),
                 getString(R.string.filter_bearing_comp_sub), Preferences.filterBearingCompensation(this),
                 checked -> Preferences.setFilterBearingCompensation(this, checked));
@@ -461,19 +529,19 @@ public class MainActivity extends AppCompatActivity {
                 checked -> Preferences.setFilterGating(this, checked));
         bindNumberInput(R.id.rowGateThreshold, getString(R.string.filter_gate_threshold),
                 Preferences.filterGateThreshold(this), 4, 100,
-                v -> Preferences.setFilterGateThreshold(this, (float) v));
+                v -> { Preferences.setFilterGateThreshold(this, (float) v); refreshFilterPresetSub(); });
         bindToggle(R.id.rowStandstillHold, getString(R.string.filter_standstill),
                 getString(R.string.filter_standstill_sub), Preferences.filterStandstillHold(this),
                 checked -> Preferences.setFilterStandstillHold(this, checked));
         bindNumberInput(R.id.rowStandstillSpeed, getString(R.string.filter_standstill_speed),
                 Preferences.filterStandstillSpeed(this), 0.1, 3,
-                v -> Preferences.setFilterStandstillSpeed(this, (float) v));
+                v -> { Preferences.setFilterStandstillSpeed(this, (float) v); refreshFilterPresetSub(); });
         bindToggle(R.id.rowAdaptiveNoise, getString(R.string.filter_adaptive_noise),
                 getString(R.string.filter_adaptive_noise_sub), Preferences.filterAdaptiveNoise(this),
                 checked -> Preferences.setFilterAdaptiveNoise(this, checked));
         bindNumberInput(R.id.rowProcessNoise, getString(R.string.filter_process_noise_base),
                 Preferences.filterProcessNoise(this), 0.2, 10,
-                v -> Preferences.setFilterProcessNoise(this, (float) v));
+                v -> { Preferences.setFilterProcessNoise(this, (float) v); refreshFilterPresetSub(); });
 
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,
@@ -498,10 +566,138 @@ public class MainActivity extends AppCompatActivity {
         String shown = buildLabel.isEmpty() ? appVersion : buildLabel;
         bindAction(R.id.rowVersion, String.format(getString(R.string.version_label), shown),
                 getString(R.string.about_protocol), false, null);
+        // Local, branch and CI builds aren't releases (different signature, placeholder version):
+        // only release-workflow builds look for updates.
+        updateRow = new UpdateRow(this, findViewById(R.id.rowUpdate), "locsync-client-", appVersion,
+                getResources().getBoolean(R.bool.release_build), this::refreshState);
+        updateRow.autoCheck();
         bindActionChevron(R.id.rowLicense, getString(R.string.license_gpl3),
                 getString(R.string.license_view),
                 () -> startActivity(new Intent(Intent.ACTION_VIEW,
                         Uri.parse("https://www.gnu.org/licenses/gpl-3.0.html"))));
+    }
+
+    private void bindFilterPresetRow() {
+        FilterPreset preset = FilterPreset.current(this);
+        bindAction(R.id.rowFilterPreset, getString(R.string.filter_preset),
+                getString(R.string.filter_preset_sub, presetName(preset)), true, () -> {
+                    FilterPreset.next(FilterPreset.current(this)).apply(this);
+                    recreate();   // the parameter rows below show the new values
+                });
+    }
+
+    /** Hand-editing a preset parameter turns the Style row into "Custom" (or back) at once. */
+    private void refreshFilterPresetSub() {
+        setText(R.id.rowFilterPreset, R.id.row_sub,
+                getString(R.string.filter_preset_sub, presetName(FilterPreset.current(this))));
+    }
+
+    private String presetName(FilterPreset p) {
+        if (p == null) return getString(R.string.filter_preset_custom);
+        return switch (p) {
+            case SMOOTH -> getString(R.string.filter_preset_smooth);
+            case BALANCED -> getString(R.string.filter_preset_balanced);
+            case RESPONSIVE -> getString(R.string.filter_preset_responsive);
+        };
+    }
+
+    private void setFilterAdvancedVisible(boolean visible) {
+        findViewById(R.id.cardFilterAdvanced).setVisibility(visible ? View.VISIBLE : View.GONE);
+        View chevron = findViewById(R.id.rowFilterAdvanced).findViewById(R.id.row_chevron);
+        chevron.setRotation(visible ? 90 : 0);
+    }
+
+    private final Runnable disarmFilterReset = this::disarmFilterReset;
+
+    private void confirmFilterReset() {
+        View row = findViewById(R.id.rowFilterReset);
+        setText(row, R.id.row_sub, getString(R.string.filter_reset_confirm));
+        TextView button = row.findViewById(R.id.row_button);
+        button.setText(R.string.filter_reset_action);
+        button.setVisibility(View.VISIBLE);
+        row.findViewById(R.id.row_chevron).setVisibility(View.GONE);
+        button.setOnClickListener(v -> {
+            uiHandler.removeCallbacks(disarmFilterReset);
+            Preferences.resetFilterSettings(this);
+            Toast.makeText(this, R.string.filter_reset_done, Toast.LENGTH_SHORT).show();
+            recreate();
+        });
+        uiHandler.removeCallbacks(disarmFilterReset);
+        uiHandler.postDelayed(disarmFilterReset, 5000);
+    }
+
+    private void disarmFilterReset() {
+        uiHandler.removeCallbacks(disarmFilterReset);
+        View row = findViewById(R.id.rowFilterReset);
+        setText(row, R.id.row_sub, getString(R.string.filter_reset_sub));
+        row.findViewById(R.id.row_button).setVisibility(View.GONE);
+        row.findViewById(R.id.row_chevron).setVisibility(View.VISIBLE);
+    }
+
+    /** Tapping cycles through the scales; the activity is recreated so the new size shows at once. */
+    private void bindUiScaleRow() {
+        float chosen = Preferences.uiScale(this);
+        int sw = getApplicationContext().getResources().getConfiguration().smallestScreenWidthDp;
+        String value = chosen > 0 ? fmtScale(chosen)
+                : getString(R.string.ui_scale_auto, fmtScale(effectiveUiScale(0, sw)));
+        bindAction(R.id.rowUiScale, getString(R.string.ui_scale),
+                getString(R.string.ui_scale_sub, value), true, () -> {
+                    int i = 0;
+                    while (i < UI_SCALES.length && UI_SCALES[i] != chosen) i++;
+                    Preferences.setUiScale(this, UI_SCALES[(i + 1) % UI_SCALES.length]);
+                    recreate();
+                });
+    }
+
+    private static final java.text.DecimalFormat SCALE_FORMAT =
+            new java.text.DecimalFormat("0.##", java.text.DecimalFormatSymbols.getInstance(Locale.US));
+
+    private static String fmtScale(float s) {
+        return "×" + SCALE_FORMAT.format(s);
+    }
+
+    /** The setup checklist with each step's current state (re-checked when returning to the app). */
+    private void renderSetup() {
+        PowerManager pm = getSystemService(PowerManager.class);
+        boolean connected = currentState() == LinkState.CONNECTED;
+        List<SetupChecklist.Step> steps = List.of(
+                new SetupChecklist.Step(getString(R.string.setup_location),
+                        getString(R.string.setup_location_sub),
+                        missingPermissionNames().isEmpty(), false, this::requestPermissions),
+                new SetupChecklist.Step(getString(R.string.setup_mock),
+                        getString(R.string.nav_mock_detail), isMockAppSelected(), false,
+                        this::openMockLocationSettings),
+                new SetupChecklist.Step(getString(R.string.setup_connect),
+                        getString(R.string.setup_connect_sub), connected, false, () -> {
+                            if (!GNSSClientService.isServiceRunning()) {
+                                // Not startGNSSService(): its battery prompt would open on top of Wi-Fi
+                                // settings (battery has its own step).
+                                Preferences.setServiceEnabled(this, true);
+                                startForegroundService(new Intent(this, GNSSClientService.class));
+                            }
+                            openSettingsScreen(Settings.ACTION_WIFI_SETTINGS);
+                        }),
+                new SetupChecklist.Step(getString(R.string.setup_a11y),
+                        getString(R.string.setup_a11y_sub), AutostartAccessibilityService.isEnabled(this), true,
+                        this::openAccessibilitySettings),
+                new SetupChecklist.Step(getString(R.string.setup_battery),
+                        getString(R.string.setup_battery_sub),
+                        pm == null || pm.isIgnoringBatteryOptimizations(getPackageName()), true,
+                        this::ensureBatteryOptimizationExemption));
+        SetupChecklist.render(findViewById(R.id.setupSteps), steps);
+    }
+
+    /** Head-unit ROMs often lack (or lock) system screens: fall back to Settings, then just say so. */
+    private void openSettingsScreen(String action) {
+        for (String a : new String[]{action, Settings.ACTION_SETTINGS}) {
+            try {
+                startActivity(new Intent(a));
+                return;
+            } catch (RuntimeException e) {   // ActivityNotFoundException, SecurityException
+                Log.w(TAG, "Cannot open " + a, e);
+            }
+        }
+        Toast.makeText(this, R.string.setup_no_screen, Toast.LENGTH_LONG).show();
     }
 
     private void refreshA11yAutostartRow() {
@@ -576,6 +772,7 @@ public class MainActivity extends AppCompatActivity {
         subtitleText.setText(state == LinkState.CONNECTED ? getString(R.string.sub_client_connected) : statusSub.getText());
         updateBanner(state);
         updateConnectReadouts();
+        if (viewFlipper.getDisplayedChild() == VIEW_SETUP) renderSetup();
     }
 
     private void updateBanner(LinkState state) {
@@ -594,6 +791,12 @@ public class MainActivity extends AppCompatActivity {
         } else if (!isMockAppSelected()) {
             msg = getString(R.string.mock_app_not_selected);
             action = this::openMockLocationSettings;
+        }
+        UpdateChecker.Release update = updateRow != null ? updateRow.available() : null;
+        bannerIsUpdate = msg == null && update != null && !updateBannerDismissed;
+        if (bannerIsUpdate) {
+            msg = getString(R.string.update_banner, update.tag());
+            action = updateRow::install;
         }
 
         bannerAction = action;
@@ -706,6 +909,8 @@ public class MainActivity extends AppCompatActivity {
         navDot.getBackground().mutate().setTint(dotColor);
         findViewById(R.id.navCard).setOnClickListener(mockSelected ? null : v -> openMockLocationSettings());
 
+        updatePhoneCard(connected);
+
         String none = getString(R.string.value_none);
         if (loc == null) {
             String hint = connected ? getString(R.string.hint_no_fix) : "";
@@ -748,6 +953,35 @@ public class MainActivity extends AppCompatActivity {
         setTile(tileFresh, String.format(Locale.US, "%.1f", age), getString(R.string.unit_s_ago),
                 getString(fresh ? R.string.hint_fresh : R.string.hint_stale),
                 fresh ? textColor : getColor(R.color.ls_error));
+    }
+
+    /** "Phone: 78%, charging · 36 °C" and a warning when it overheats or runs flat. */
+    private void updatePhoneCard(boolean connected) {
+        View card = findViewById(R.id.phoneCard);
+        LocationProto.PhoneState phone = connected ? GNSSClientService.getPhoneState() : null;
+        if (phone == null) {
+            card.setVisibility(View.GONE);
+            return;
+        }
+        card.setVisibility(View.VISIBLE);
+        float temp = phone.hasBatteryTempC() ? phone.getBatteryTempC() : Float.NaN;
+        int percent = phone.hasBatteryPercent() ? phone.getBatteryPercent() : -1;
+        StringBuilder title = new StringBuilder(percent < 0 ? getString(R.string.phone_title)
+                : getString(phone.getCharging() ? R.string.phone_battery_charging : R.string.phone_battery, percent));
+        // Floor, so 44.6 °C doesn't read "45 °C" while the card still says it's fine (hot is ≥ 45).
+        if (!Float.isNaN(temp)) title.append(" · ").append((int) Math.floor(temp)).append(" °C");
+        TextView titleView = findViewById(R.id.phoneTitle);
+        titleView.setText(title);
+        PhoneHealth health = PhoneHealth.of(percent, phone.getCharging(), temp,
+                phone.getThermalStatus());
+        TextView detail = findViewById(R.id.phoneDetail);
+        detail.setText(switch (health) {
+            case HOT -> R.string.phone_hot;
+            case LOW_BATTERY -> R.string.phone_low_battery;
+            default -> R.string.phone_ok;
+        });
+        findViewById(R.id.phoneDot).getBackground().mutate().setTint(getColor(
+                health == PhoneHealth.OK ? R.color.ls_accent_400 : R.color.ls_error));
     }
 
     private void setTile(View tile, String value, String unit, String hint, int valueColor) {
