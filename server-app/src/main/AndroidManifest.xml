@@ -97,6 +97,10 @@
         </receiver>
 
         <receiver
+            android:name=".WifiTrigger$Receiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".BluetoothReceiver"
             android:enabled="true"
             android:exported="true">

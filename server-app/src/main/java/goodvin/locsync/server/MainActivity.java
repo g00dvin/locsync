@@ -235,6 +235,7 @@ public class MainActivity extends AppCompatActivity {
             startGNSSService();
         }
         handleStartRequest(getIntent());
+        WifiTrigger.sync(this);   // (re)arm after an app update, which drops network callbacks
     }
 
     @Override
@@ -442,6 +443,14 @@ public class MainActivity extends AppCompatActivity {
                 v -> Preferences.setGpsIdleStopSeconds(this, (int) Math.round(v)));
         bindActionChevron(R.id.rowTriggerDevices, getString(R.string.trigger_devices),
                 triggerDevicesSummary(), this::showTriggerDevicesDialog);
+        bindToggle(R.id.rowWifiAutostart, getString(R.string.wifi_autostart),
+                getString(R.string.wifi_autostart_sub), Preferences.wifiAutoStartEnabled(this), checked -> {
+                    Preferences.setWifiAutoStartEnabled(this, checked);
+                    WifiTrigger.sync(this);
+                    GNSSServerService.refreshWifiMonitor();
+                });
+        bindActionButton(R.id.rowWifiNetwork, getString(R.string.wifi_network), wifiNetworkSummary(),
+                getString(R.string.wifi_network_use_current), this::useCurrentWifiAsTrigger);
 
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,
@@ -759,6 +768,26 @@ public class MainActivity extends AppCompatActivity {
         // relaunch and Bluetooth auto-start still fires. Automatic BT auto-stop clears the flag.
         stopService(new Intent(this, GNSSServerService.class));
         connectedSinceElapsed = 0;
+    }
+
+    // --- car Wi-Fi trigger ---
+
+    private String wifiNetworkSummary() {
+        String ssid = Preferences.wifiTriggerSsid(this);
+        return ssid != null ? getString(R.string.wifi_network_chosen, ssid) : getString(R.string.wifi_network_none);
+    }
+
+    /** The phone must be on the car's Wi-Fi now; Android reveals the name only with location on. */
+    private void useCurrentWifiAsTrigger() {
+        String ssid = WifiTrigger.currentSsid(this);
+        if (ssid == null) {
+            Toast.makeText(this, R.string.wifi_network_unknown, Toast.LENGTH_LONG).show();
+            return;
+        }
+        Preferences.setWifiTriggerSsid(this, ssid);
+        setText(R.id.rowWifiNetwork, R.id.row_sub, wifiNetworkSummary());
+        WifiTrigger.sync(this);
+        GNSSServerService.refreshWifiMonitor();
     }
 
     // --- bluetooth trigger devices (behaviour preserved) ---

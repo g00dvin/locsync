@@ -95,7 +95,7 @@
     <string name="location_balanced_sub">Balanced accuracy instead of the highest (Fused only). Less precise, the phone runs cooler.</string>
     <string name="location_wait_accurate">Wait for an accurate fix</string>
     <string name="location_wait_accurate_sub">After start, send nothing until the phone has a fix better than 20 m — no jump from a rough first position. Applies on the next start.</string>
-    <string name="bt_stop_delay">Stop after Bluetooth disconnects, s</string>
+    <string name="bt_stop_delay">Stop after the car (Bluetooth/Wi-Fi) disconnects, s</string>
     <string name="gps_idle_stop">Turn GPS off without a client after, s</string>
     <string name="server_track_recording">Record track (CSV)</string>
     <string name="server_track_recording_sub">Every fix the phone gets, with when it arrived and whether it was sent. With the head unit\'s track it shows where delay comes from.</string>
@@ -104,4 +104,11 @@
     <string name="tile_off">Off</string>
     <string name="tile_waiting">Waiting for the head unit</string>
     <string name="tile_client">Head unit connected</string>
+    <string name="wifi_autostart">Start/stop by the car\'s Wi-Fi</string>
+    <string name="wifi_autostart_sub">For cars whose head unit shares Wi-Fi: start the server when the phone joins that network and stop it after it leaves.</string>
+    <string name="wifi_network">Car Wi-Fi network</string>
+    <string name="wifi_network_chosen">%1$s</string>
+    <string name="wifi_network_none">Not chosen: connect the phone to the car\'s Wi-Fi and tap “Current”</string>
+    <string name="wifi_network_use_current">Current</string>
+    <string name="wifi_network_unknown">Not on Wi-Fi, or Android hides the network name: turn on location and try again</string>
 </resources>

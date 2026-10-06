@@ -207,6 +207,27 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_WAIT_ACCURATE, false);
     }
 
+    private static final String PREF_WIFI_AUTO_START = "wifiAutoStartEnabled";
+    private static final String PREF_WIFI_TRIGGER_SSID = "wifiTriggerSsid";
+
+    /** Start/stop the server when the phone joins/leaves the car's Wi-Fi (head unit as hotspot). */
+    public static void setWifiAutoStartEnabled(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_WIFI_AUTO_START, enabled).apply();
+    }
+
+    public static boolean wifiAutoStartEnabled(Context context) {
+        return getPrefs(context).getBoolean(PREF_WIFI_AUTO_START, false);
+    }
+
+    public static void setWifiTriggerSsid(Context context, String ssid) {
+        getPrefs(context).edit().putString(PREF_WIFI_TRIGGER_SSID, ssid).apply();
+    }
+
+    /** SSID of the car's Wi-Fi, or null when none was chosen. */
+    public static String wifiTriggerSsid(Context context) {
+        return getPrefs(context).getString(PREF_WIFI_TRIGGER_SSID, null);
+    }
+
     private static final String PREF_GPS_IDLE_STOP_S = "gpsIdleStopSeconds";
     private static final String PREF_BT_STOP_DELAY_S = "bluetoothStopDelaySeconds";
 

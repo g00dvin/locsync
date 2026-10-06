@@ -88,7 +88,7 @@
     <string name="location_balanced_sub">Сбалансированная точность вместо максимальной (только Fused). Менее точно, телефон меньше греется.</string>
     <string name="location_wait_accurate">Ждать точный фикс</string>
     <string name="location_wait_accurate_sub">После запуска ничего не отправлять, пока у телефона нет фикса точнее 20 м — без прыжка с грубой первой позиции. Применяется при следующем запуске.</string>
-    <string name="bt_stop_delay">Остановка после отключения Bluetooth, с</string>
+    <string name="bt_stop_delay">Остановка после отключения от машины (Bluetooth/Wi-Fi), с</string>
     <string name="gps_idle_stop">Выключать GPS без клиента через, с</string>
     <string name="server_track_recording">Запись трека (CSV)</string>
     <string name="server_track_recording_sub">Каждый фикс телефона: когда пришёл и ушёл ли клиенту. Вместе с треком магнитолы показывает, откуда берётся задержка.</string>
@@ -97,4 +97,11 @@
     <string name="tile_off">Выключен</string>
     <string name="tile_waiting">Ждёт магнитолу</string>
     <string name="tile_client">Магнитола подключена</string>
+    <string name="wifi_autostart">Запуск/остановка по Wi-Fi машины</string>
+    <string name="wifi_autostart_sub">Для машин, где Wi-Fi раздаёт магнитола: запускать сервер, когда телефон подключается к этой сети, и останавливать после отключения.</string>
+    <string name="wifi_network">Сеть Wi-Fi машины</string>
+    <string name="wifi_network_chosen">%1$s</string>
+    <string name="wifi_network_none">Не выбрана: подключите телефон к Wi-Fi машины и нажмите «Текущая»</string>
+    <string name="wifi_network_use_current">Текущая</string>
+    <string name="wifi_network_unknown">Телефон не в Wi-Fi или Android скрывает имя сети: включите геолокацию и попробуйте снова</string>
 </resources>

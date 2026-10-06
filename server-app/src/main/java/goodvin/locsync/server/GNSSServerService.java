@@ -148,6 +148,7 @@ public class GNSSServerService extends Service {
 
     // Bluetooth auto-stop runnable
     private final Runnable btAutoStopRunnable = this::btAutoStopService;
+    private WifiTrigger.Monitor wifiMonitor;   // follows the car's Wi-Fi while "Wi-Fi auto-start" is on
 
     private GnssStatus gnssStatus = null;
     private volatile int satellitesUsed = 0;
@@ -200,6 +201,7 @@ public class GNSSServerService extends Service {
         running = true;
         instance = this;
         ServerTileService.requestRefresh(this);
+        syncWifiMonitor();
 
         WifiManager wifi = getSystemService(WifiManager.class);
         if (wifi != null) {
@@ -227,6 +229,10 @@ public class GNSSServerService extends Service {
         running = false;
         instance = null;
         ServerTileService.requestRefresh(this);
+        if (wifiMonitor != null) {
+            wifiMonitor.stop();
+            wifiMonitor = null;
+        }
 
         cancelBluetoothAutoStop();
         stopServer();
@@ -919,15 +925,33 @@ public class GNSSServerService extends Service {
     // Bluetooth auto-stop methods
     //
     // Unified logic:
-    //   - evaluateAutoStop() is called on BT disconnect and on last client disconnect.
-    //     Schedules a stop (Settings: Bluetooth stop delay) only when BOTH all BT trigger devices AND all clients are gone.
-    //   - cancelBluetoothAutoStop() is called on BT reconnect and on new client connect.
+    //   - evaluateAutoStop() is called on BT disconnect, on leaving the car's Wi-Fi and on last client
+    //     disconnect. Schedules a stop (Settings: stop delay) only when every enabled trigger (BT
+    //     devices, car Wi-Fi) AND all clients are gone.
+    //   - cancelBluetoothAutoStop() is called on BT/Wi-Fi reconnect and on new client connect.
     //   - btAutoStopService() re-checks conditions as a safety net before actually stopping.
 
     /**
      * Called from BluetoothReceiver (BT disconnect) and onClientGone (client timed out).
      * Schedules auto-stop only if both conditions are met.
      */
+    /** Settings changed: follow the car's Wi-Fi (or stop following it) while the server runs. */
+    public static void refreshWifiMonitor() {
+        GNSSServerService s = instance;
+        if (s != null) s.mainHandler.post(s::syncWifiMonitor);
+    }
+
+    private void syncWifiMonitor() {
+        boolean wanted = Preferences.wifiAutoStartEnabled(this) && Preferences.wifiTriggerSsid(this) != null;
+        if (wanted && wifiMonitor == null) {
+            wifiMonitor = new WifiTrigger.Monitor(this, () -> mainHandler.post(this::doEvaluateAutoStop));
+            wifiMonitor.start();
+        } else if (!wanted && wifiMonitor != null) {
+            wifiMonitor.stop();
+            wifiMonitor = null;
+        }
+    }
+
     public static void evaluateAutoStop() {
         if (instance != null) {
             instance.doEvaluateAutoStop();
@@ -944,23 +968,32 @@ public class GNSSServerService extends Service {
     private void doEvaluateAutoStop() {
         if (!running) return;
 
-        // Only auto-stop if BT auto-start/stop feature is enabled in preferences
-        if (!Preferences.bluetoothAutoStartEnabled(this)) {
-            AppLog.d(TAG, "BT auto-start/stop disabled in preferences, skipping auto-stop evaluation");
+        // Only auto-stop if Bluetooth or Wi-Fi auto-start/stop is enabled
+        boolean bt = Preferences.bluetoothAutoStartEnabled(this);
+        boolean wifi = Preferences.wifiAutoStartEnabled(this);
+        if (!bt && !wifi) {
+            AppLog.d(TAG, "Auto-start/stop disabled in preferences, skipping auto-stop evaluation");
             return;
         }
 
-        boolean btGone = BluetoothReceiver.allTriggerDevicesDisconnected();
+        boolean triggersGone = triggersGone();
         boolean clientsGone = (clientAddr == null);
 
-        if (btGone && clientsGone) {
+        if (triggersGone && clientsGone) {
             long delayMs = Preferences.bluetoothStopDelaySeconds(this) * 1000L;
-            AppLog.d(TAG, "All BT devices and clients disconnected, scheduling auto-stop in " + delayMs + "ms");
+            AppLog.d(TAG, "Car (Bluetooth/Wi-Fi) and clients gone, scheduling auto-stop in " + delayMs + "ms");
             mainHandler.removeCallbacks(btAutoStopRunnable);
             mainHandler.postDelayed(btAutoStopRunnable, delayMs);
         } else {
-            AppLog.d(TAG, "Auto-stop not needed (BT connected: " + !btGone + ", clients connected: " + !clientsGone + ")");
+            AppLog.d(TAG, "Auto-stop not needed (car connected: " + !triggersGone + ", clients connected: " + !clientsGone + ")");
         }
+    }
+
+    /** No enabled trigger (Bluetooth device, car Wi-Fi) is connected. */
+    private boolean triggersGone() {
+        boolean btGone = !Preferences.bluetoothAutoStartEnabled(this) || BluetoothReceiver.allTriggerDevicesDisconnected();
+        boolean wifiGone = !Preferences.wifiAutoStartEnabled(this) || !WifiTrigger.isConnected();
+        return btGone && wifiGone;
     }
 
     private void cancelBluetoothAutoStop() {
@@ -970,13 +1003,13 @@ public class GNSSServerService extends Service {
 
     private void btAutoStopService() {
         // Safety net: re-check conditions before stopping
-        boolean btGone = BluetoothReceiver.allTriggerDevicesDisconnected();
+        boolean triggersGone = triggersGone();
         boolean clientsGone = (clientAddr == null);
-        if (!btGone || !clientsGone) {
-            AppLog.i(TAG, "Bluetooth auto-stop skipped (BT connected: " + !btGone + ", clients connected: " + !clientsGone + ")");
+        if (!triggersGone || !clientsGone) {
+            AppLog.i(TAG, "Auto-stop skipped (car connected: " + !triggersGone + ", clients connected: " + !clientsGone + ")");
             return;
         }
-        AppLog.i(TAG, "Bluetooth auto-stop triggered - stopping service");
+        AppLog.i(TAG, "Auto-stop triggered (car Bluetooth/Wi-Fi gone) - stopping service");
         setServiceEnabled(this, false);
         stopSelf();
     }
