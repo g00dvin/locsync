@@ -30,8 +30,6 @@
     <string name="log_title">Журнал</string>
     <string name="log_clear">Очистить</string>
     <string name="request_permissions_short">Запросить</string>
-    <string name="autostart_wifi_boot">Автозапуск по Wi-Fi и при загрузке</string>
-    <string name="autostart_wifi_boot_sub">Задача JobScheduler переживает перезагрузку.</string>
     <string name="about_protocol">Протокол v3 · UDP 8887</string>
     <string name="license_gpl3">GNU GPL v3.0</string>
     <string name="license_view">Открыть лицензию</string>

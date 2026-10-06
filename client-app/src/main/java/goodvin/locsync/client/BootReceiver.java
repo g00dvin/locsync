@@ -37,6 +37,7 @@ public class BootReceiver extends BroadcastReceiver {
 
             // Boot does not gate on WiFi, so pass wifiConnected=true.
             AutostartPolicy.Decision decision = AutostartPolicy.decide(
+                    Preferences.autostartBoot(context),
                     true,
                     GNSSClientService.isServiceEnabled(context),
                     GNSSClientService.isServiceRunning());
@@ -53,7 +54,7 @@ public class BootReceiver extends BroadcastReceiver {
 
             // Re-arm the persisted WiFi-connect autostart job (belt-and-suspenders; the job is
             // itself persisted, but if it was ever lost this restores it on boot).
-            if (GNSSClientService.isServiceEnabled(context)) {
+            if (GNSSClientService.isServiceEnabled(context) && Preferences.autostartWifi(context)) {
                 AutostartScheduler.schedule(context);
             }
         }

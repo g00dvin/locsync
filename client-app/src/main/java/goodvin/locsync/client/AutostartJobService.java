@@ -40,12 +40,13 @@ public class AutostartJobService extends JobService {
 
     @Override
     public boolean onStartJob(JobParameters params) {
+        boolean triggerEnabled = Preferences.autostartWifi(this);
         boolean wifiConnected = isWifiConnected(this);
         boolean serviceEnabled = GNSSClientService.isServiceEnabled(this);
         boolean serviceRunning = GNSSClientService.isServiceRunning();
 
         AutostartPolicy.Decision decision =
-                AutostartPolicy.decide(wifiConnected, serviceEnabled, serviceRunning);
+                AutostartPolicy.decide(triggerEnabled, wifiConnected, serviceEnabled, serviceRunning);
         Preferences.setLastAutostart(this, "wifi_job", decision.name());
         AppLog.d(TAG, "Network job fired: " + decision.name()
                 + " (wifi=" + wifiConnected + ", enabled=" + serviceEnabled + ", running=" + serviceRunning + ")");
@@ -58,8 +59,8 @@ public class AutostartJobService extends JobService {
         // Re-arm (with a cooldown) while still enabled so future WiFi connects — or a service kill —
         // are caught again. A one-shot network job completes after this run; the cooldown prevents a
         // level-triggered reschedule loop while WiFi stays connected. If the user disabled the
-        // service, leave it cancelled.
-        if (serviceEnabled) {
+        // service or the Wi-Fi trigger, leave it cancelled.
+        if (serviceEnabled && triggerEnabled) {
             AutostartScheduler.rearm(this);
         }
 

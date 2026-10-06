@@ -291,7 +291,7 @@ public class MainActivity extends AppCompatActivity {
         if (GNSSClientService.isServiceEnabled(this) && !GNSSClientService.isServiceRunning()) {
             startGNSSService();
         }
-        if (GNSSClientService.isServiceEnabled(this) && Preferences.autostartWifiBoot(this)) {
+        if (GNSSClientService.isServiceEnabled(this) && Preferences.autostartWifi(this)) {
             AutostartScheduler.schedule(this);
         }
     }
@@ -471,16 +471,19 @@ public class MainActivity extends AppCompatActivity {
         bindUiScaleRow();
 
         // Automation
-        bindToggle(R.id.rowAutostart, getString(R.string.autostart_wifi_boot),
-                getString(R.string.autostart_wifi_boot_sub), Preferences.autostartWifiBoot(this),
+        bindToggle(R.id.rowAutostartWifi, getString(R.string.autostart_wifi),
+                getString(R.string.autostart_wifi_sub), Preferences.autostartWifi(this),
                 checked -> {
-                    Preferences.setAutostartWifiBoot(this, checked);
+                    Preferences.setAutostartWifi(this, checked);
                     if (checked) {
                         if (GNSSClientService.isServiceEnabled(this)) AutostartScheduler.schedule(this);
                     } else {
                         AutostartScheduler.cancel(this);
                     }
                 });
+        bindToggle(R.id.rowAutostartBoot, getString(R.string.autostart_boot),
+                getString(R.string.autostart_boot_sub), Preferences.autostartBoot(this),
+                checked -> Preferences.setAutostartBoot(this, checked));
         bindActionChevron(R.id.rowA11yAutostart, getString(R.string.a11y_autostart), null,
                 this::openAccessibilitySettings);
         bindToggle(R.id.rowStaticJitter, getString(R.string.static_jitter), null,
@@ -1184,7 +1187,7 @@ public class MainActivity extends AppCompatActivity {
         Intent serviceIntent = new Intent(this, GNSSClientService.class);
         startForegroundService(serviceIntent);
         Preferences.setServiceEnabled(this, true);
-        if (Preferences.autostartWifiBoot(this)) {
+        if (Preferences.autostartWifi(this)) {
             AutostartScheduler.schedule(this);
         }
         ensureBatteryOptimizationExemption();
