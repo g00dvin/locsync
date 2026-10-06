@@ -33,6 +33,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.SpannableStringBuilder;
@@ -770,7 +771,8 @@ public class MainActivity extends AppCompatActivity {
     @SuppressLint("BatteryLife")
     private void checkBatteryOptimization() {
         String packageName = getPackageName();
-        if (!Settings.System.canWrite(this)) {
+        PowerManager pm = getSystemService(PowerManager.class);
+        if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
             Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
                     Uri.parse("package:" + packageName));
             batteryOptimizationLauncher.launch(intent);
