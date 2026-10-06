@@ -191,4 +191,8 @@
     <string name="filter_adaptive_position_sub">The phone understates how precise its track is, so the filter leaned on speed and lagged behind. Learn from the fixes how much to trust them (up to 2× tighter).</string>
     <string name="filter_position_trust">Position error used</string>
     <string name="filter_turn_responsiveness">Turn responsiveness (1 = fastest)</string>
+    <string name="group_display">Display</string>
+    <string name="ui_scale">Interface size</string>
+    <string name="ui_scale_sub">%1$s · tap to change. For screens where everything looks too small or doesn\'t fit.</string>
+    <string name="ui_scale_auto">Auto (%1$s)</string>
 </resources>

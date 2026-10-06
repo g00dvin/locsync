@@ -328,6 +328,17 @@ public class Preferences {
     // for every getApplicationContext() call (~26 lines/s), flooding logcat so exported logs lose
     // everything else.
     /** All stored settings, for the diagnostics export. */
+    private static final String PREF_UI_SCALE = "uiScale";
+
+    /** UI scale multiplier for the whole interface; 0 = automatic (×2 on large screens, else ×1). */
+    public static void setUiScale(Context context, float scale) {
+        getPrefs(context).edit().putFloat(PREF_UI_SCALE, scale).apply();
+    }
+
+    public static float uiScale(Context context) {
+        return getPrefs(context).getFloat(PREF_UI_SCALE, 0f);
+    }
+
     public static java.util.Map<String, ?> dump(Context context) {
         return new java.util.TreeMap<>(getPrefs(context).getAll());
     }

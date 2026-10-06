@@ -188,4 +188,8 @@
     <string name="metrics_panel_title">Метрики производительности</string>
     <string name="export_metrics">Экспорт метрик CSV</string>
     <string name="metrics_export_none">Файла метрик пока нет — включите метрики и запустите сервис</string>
+    <string name="group_display">Экран</string>
+    <string name="ui_scale">Размер интерфейса</string>
+    <string name="ui_scale_sub">%1$s · нажмите, чтобы изменить. Если на вашей магнитоле всё слишком мелкое или не помещается.</string>
+    <string name="ui_scale_auto">Авто (%1$s)</string>
 </resources>

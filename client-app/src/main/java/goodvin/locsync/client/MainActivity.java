@@ -47,6 +47,7 @@ import android.widget.ViewFlipper;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
@@ -71,9 +72,12 @@ public class MainActivity extends AppCompatActivity {
     private static final int VIEW_CONNECT = 0, VIEW_MONITOR = 1, VIEW_SETTINGS = 2;
 
     // Head units have large, low-density screens where dp-sized UI reads tiny. Scale the whole UI
-    // (dp + sp uniformly) by raising the effective density on large screens; phones are untouched.
+    // (dp + sp uniformly) by raising the effective density: automatically ×2 on large screens (phones
+    // untouched), or the multiplier chosen in Settings → Display.
     private static final float LARGE_SCREEN_UI_SCALE = 2.0f;
     private static final int LARGE_SCREEN_MIN_SW_DP = 600;
+    private static final float[] UI_SCALES = {0f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f};   // 0 = auto
+    private static final String STATE_VIEW = "view";
 
     private static final String[] REQUIRED_PERMISSIONS = {
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -213,11 +217,24 @@ public class MainActivity extends AppCompatActivity {
     protected void attachBaseContext(Context base) {
         android.content.res.Configuration config =
                 new android.content.res.Configuration(base.getResources().getConfiguration());
-        if (config.smallestScreenWidthDp >= LARGE_SCREEN_MIN_SW_DP) {
-            config.densityDpi = Math.round(config.densityDpi * LARGE_SCREEN_UI_SCALE);
+        float scale = effectiveUiScale(Preferences.uiScale(base), config.smallestScreenWidthDp);
+        if (scale != 1f) {
+            config.densityDpi = Math.round(config.densityDpi * scale);
             base = base.createConfigurationContext(config);
         }
         super.attachBaseContext(base);
+    }
+
+    /** The multiplier actually applied: the chosen one, or ×2 on large screens / ×1 on phones for "auto". */
+    static float effectiveUiScale(float chosen, int smallestWidthDp) {
+        if (chosen > 0) return chosen;
+        return smallestWidthDp >= LARGE_SCREEN_MIN_SW_DP ? LARGE_SCREEN_UI_SCALE : 1f;
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putInt(STATE_VIEW, viewFlipper.getDisplayedChild());   // survive the UI-scale recreate
     }
 
     @Override
@@ -238,7 +255,7 @@ public class MainActivity extends AppCompatActivity {
         bindSettings();
         registerReceivers();
 
-        showView(VIEW_CONNECT);
+        showView(savedInstanceState != null ? savedInstanceState.getInt(STATE_VIEW, VIEW_CONNECT) : VIEW_CONNECT);
         refreshPermissions();
         refreshState();
         startUIUpdates();
@@ -408,6 +425,9 @@ public class MainActivity extends AppCompatActivity {
                 getString(R.string.permission_fine_location) + " · " + getString(R.string.permission_coarse_location),
                 getString(R.string.request_permissions_short), this::requestPermissions);
 
+        // Display
+        bindUiScaleRow();
+
         // Automation
         bindToggle(R.id.rowAutostart, getString(R.string.autostart_wifi_boot),
                 getString(R.string.autostart_wifi_boot_sub), Preferences.autostartWifiBoot(this),
@@ -502,6 +522,25 @@ public class MainActivity extends AppCompatActivity {
                 getString(R.string.license_view),
                 () -> startActivity(new Intent(Intent.ACTION_VIEW,
                         Uri.parse("https://www.gnu.org/licenses/gpl-3.0.html"))));
+    }
+
+    /** Tapping cycles through the scales; the activity is recreated so the new size shows at once. */
+    private void bindUiScaleRow() {
+        float chosen = Preferences.uiScale(this);
+        int sw = getApplicationContext().getResources().getConfiguration().smallestScreenWidthDp;
+        String value = chosen > 0 ? fmtScale(chosen)
+                : getString(R.string.ui_scale_auto, fmtScale(effectiveUiScale(0, sw)));
+        bindAction(R.id.rowUiScale, getString(R.string.ui_scale),
+                getString(R.string.ui_scale_sub, value), true, () -> {
+                    int i = 0;
+                    while (i < UI_SCALES.length && UI_SCALES[i] != chosen) i++;
+                    Preferences.setUiScale(this, UI_SCALES[(i + 1) % UI_SCALES.length]);
+                    recreate();
+                });
+    }
+
+    private static String fmtScale(float s) {
+        return "×" + (s == Math.rint(s) ? String.valueOf((int) s) : String.format(Locale.US, "%.2f", s).replaceAll("0$", ""));
     }
 
     private void refreshA11yAutostartRow() {
