@@ -28,6 +28,7 @@ public final class AutostartPolicy {
 
     public enum Decision {
         START,
+        SKIP_TRIGGER_OFF,
         SKIP_NO_WIFI,
         SKIP_NOT_ENABLED,
         SKIP_ALREADY_RUNNING,
@@ -40,6 +41,18 @@ public final class AutostartPolicy {
      * @param serviceRunning whether the client service is already running
      */
     public static Decision decide(boolean wifiConnected, boolean serviceEnabled, boolean serviceRunning) {
+        return decide(true, wifiConnected, serviceEnabled, serviceRunning);
+    }
+
+    /**
+     * @param triggerEnabled whether the user left this trigger on (Settings → Automation: "on Wi-Fi"
+     *                       for the network job, "on boot" for the boot receiver)
+     */
+    public static Decision decide(boolean triggerEnabled, boolean wifiConnected, boolean serviceEnabled,
+                                  boolean serviceRunning) {
+        if (!triggerEnabled) {
+            return Decision.SKIP_TRIGGER_OFF;
+        }
         if (!wifiConnected) {
             return Decision.SKIP_NO_WIFI;
         }

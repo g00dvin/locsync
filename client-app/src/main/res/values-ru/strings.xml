@@ -221,4 +221,8 @@
     <string name="setup_a11y_sub">Самый надёжный запуск вместе с магнитолой: включите «Автозапуск LocSync Client»</string>
     <string name="setup_battery">Без ограничений батареи</string>
     <string name="setup_battery_sub">Чтобы Android не останавливал LocSync в фоне</string>
+    <string name="autostart_wifi">Запуск при подключении к Wi-Fi</string>
+    <string name="autostart_wifi_sub">Когда магнитола подключается к Wi-Fi (например, к точке доступа телефона). Ещё и поднимает клиент в течение ~15 минут, если Android его остановил.</string>
+    <string name="autostart_boot">Запуск при загрузке</string>
+    <string name="autostart_boot_sub">Когда магнитола включается, не дожидаясь Wi-Fi. Некоторые магнитолы не сообщают о загрузке — тогда поможет автозапуск через спец. возможности.</string>
 </resources>

@@ -29,7 +29,9 @@
         <!-- Automation -->
         <TextView style="@style/LsGroupLabel" android:text="@string/group_automation" />
         <LinearLayout style="@style/LsGroupCard">
-            <include layout="@layout/row_setting_toggle" android:id="@+id/rowAutostart" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowAutostartWifi" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowAutostartBoot" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowA11yAutostart" />
             <View style="@style/LsDivider" />

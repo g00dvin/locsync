@@ -57,9 +57,10 @@ public class AutostartAccessibilityService extends AccessibilityService {
         AppLog.i(TAG, "Accessibility service connected");
 
         // Like boot: does not gate on Wi-Fi (the client itself waits for the server).
-        tryAutostart("accessibility", true);
+        // Its own on/off is the system Accessibility switch, so no app toggle gates it.
+        tryAutostart("accessibility", true, true);
 
-        if (GNSSClientService.isServiceEnabled(this) && Preferences.autostartWifiBoot(this)) {
+        if (GNSSClientService.isServiceEnabled(this) && Preferences.autostartWifi(this)) {
             AutostartScheduler.schedule(this);
         }
         registerWifiCallback();
@@ -87,8 +88,9 @@ public class AutostartAccessibilityService extends AccessibilityService {
         super.onDestroy();
     }
 
-    private void tryAutostart(String source, boolean wifiConnected) {
+    private void tryAutostart(String source, boolean triggerEnabled, boolean wifiConnected) {
         AutostartPolicy.Decision decision = AutostartPolicy.decide(
+                triggerEnabled,
                 wifiConnected,
                 GNSSClientService.isServiceEnabled(this),
                 GNSSClientService.isServiceRunning());
@@ -121,7 +123,7 @@ public class AutostartAccessibilityService extends AccessibilityService {
             @Override
             public void onAvailable(Network network) {
                 // Callback runs on the handler's (main) thread; the service start is cheap.
-                tryAutostart("a11y_wifi", true);
+                tryAutostart("a11y_wifi", Preferences.autostartWifi(AutostartAccessibilityService.this), true);
             }
         };
         try {

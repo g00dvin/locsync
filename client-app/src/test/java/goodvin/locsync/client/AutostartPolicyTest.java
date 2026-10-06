@@ -70,4 +70,11 @@ public class AutostartPolicyTest {
         assertFalse(AutostartPolicy.isAccessibilityServiceListed(
                 "com.other/.Svc:goodvin.locsync.client/.OtherService", FULL, SHORT));
     }
+
+    @Test
+    public void triggerSwitchedOffNeverStarts() {
+        assertEquals(Decision.SKIP_TRIGGER_OFF, AutostartPolicy.decide(false, true, true, false));
+        assertEquals(Decision.START, AutostartPolicy.decide(true, true, true, false));
+        assertEquals(Decision.SKIP_NO_WIFI, AutostartPolicy.decide(true, false, true, false));
+    }
 }

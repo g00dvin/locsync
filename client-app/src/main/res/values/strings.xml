@@ -224,4 +224,8 @@
     <string name="setup_a11y_sub">The most reliable way to start with the head unit: turn on “LocSync Client autostart”</string>
     <string name="setup_battery">Unrestricted battery use</string>
     <string name="setup_battery_sub">So Android doesn\'t stop LocSync in the background</string>
+    <string name="autostart_wifi">Start on Wi-Fi connect</string>
+    <string name="autostart_wifi_sub">When the head unit joins Wi-Fi (e.g. the phone\'s hotspot). Also brings the client back within ~15 min if Android stops it.</string>
+    <string name="autostart_boot">Start on boot</string>
+    <string name="autostart_boot_sub">When the head unit turns on, without waiting for Wi-Fi. Some head units don\'t report booting — then use Accessibility autostart.</string>
 </resources>

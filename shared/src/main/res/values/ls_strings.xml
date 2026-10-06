@@ -31,8 +31,6 @@
     <string name="log_title">Log</string>
     <string name="log_clear">Clear</string>
     <string name="request_permissions_short">Request</string>
-    <string name="autostart_wifi_boot">Autostart on Wi-Fi and boot</string>
-    <string name="autostart_wifi_boot_sub">JobScheduler task survives reboot.</string>
     <string name="about_protocol">Protocol version 3 · UDP 8887</string>
     <string name="license_gpl3">GNU GPL v3.0</string>
     <string name="license_view">View the license</string>

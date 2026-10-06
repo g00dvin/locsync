@@ -95,15 +95,31 @@ public class Preferences {
         return getPrefs(context).getLong(PREF_LAST_AUTOSTART_TIME, 0);
     }
 
-    private static final String PREF_AUTOSTART_WIFI_BOOT = "autostartWifiBootEnabled";
+    // One toggle used to cover both triggers (and boot ignored it); its value seeds both new ones.
+    private static final String LEGACY_AUTOSTART_WIFI_BOOT = "autostartWifiBootEnabled";
+    private static final String PREF_AUTOSTART_WIFI = "autostartWifiEnabled";
+    private static final String PREF_AUTOSTART_BOOT = "autostartBootEnabled";
 
-    /** User-facing toggle for the Wi-Fi/boot autostart job. Default true preserves prior behaviour. */
-    public static void setAutostartWifiBoot(Context context, boolean enabled) {
-        getPrefs(context).edit().putBoolean(PREF_AUTOSTART_WIFI_BOOT, enabled).apply();
+    /** Start the client when the head unit joins Wi-Fi (the persisted network job). Default on. */
+    public static void setAutostartWifi(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_AUTOSTART_WIFI, enabled).apply();
     }
 
-    public static boolean autostartWifiBoot(Context context) {
-        return getPrefs(context).getBoolean(PREF_AUTOSTART_WIFI_BOOT, true);
+    public static boolean autostartWifi(Context context) {
+        return getPrefs(context).getBoolean(PREF_AUTOSTART_WIFI, legacyAutostart(context));
+    }
+
+    /** Start the client when the head unit finishes booting. Default on. */
+    public static void setAutostartBoot(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_AUTOSTART_BOOT, enabled).apply();
+    }
+
+    public static boolean autostartBoot(Context context) {
+        return getPrefs(context).getBoolean(PREF_AUTOSTART_BOOT, legacyAutostart(context));
+    }
+
+    private static boolean legacyAutostart(Context context) {
+        return getPrefs(context).getBoolean(LEGACY_AUTOSTART_WIFI_BOOT, true);
     }
 
     private static final String PREF_DEBUG_LOGGING = "debugLoggingEnabled";
