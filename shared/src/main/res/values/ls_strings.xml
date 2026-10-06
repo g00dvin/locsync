@@ -109,4 +109,5 @@
     <string name="setup_open">Open</string>
     <string name="setup_row">Setup checklist</string>
     <string name="setup_row_sub">Step-by-step check of everything the app needs</string>
+    <string name="setup_no_screen">This screen isn\'t available on this device: open it from the system settings</string>
 </resources>

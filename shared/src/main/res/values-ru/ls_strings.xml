@@ -100,4 +100,5 @@
     <string name="setup_open">Открыть</string>
     <string name="setup_row">Мастер настройки</string>
     <string name="setup_row_sub">Пошаговая проверка всего, что нужно приложению</string>
+    <string name="setup_no_screen">Этот экран недоступен на устройстве: откройте его в системных настройках</string>
 </resources>

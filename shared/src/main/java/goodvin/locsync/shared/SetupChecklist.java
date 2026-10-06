@@ -38,12 +38,18 @@ public final class SetupChecklist {
      */
     public record Step(String title, String sub, boolean done, boolean optional, Runnable action) {}
 
-    /** True when every required step is done. */
-    public static boolean requiredDone(List<Step> steps) {
-        for (Step s : steps) {
-            if (!s.done() && !s.optional()) return false;
+    /**
+     * True on a fresh install only: an update from a version without the checklist must not open it
+     * for a user who has long set everything up.
+     */
+    public static boolean isFreshInstall(Context context) {
+        try {
+            android.content.pm.PackageInfo info =
+                    context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+            return info.firstInstallTime == info.lastUpdateTime;
+        } catch (android.content.pm.PackageManager.NameNotFoundException e) {
+            return false;
         }
-        return true;
     }
 
     /** Fills {@code container} (reusing its rows when the step count is unchanged). */

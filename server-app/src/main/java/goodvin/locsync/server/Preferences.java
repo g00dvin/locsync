@@ -229,6 +229,15 @@ public class Preferences {
     }
 
     private static final String PREF_SETUP_SHOWN = "setupShown";
+    private static final String PREF_NOTIFICATIONS_ASKED = "notificationsAsked";
+
+    public static void setNotificationsAsked(Context context) {
+        getPrefs(context).edit().putBoolean(PREF_NOTIFICATIONS_ASKED, true).apply();
+    }
+
+    public static boolean notificationsAsked(Context context) {
+        return getPrefs(context).getBoolean(PREF_NOTIFICATIONS_ASKED, false);
+    }
 
     /** The setup checklist opens by itself once, on the first start. */
     public static void setSetupShown(Context context) {

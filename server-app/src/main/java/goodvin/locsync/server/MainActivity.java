@@ -23,7 +23,6 @@ import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
-import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -239,12 +238,13 @@ public class MainActivity extends AppCompatActivity {
         ContextCompat.registerReceiver(this, metricsReceiver,
                 new IntentFilter("goodvin.locsync.METRICS"), ContextCompat.RECEIVER_NOT_EXPORTED);
 
-        if (savedInstanceState == null && !Preferences.setupShown(this)) {
-            showView(VIEW_SETUP);   // first start: walk through what the server needs
-            Preferences.setSetupShown(this);
-        } else {
-            showView(VIEW_CONNECT);
+        boolean firstRun = savedInstanceState == null && !Preferences.setupShown(this);
+        if (firstRun && !SetupChecklist.isFreshInstall(this)) {
+            Preferences.setSetupShown(this);   // updated from an older version: already set up
+            firstRun = false;
         }
+        // First start: walk through what the server needs (marked seen in onStart, once visible).
+        showView(firstRun ? VIEW_SETUP : VIEW_CONNECT);
 
         if (GNSSServerService.isServiceEnabled(this) && !GNSSServerService.isServiceRunning()) {
             startGNSSService();
@@ -263,6 +263,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
+        if (viewFlipper.getDisplayedChild() == VIEW_SETUP) Preferences.setSetupShown(this);
         refreshPermissions();
         refreshState();
         mainHandler.post(tick);
@@ -591,9 +592,11 @@ public class MainActivity extends AppCompatActivity {
                         this::checkBatteryOptimization),
                 new SetupChecklist.Step(getString(R.string.setup_notifications),
                         getString(R.string.setup_notifications_sub), notifications, true,
-                        () -> notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)),
+                        this::requestNotifications),
+                // Done once the head unit connects; "optional" only because nothing on the phone alone
+                // can complete it.
                 new SetupChecklist.Step(getString(R.string.setup_hotspot),
-                        getString(R.string.setup_hotspot_sub), GNSSServerService.isClientConnected(), false, () -> {
+                        getString(R.string.setup_hotspot_sub), GNSSServerService.isClientConnected(), true, () -> {
                             if (!GNSSServerService.isServiceRunning()) startGNSSService();
                             openHotspotSettings();
                         }));
@@ -604,17 +607,35 @@ public class MainActivity extends AppCompatActivity {
         return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED;
     }
 
+    /** Asks once; after two refusals Android stops asking, so then open the app's notification settings. */
+    private void requestNotifications() {
+        if (shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+                || !Preferences.notificationsAsked(this)) {
+            Preferences.setNotificationsAsked(this);
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS);
+        } else {
+            openSettingsScreen(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
+        }
+    }
+
     /** There is no public action for the hotspot screen; most phones still open it, else Wi-Fi/network. */
     private void openHotspotSettings() {
-        for (String action : new String[]{"android.settings.TETHER_SETTINGS", Settings.ACTION_WIRELESS_SETTINGS,
-                Settings.ACTION_SETTINGS}) {
+        openSettingsScreen(new Intent("android.settings.TETHER_SETTINGS"),
+                new Intent(Settings.ACTION_WIRELESS_SETTINGS), new Intent(Settings.ACTION_SETTINGS));
+    }
+
+    /** The first screen that opens; OEMs may lack or lock one (ActivityNotFound / SecurityException). */
+    private void openSettingsScreen(Intent... candidates) {
+        for (Intent intent : candidates) {
             try {
-                startActivity(new Intent(action));
+                startActivity(intent);
                 return;
-            } catch (ActivityNotFoundException ignored) {
-                // try the next one
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Cannot open " + intent.getAction(), e);
             }
         }
+        Toast.makeText(this, R.string.setup_no_screen, Toast.LENGTH_LONG).show();
     }
 
     private void updateBanner() {

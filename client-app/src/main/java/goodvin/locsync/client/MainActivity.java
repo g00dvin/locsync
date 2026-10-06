@@ -277,8 +277,11 @@ public class MainActivity extends AppCompatActivity {
 
         int firstView = savedInstanceState != null ? savedInstanceState.getInt(STATE_VIEW, VIEW_CONNECT) : VIEW_CONNECT;
         if (savedInstanceState == null && !Preferences.setupShown(this)) {
-            firstView = VIEW_SETUP;   // first start: walk through what the app needs
-            Preferences.setSetupShown(this);
+            if (SetupChecklist.isFreshInstall(this)) {
+                firstView = VIEW_SETUP;   // first start: walk through what the app needs (marked seen in onResume)
+            } else {
+                Preferences.setSetupShown(this);   // updated from an older version: already set up
+            }
         }
         showView(firstView);
         refreshPermissions();
@@ -307,6 +310,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        // Seen only once it is actually on screen (not when an autostart creates the activity unseen).
+        if (viewFlipper.getDisplayedChild() == VIEW_SETUP) Preferences.setSetupShown(this);
         mockCheckedElapsed = 0;   // e.g. returning from Developer options
         // Recompute from the service rather than assuming a state; also re-check mock-app selection.
         refreshPermissions();
@@ -664,7 +669,12 @@ public class MainActivity extends AppCompatActivity {
                         this::openMockLocationSettings),
                 new SetupChecklist.Step(getString(R.string.setup_connect),
                         getString(R.string.setup_connect_sub), connected, false, () -> {
-                            if (!GNSSClientService.isServiceRunning()) startGNSSService();
+                            if (!GNSSClientService.isServiceRunning()) {
+                                // Not startGNSSService(): its battery prompt would open on top of Wi-Fi
+                                // settings (battery has its own step).
+                                Preferences.setServiceEnabled(this, true);
+                                startForegroundService(new Intent(this, GNSSClientService.class));
+                            }
                             openSettingsScreen(Settings.ACTION_WIFI_SETTINGS);
                         }),
                 new SetupChecklist.Step(getString(R.string.setup_a11y),
@@ -677,12 +687,17 @@ public class MainActivity extends AppCompatActivity {
         SetupChecklist.render(findViewById(R.id.setupSteps), steps);
     }
 
+    /** Head-unit ROMs often lack (or lock) system screens: fall back to Settings, then just say so. */
     private void openSettingsScreen(String action) {
-        try {
-            startActivity(new Intent(action));
-        } catch (ActivityNotFoundException e) {
-            startActivity(new Intent(Settings.ACTION_SETTINGS));
+        for (String a : new String[]{action, Settings.ACTION_SETTINGS}) {
+            try {
+                startActivity(new Intent(a));
+                return;
+            } catch (RuntimeException e) {   // ActivityNotFoundException, SecurityException
+                Log.w(TAG, "Cannot open " + a, e);
+            }
         }
+        Toast.makeText(this, R.string.setup_no_screen, Toast.LENGTH_LONG).show();
     }
 
     private void refreshA11yAutostartRow() {
