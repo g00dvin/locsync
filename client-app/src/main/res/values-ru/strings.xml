@@ -210,4 +210,5 @@
     <string name="phone_ok">Заряд и температура в норме</string>
     <string name="phone_hot">Перегревается: GPS может работать хуже или отключиться. Уберите телефон с солнца или от обдува печки.</string>
     <string name="phone_low_battery">Мало заряда: подключите зарядку</string>
+    <string name="phone_title">Телефон</string>
 </resources>

@@ -881,12 +881,14 @@ public class MainActivity extends AppCompatActivity {
         }
         card.setVisibility(View.VISIBLE);
         float temp = phone.hasBatteryTempC() ? phone.getBatteryTempC() : Float.NaN;
-        StringBuilder title = new StringBuilder(getString(phone.getCharging()
-                ? R.string.phone_battery_charging : R.string.phone_battery, phone.getBatteryPercent()));
-        if (!Float.isNaN(temp)) title.append(" · ").append(String.format(Locale.US, "%.0f °C", temp));
+        int percent = phone.hasBatteryPercent() ? phone.getBatteryPercent() : -1;
+        StringBuilder title = new StringBuilder(percent < 0 ? getString(R.string.phone_title)
+                : getString(phone.getCharging() ? R.string.phone_battery_charging : R.string.phone_battery, percent));
+        // Floor, so 44.6 °C doesn't read "45 °C" while the card still says it's fine (hot is ≥ 45).
+        if (!Float.isNaN(temp)) title.append(" · ").append((int) Math.floor(temp)).append(" °C");
         TextView titleView = findViewById(R.id.phoneTitle);
         titleView.setText(title);
-        PhoneHealth health = PhoneHealth.of(phone.getBatteryPercent(), phone.getCharging(), temp,
+        PhoneHealth health = PhoneHealth.of(percent, phone.getCharging(), temp,
                 phone.getThermalStatus());
         TextView detail = findViewById(R.id.phoneDetail);
         detail.setText(switch (health) {

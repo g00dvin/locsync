@@ -401,6 +401,7 @@ public class GNSSServerService extends Service {
         mainHandler.removeCallbacks(keepaliveRunnable);
         mainHandler.removeCallbacks(metricsTick);
         metricsPrimed = false;
+        lastServerResponse.clearPhone();   // re-sampled when the server starts again
         clientAddr = null;
         if (udpSocket != null) {
             udpSocket.close();
@@ -415,6 +416,8 @@ public class GNSSServerService extends Service {
         }
         mainHandler.removeCallbacks(metricsTick);
         metricsPrimed = false;
+        phoneStateTick = 1;   // the next sample is due in 5 ticks: take this one now
+        samplePhoneStateSafely();
         mainHandler.postDelayed(metricsTick, METRICS_INTERVAL_MS);
     }
 
@@ -433,7 +436,7 @@ public class GNSSServerService extends Service {
         phone.setCharging(status == BatteryManager.BATTERY_STATUS_CHARGING
                 || status == BatteryManager.BATTERY_STATUS_FULL);
         int tenths = battery.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Integer.MIN_VALUE);
-        if (tenths != Integer.MIN_VALUE) phone.setBatteryTempC(tenths / 10f);
+        if (tenths > 0) phone.setBatteryTempC(tenths / 10f);   // some phones report 0 for "unknown"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             PowerManager pm = getSystemService(PowerManager.class);
             if (pm != null) phone.setThermalStatus(pm.getCurrentThermalStatus());
@@ -441,14 +444,16 @@ public class GNSSServerService extends Service {
         lastServerResponse.setPhone(phone);   // main thread, like every other builder write
     }
 
-    private void sampleMetrics() {
-        if (phoneStateTick++ % PHONE_STATE_EVERY_TICKS == 0) {
-            try {
-                samplePhoneState();
-            } catch (RuntimeException e) {
-                Log.w(TAG, "phone state sampling failed", e);
-            }
+    private void samplePhoneStateSafely() {
+        try {
+            samplePhoneState();
+        } catch (RuntimeException e) {
+            Log.w(TAG, "phone state sampling failed", e);
         }
+    }
+
+    private void sampleMetrics() {
+        if (phoneStateTick++ % PHONE_STATE_EVERY_TICKS == 0) samplePhoneStateSafely();
         try {
             // Compute + broadcast the snapshot every tick so the Monitor screen always shows live
             // link-health data; the metrics toggle only gates persistence (CSV + logcat).

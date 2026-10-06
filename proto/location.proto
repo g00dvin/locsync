@@ -13,7 +13,7 @@ message ServerResponse {
 }
 
 message PhoneState {
-    int32 battery_percent = 1;       // 0-100
+    optional int32 battery_percent = 1;   // 0-100; absent when the phone doesn't report it
     bool charging = 2;
     optional float battery_temp_c = 3;
     int32 thermal_status = 4;        // PowerManager.THERMAL_STATUS_* (Android 10+), 0 = none/unknown

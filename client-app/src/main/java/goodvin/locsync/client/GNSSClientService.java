@@ -74,8 +74,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private Location lastReceivedLocation;
     private static long lastUpdateTime;
     // The phone's battery and heat from the last response (null until a server that sends it).
-    private static volatile LocationProto.PhoneState phoneState;
-    private static volatile long phoneStateElapsedMs;
+    private record PhoneSample(LocationProto.PhoneState state, long elapsedMs) {}
+    private static volatile PhoneSample phoneSample;
     private int lastBroadcastSatelliteCount = -1;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile long lastResponseTime = 0;     // elapsedRealtime of the last RESPONSE
@@ -418,8 +418,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             }
 
             if (response.hasPhone()) {
-                phoneState = response.getPhone();
-                phoneStateElapsedMs = SystemClock.elapsedRealtime();
+                phoneSample = new PhoneSample(response.getPhone(), SystemClock.elapsedRealtime());
             }
             if (response.hasLocationUpdate()) {
                 handleLocationUpdate(response);
@@ -841,9 +840,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
     /** The phone's battery/heat, or null when unknown or older than 30 s (server gone or too old). */
     public static LocationProto.PhoneState getPhoneState() {
-        LocationProto.PhoneState s = phoneState;
-        if (s == null || SystemClock.elapsedRealtime() - phoneStateElapsedMs > PHONE_STATE_STALE_MS) return null;
-        return s;
+        PhoneSample s = phoneSample;
+        if (s == null || SystemClock.elapsedRealtime() - s.elapsedMs() > PHONE_STATE_STALE_MS) return null;
+        return s.state();
     }
 
     public static long getLastUpdateTime() {

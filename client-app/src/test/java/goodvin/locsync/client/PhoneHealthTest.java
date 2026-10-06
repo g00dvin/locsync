@@ -22,5 +22,6 @@ public class PhoneHealthTest {
     public void lowBatteryWhenNotCharging() {
         assertEquals(PhoneHealth.LOW_BATTERY, PhoneHealth.of(15, false, 30f, 0));
         assertEquals(PhoneHealth.OK, PhoneHealth.of(16, false, 30f, 0));
+        assertEquals(PhoneHealth.OK, PhoneHealth.of(-1, false, 30f, 0));   // level unknown
     }
 }
