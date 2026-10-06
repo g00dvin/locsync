@@ -35,6 +35,8 @@
         <!-- Automation -->
         <TextView style="@style/LsGroupLabel" android:text="@string/group_automation" />
         <LinearLayout style="@style/LsGroupCard">
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowBootAutostart" />
+            <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowBluetooth" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowTriggerDevices" />

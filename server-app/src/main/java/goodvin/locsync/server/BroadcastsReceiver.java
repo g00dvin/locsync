@@ -65,8 +65,10 @@ public class BroadcastsReceiver extends BroadcastReceiver {
                 AppLog.d(TAG, "Device boot completed, checking if GNSS server should auto-start");
                 WifiTrigger.sync(appContext, true);   // network callbacks don't survive a reboot
 
-                // Check if the service was previously enabled
-                if (GNSSServerService.isServiceEnabled(appContext)) {
+                // Only when the user wants it (Settings → Automation) and the server was left enabled
+                if (!Preferences.bootAutoStartEnabled(appContext)) {
+                    AppLog.d(TAG, "Start on boot is off");
+                } else if (GNSSServerService.isServiceEnabled(appContext)) {
                     if (GNSSServerService.isServiceRunning()) {
                         AppLog.i(TAG, "GNSS server service is already running. Don't start it again.");
                         return;
