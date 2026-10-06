@@ -115,4 +115,15 @@
     <string name="wifi_start_failed_title">Couldn\'t start on the car\'s Wi-Fi</string>
     <string name="wifi_start_failed_text">Android didn\'t allow starting in the background. Open LocSync Server and allow unrestricted battery use and location “Allow all the time”.</string>
     <string name="wifi_needs_background_location">To recognise the car\'s Wi-Fi in the background, allow location “Allow all the time” (Settings → Permissions)</string>
+    <string name="setup_intro">Go through these steps once. Each one opens the right screen; come back here when done.</string>
+    <string name="setup_location">Location access</string>
+    <string name="setup_location_sub">Needed to read the phone\'s GPS</string>
+    <string name="setup_background">Location “Allow all the time”</string>
+    <string name="setup_background_sub">So the server keeps working with the screen off or another app open</string>
+    <string name="setup_battery">Unrestricted battery use</string>
+    <string name="setup_battery_sub">So Android doesn\'t stop the server during a trip</string>
+    <string name="setup_notifications">Notifications</string>
+    <string name="setup_notifications_sub">Shows that the server is running, with a Stop button</string>
+    <string name="setup_hotspot">Hotspot and head unit</string>
+    <string name="setup_hotspot_sub">Turn on the phone\'s Wi-Fi hotspot, connect the head unit to it and start LocSync Client there</string>
 </resources>

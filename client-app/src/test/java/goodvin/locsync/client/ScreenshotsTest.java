@@ -29,6 +29,8 @@ import java.io.FileOutputStream;
 import java.lang.reflect.Field;
 import java.time.Duration;
 
+import goodvin.locsync.proto.LocationProto;
+
 /**
  * Renders the real client screens with demo data into docs/screenshots for the README.
  * Opt-in (excluded from normal test runs):
@@ -57,6 +59,7 @@ public class ScreenshotsTest {
                 app.getPackageName(), AppOpsManager.MODE_ALLOWED);
         Preferences.setServiceEnabled(app, false);   // don't start the real service
         Preferences.setLiveMonitoring(app, true);
+        Preferences.setSetupShown(app);                // open on Home, not the first-run checklist
 
         // A "running" service connected to the phone, without starting its sockets.
         GNSSClientService service = Robolectric.buildService(GNSSClientService.class).get();
@@ -64,6 +67,8 @@ public class ScreenshotsTest {
         cm.setState(ConnectionManager.ConnectionState.CONNECTED, "", "192.168.43.1");
         setField(service, "connectionManager", cm);
         setStatic(GNSSClientService.class, "instance", service);
+        setPhoneState(LocationProto.PhoneState.newBuilder().setBatteryPercent(78).setCharging(true)
+                .setBatteryTempC(36.4f).build());
 
         goodvin.locsync.shared.AppLog.i("GNSSClientService", "Server found at 192.168.43.1");
         goodvin.locsync.shared.AppLog.i("GNSSClientService", "Mock location provider enabled");
@@ -76,6 +81,8 @@ public class ScreenshotsTest {
             idle(Duration.ofSeconds(1));
         }
         feed(app, activity, 40);
+        setPhoneState(LocationProto.PhoneState.newBuilder().setBatteryPercent(78).setCharging(true)
+                .setBatteryTempC(36.4f).build());
         idle(Duration.ofMillis(300));
 
         File dir = new File(System.getProperty("screenshots.dir", "build/screenshots"));
@@ -89,6 +96,9 @@ public class ScreenshotsTest {
         activity.findViewById(R.id.btnLeft).performClick();   // settings
         idle(Duration.ofMillis(300));
         capture(activity, new File(dir, "client-settings.png"), true);
+        activity.findViewById(R.id.rowSetup).performClick();
+        idle(Duration.ofMillis(300));
+        capture(activity, new File(dir, "client-setup.png"), true);
     }
 
     private static void feed(Application app, MainActivity activity, int i) throws Exception {
@@ -129,6 +139,14 @@ public class ScreenshotsTest {
         app.sendBroadcast(new Intent("goodvin.locsync.FILTER_STATS").setPackage(app.getPackageName())
                 .putExtra("labels", labelText)
                 .putExtra("values", values));
+    }
+
+    /** Keeps the phone card fresh (it hides a state older than 30 s). */
+    private static void setPhoneState(LocationProto.PhoneState state) throws Exception {
+        Class<?> sample = Class.forName("goodvin.locsync.client.GNSSClientService$PhoneSample");
+        java.lang.reflect.Constructor<?> ctor = sample.getDeclaredConstructor(LocationProto.PhoneState.class, long.class);
+        ctor.setAccessible(true);
+        setStatic(GNSSClientService.class, "phoneSample", ctor.newInstance(state, android.os.SystemClock.elapsedRealtime()));
     }
 
     private static void idle(Duration d) {

@@ -57,6 +57,7 @@ public class ScreenshotsTest {
                 Manifest.permission.POST_NOTIFICATIONS);
         GNSSServerService.setServiceEnabled(app, false);   // don't start the real service
         Preferences.setLiveMonitoring(app, true);
+        Preferences.setSetupShown(app);                // open on Home, not the first-run checklist
 
         // A running service with a connected head unit and a fix, without starting its socket or GPS.
         GNSSServerService service = Robolectric.buildService(GNSSServerService.class).get();
@@ -104,6 +105,9 @@ public class ScreenshotsTest {
         activity.findViewById(R.id.btnLeft).performClick();   // settings
         idle(Duration.ofMillis(300));
         capture(activity, new File(dir, "server-settings.png"), true);
+        activity.findViewById(R.id.rowSetup).performClick();
+        idle(Duration.ofMillis(300));
+        capture(activity, new File(dir, "server-setup.png"), true);
     }
 
     private static void feed(Application app, int i) {

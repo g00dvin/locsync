@@ -101,4 +101,12 @@
     <string name="update_busy">Already downloading</string>
     <string name="update_no_network">no internet connection</string>
     <string name="update_test_build">Test build: updates are offered to release builds only</string>
+    <string name="setup_title">Setup</string>
+    <string name="setup_done">Done</string>
+    <string name="setup_step_done">✓ %1$d. %2$s</string>
+    <string name="setup_step_todo">%1$d. %2$s</string>
+    <string name="setup_recommended">Recommended. %1$s</string>
+    <string name="setup_open">Open</string>
+    <string name="setup_row">Setup checklist</string>
+    <string name="setup_row_sub">Step-by-step check of everything the app needs</string>
 </resources>

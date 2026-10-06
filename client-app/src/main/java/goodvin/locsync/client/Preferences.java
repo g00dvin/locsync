@@ -356,6 +356,17 @@ public class Preferences {
                 .apply();
     }
 
+    private static final String PREF_SETUP_SHOWN = "setupShown";
+
+    /** The setup checklist opens by itself once, on the first start. */
+    public static void setSetupShown(Context context) {
+        getPrefs(context).edit().putBoolean(PREF_SETUP_SHOWN, true).apply();
+    }
+
+    public static boolean setupShown(Context context) {
+        return getPrefs(context).getBoolean(PREF_SETUP_SHOWN, false);
+    }
+
     /** All stored settings, for the diagnostics export. */
     public static java.util.Map<String, ?> dump(Context context) {
         return new java.util.TreeMap<>(getPrefs(context).getAll());

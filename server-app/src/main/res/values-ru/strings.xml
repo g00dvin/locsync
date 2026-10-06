@@ -108,4 +108,15 @@
     <string name="wifi_start_failed_title">Не удалось запустить по Wi-Fi машины</string>
     <string name="wifi_start_failed_text">Android не разрешил запуск в фоне. Откройте LocSync Server и разрешите работу батареи без ограничений и доступ к местоположению «Разрешить в любом режиме».</string>
     <string name="wifi_needs_background_location">Чтобы узнавать Wi-Fi машины в фоне, разрешите доступ к местоположению «Разрешить в любом режиме» (Настройки → Разрешения)</string>
+    <string name="setup_intro">Пройдите эти шаги один раз. Каждый открывает нужный экран — после настройки вернитесь сюда.</string>
+    <string name="setup_location">Доступ к местоположению</string>
+    <string name="setup_location_sub">Нужен, чтобы читать GPS телефона</string>
+    <string name="setup_background">Местоположение «Разрешить в любом режиме»</string>
+    <string name="setup_background_sub">Чтобы сервер работал с выключенным экраном и в другом приложении</string>
+    <string name="setup_battery">Без ограничений батареи</string>
+    <string name="setup_battery_sub">Чтобы Android не останавливал сервер в поездке</string>
+    <string name="setup_notifications">Уведомления</string>
+    <string name="setup_notifications_sub">Показывают, что сервер работает, и дают кнопку «Стоп»</string>
+    <string name="setup_hotspot">Точка доступа и магнитола</string>
+    <string name="setup_hotspot_sub">Включите точку доступа Wi-Fi на телефоне, подключите к ней магнитолу и запустите на ней LocSync Client</string>
 </resources>

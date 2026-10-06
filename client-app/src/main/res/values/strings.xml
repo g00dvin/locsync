@@ -214,4 +214,14 @@
     <string name="phone_hot">Overheating: GPS may get worse or stop. Keep the phone out of the sun or away from the heater.</string>
     <string name="phone_low_battery">Battery is low: connect the charger</string>
     <string name="phone_title">Phone</string>
+    <string name="setup_intro">Go through these steps once. Each one opens the right screen; come back here when done.</string>
+    <string name="setup_location">Location access</string>
+    <string name="setup_location_sub">Needed to give the navigator a position</string>
+    <string name="setup_mock">Mock location app</string>
+    <string name="setup_connect">Connect to the phone</string>
+    <string name="setup_connect_sub">Start LocSync Server on the phone, turn on its hotspot and connect the head unit to it</string>
+    <string name="setup_a11y">Autostart via Accessibility</string>
+    <string name="setup_a11y_sub">The most reliable way to start with the head unit: turn on “LocSync Client autostart”</string>
+    <string name="setup_battery">Unrestricted battery use</string>
+    <string name="setup_battery_sub">So Android doesn\'t stop LocSync in the background</string>
 </resources>

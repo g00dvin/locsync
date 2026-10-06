@@ -65,6 +65,7 @@ import goodvin.locsync.shared.LinkState;
 import goodvin.locsync.shared.LogExporter;
 import goodvin.locsync.shared.PowerOrbView;
 import goodvin.locsync.shared.SettingsRows;
+import goodvin.locsync.shared.SetupChecklist;
 import goodvin.locsync.shared.SparklineView;
 import goodvin.locsync.shared.UpdateChecker;
 import goodvin.locsync.shared.UpdateRow;
@@ -72,7 +73,7 @@ import goodvin.locsync.shared.VersionGetter;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "GNSSClientActivity";
-    private static final int VIEW_CONNECT = 0, VIEW_MONITOR = 1, VIEW_SETTINGS = 2;
+    private static final int VIEW_CONNECT = 0, VIEW_MONITOR = 1, VIEW_SETTINGS = 2, VIEW_SETUP = 3;
 
     // Head units have large, low-density screens where dp-sized UI reads tiny. Scale the whole UI
     // (dp + sp uniformly) by raising the effective density: automatically ×2 on large screens (phones
@@ -274,7 +275,12 @@ public class MainActivity extends AppCompatActivity {
         }
         registerReceivers();
 
-        showView(savedInstanceState != null ? savedInstanceState.getInt(STATE_VIEW, VIEW_CONNECT) : VIEW_CONNECT);
+        int firstView = savedInstanceState != null ? savedInstanceState.getInt(STATE_VIEW, VIEW_CONNECT) : VIEW_CONNECT;
+        if (savedInstanceState == null && !Preferences.setupShown(this)) {
+            firstView = VIEW_SETUP;   // first start: walk through what the app needs
+            Preferences.setSetupShown(this);
+        }
+        showView(firstView);
         refreshPermissions();
         refreshState();
         startUIUpdates();
@@ -351,6 +357,11 @@ public class MainActivity extends AppCompatActivity {
             case VIEW_SETTINGS -> {
                 titleText.setText(R.string.nav_settings);
                 subtitleText.setVisibility(View.GONE);
+            }
+            case VIEW_SETUP -> {
+                titleText.setText(R.string.setup_title);
+                subtitleText.setVisibility(View.GONE);
+                renderSetup();
             }
             default -> {
                 titleText.setText(R.string.app_name);
@@ -445,6 +456,11 @@ public class MainActivity extends AppCompatActivity {
         bindActionButton(R.id.rowPermissions, "",
                 getString(R.string.permission_fine_location) + " · " + getString(R.string.permission_coarse_location),
                 getString(R.string.request_permissions_short), this::requestPermissions);
+
+        bindActionChevron(R.id.rowSetup, getString(R.string.setup_row), getString(R.string.setup_row_sub),
+                () -> showView(VIEW_SETUP));
+        setText(R.id.viewSetup, R.id.setupIntro, getString(R.string.setup_intro));
+        findViewById(R.id.btnSetupDone).setOnClickListener(v -> showView(VIEW_CONNECT));
 
         // Display
         bindUiScaleRow();
@@ -634,6 +650,40 @@ public class MainActivity extends AppCompatActivity {
         return "×" + SCALE_FORMAT.format(s);
     }
 
+    /** The setup checklist with each step's current state (re-checked when returning to the app). */
+    private void renderSetup() {
+        PowerManager pm = getSystemService(PowerManager.class);
+        boolean connected = currentState() == LinkState.CONNECTED;
+        List<SetupChecklist.Step> steps = List.of(
+                new SetupChecklist.Step(getString(R.string.setup_location),
+                        getString(R.string.setup_location_sub),
+                        missingPermissionNames().isEmpty(), false, this::requestPermissions),
+                new SetupChecklist.Step(getString(R.string.setup_mock),
+                        getString(R.string.nav_mock_detail), isMockAppSelected(), false,
+                        this::openMockLocationSettings),
+                new SetupChecklist.Step(getString(R.string.setup_connect),
+                        getString(R.string.setup_connect_sub), connected, false, () -> {
+                            if (!GNSSClientService.isServiceRunning()) startGNSSService();
+                            openSettingsScreen(Settings.ACTION_WIFI_SETTINGS);
+                        }),
+                new SetupChecklist.Step(getString(R.string.setup_a11y),
+                        getString(R.string.setup_a11y_sub), AutostartAccessibilityService.isEnabled(this), true,
+                        this::openAccessibilitySettings),
+                new SetupChecklist.Step(getString(R.string.setup_battery),
+                        getString(R.string.setup_battery_sub),
+                        pm == null || pm.isIgnoringBatteryOptimizations(getPackageName()), true,
+                        this::ensureBatteryOptimizationExemption));
+        SetupChecklist.render(findViewById(R.id.setupSteps), steps);
+    }
+
+    private void openSettingsScreen(String action) {
+        try {
+            startActivity(new Intent(action));
+        } catch (ActivityNotFoundException e) {
+            startActivity(new Intent(Settings.ACTION_SETTINGS));
+        }
+    }
+
     private void refreshA11yAutostartRow() {
         View row = findViewById(R.id.rowA11yAutostart);
         TextView sub = row.findViewById(R.id.row_sub);
@@ -706,6 +756,7 @@ public class MainActivity extends AppCompatActivity {
         subtitleText.setText(state == LinkState.CONNECTED ? getString(R.string.sub_client_connected) : statusSub.getText());
         updateBanner(state);
         updateConnectReadouts();
+        if (viewFlipper.getDisplayedChild() == VIEW_SETUP) renderSetup();
     }
 
     private void updateBanner(LinkState state) {

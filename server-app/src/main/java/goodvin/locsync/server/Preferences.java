@@ -228,6 +228,17 @@ public class Preferences {
         return getPrefs(context).getString(PREF_WIFI_TRIGGER_SSID, null);
     }
 
+    private static final String PREF_SETUP_SHOWN = "setupShown";
+
+    /** The setup checklist opens by itself once, on the first start. */
+    public static void setSetupShown(Context context) {
+        getPrefs(context).edit().putBoolean(PREF_SETUP_SHOWN, true).apply();
+    }
+
+    public static boolean setupShown(Context context) {
+        return getPrefs(context).getBoolean(PREF_SETUP_SHOWN, false);
+    }
+
     private static final String PREF_GPS_IDLE_STOP_S = "gpsIdleStopSeconds";
     private static final String PREF_BT_STOP_DELAY_S = "bluetoothStopDelaySeconds";
 

@@ -23,6 +23,7 @@ import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
+import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -74,6 +75,7 @@ import goodvin.locsync.shared.LogExporter;
 import goodvin.locsync.shared.PowerOrbView;
 import goodvin.locsync.shared.SatelliteBarsView;
 import goodvin.locsync.shared.SettingsRows;
+import goodvin.locsync.shared.SetupChecklist;
 import goodvin.locsync.shared.SparklineView;
 import goodvin.locsync.shared.UpdateChecker;
 import goodvin.locsync.shared.UpdateRow;
@@ -81,7 +83,7 @@ import goodvin.locsync.shared.VersionGetter;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "GNSSServerActivity";
-    private static final int VIEW_CONNECT = 0, VIEW_MONITOR = 1, VIEW_SETTINGS = 2;
+    private static final int VIEW_CONNECT = 0, VIEW_MONITOR = 1, VIEW_SETTINGS = 2, VIEW_SETUP = 3;
     private UpdateRow updateRow;
     private Runnable bannerAction;
     private boolean bannerIsUpdate;
@@ -237,7 +239,12 @@ public class MainActivity extends AppCompatActivity {
         ContextCompat.registerReceiver(this, metricsReceiver,
                 new IntentFilter("goodvin.locsync.METRICS"), ContextCompat.RECEIVER_NOT_EXPORTED);
 
-        showView(VIEW_CONNECT);
+        if (savedInstanceState == null && !Preferences.setupShown(this)) {
+            showView(VIEW_SETUP);   // first start: walk through what the server needs
+            Preferences.setSetupShown(this);
+        } else {
+            showView(VIEW_CONNECT);
+        }
 
         if (GNSSServerService.isServiceEnabled(this) && !GNSSServerService.isServiceRunning()) {
             startGNSSService();
@@ -304,6 +311,11 @@ public class MainActivity extends AppCompatActivity {
             case VIEW_SETTINGS -> {
                 titleText.setText(R.string.nav_settings);
                 subtitleText.setVisibility(View.GONE);
+            }
+            case VIEW_SETUP -> {
+                titleText.setText(R.string.setup_title);
+                subtitleText.setVisibility(View.GONE);
+                renderSetup();
             }
             default -> {
                 titleText.setText(R.string.app_name);
@@ -392,6 +404,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bindSettings() {
+        bindActionChevron(R.id.rowSetup, getString(R.string.setup_row), getString(R.string.setup_row_sub),
+                () -> showView(VIEW_SETUP));
+        setText(R.id.viewSetup, R.id.setupIntro, getString(R.string.setup_intro));
+        findViewById(R.id.btnSetupDone).setOnClickListener(v -> showView(VIEW_CONNECT));
         bindActionButton(R.id.rowPermissions, "",
                 getString(R.string.permission_fine_location) + " · " + getString(R.string.permission_coarse_location)
                         + " · " + getString(R.string.permission_background_location),
@@ -550,6 +566,54 @@ public class MainActivity extends AppCompatActivity {
         subtitleText.setText(statusSub.getText());
         updateBanner();
         updateConnectReadouts();
+        if (viewFlipper.getDisplayedChild() == VIEW_SETUP) renderSetup();
+    }
+
+    private final ActivityResultLauncher<String> notificationPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> refreshState());
+
+    /** The setup checklist with each step's current state (re-checked every second while shown). */
+    private void renderSetup() {
+        PowerManager pm = getSystemService(PowerManager.class);
+        boolean background = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION);
+        boolean notifications = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || granted(Manifest.permission.POST_NOTIFICATIONS);
+        List<SetupChecklist.Step> steps = List.of(
+                new SetupChecklist.Step(getString(R.string.setup_location),
+                        getString(R.string.setup_location_sub), granted(Manifest.permission.ACCESS_FINE_LOCATION),
+                        false, this::requestPermissions),
+                new SetupChecklist.Step(getString(R.string.setup_background),
+                        getString(R.string.setup_background_sub), background, false, this::requestPermissions),
+                new SetupChecklist.Step(getString(R.string.setup_battery),
+                        getString(R.string.setup_battery_sub),
+                        pm == null || pm.isIgnoringBatteryOptimizations(getPackageName()), false,
+                        this::checkBatteryOptimization),
+                new SetupChecklist.Step(getString(R.string.setup_notifications),
+                        getString(R.string.setup_notifications_sub), notifications, true,
+                        () -> notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)),
+                new SetupChecklist.Step(getString(R.string.setup_hotspot),
+                        getString(R.string.setup_hotspot_sub), GNSSServerService.isClientConnected(), false, () -> {
+                            if (!GNSSServerService.isServiceRunning()) startGNSSService();
+                            openHotspotSettings();
+                        }));
+        SetupChecklist.render(findViewById(R.id.setupSteps), steps);
+    }
+
+    private boolean granted(String permission) {
+        return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /** There is no public action for the hotspot screen; most phones still open it, else Wi-Fi/network. */
+    private void openHotspotSettings() {
+        for (String action : new String[]{"android.settings.TETHER_SETTINGS", Settings.ACTION_WIRELESS_SETTINGS,
+                Settings.ACTION_SETTINGS}) {
+            try {
+                startActivity(new Intent(action));
+                return;
+            } catch (ActivityNotFoundException ignored) {
+                // try the next one
+            }
+        }
     }
 
     private void updateBanner() {
