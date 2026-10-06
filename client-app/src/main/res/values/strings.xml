@@ -195,4 +195,17 @@
     <string name="ui_scale">Interface size</string>
     <string name="ui_scale_sub">%1$s · tap to change. For screens where everything looks too small or doesn\'t fit.</string>
     <string name="ui_scale_auto">Auto (%1$s)</string>
+    <string name="filter_preset">Style</string>
+    <string name="filter_preset_sub">%1$s · tap to switch: Smooth → Balanced → Responsive</string>
+    <string name="filter_preset_smooth">Smooth</string>
+    <string name="filter_preset_balanced">Balanced (recommended)</string>
+    <string name="filter_preset_responsive">Responsive</string>
+    <string name="filter_preset_custom">Custom</string>
+    <string name="filter_advanced">Advanced settings</string>
+    <string name="filter_advanced_sub">Every smoothing parameter, for fine tuning</string>
+    <string name="filter_reset">Reset to recommended</string>
+    <string name="filter_reset_sub">Restore all smoothing settings to their defaults</string>
+    <string name="filter_reset_confirm">All smoothing settings will return to their defaults</string>
+    <string name="filter_reset_action">Reset</string>
+    <string name="filter_reset_done">Smoothing settings reset</string>
 </resources>

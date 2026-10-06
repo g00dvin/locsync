@@ -339,6 +339,28 @@ public class Preferences {
         return getPrefs(context).getFloat(PREF_UI_SCALE, 0f);
     }
 
+    /** "Reset to recommended": forget every smoothing setting so the defaults (BALANCED) apply. */
+    public static void resetFilterSettings(Context context) {
+        getPrefs(context).edit()
+                .remove(PREF_FILTER_REPORT_UNCERTAINTY)
+                .remove(PREF_FILTER_LATENCY_COMP)
+                .remove(PREF_FILTER_EXTRA_LATENCY_MS)
+                .remove(PREF_FILTER_NETWORK_DELAY)
+                .remove(PREF_WIFI_LOW_LATENCY)
+                .remove(PREF_FILTER_TURN_MODEL)
+                .remove(PREF_FILTER_TURN_RESPONSIVENESS)
+                .remove(PREF_FILTER_BEARING_COMP)
+                .remove(PREF_FILTER_MIN_BEARING_ACC)
+                .remove(PREF_FILTER_ADAPTIVE_POSITION)
+                .remove(PREF_FILTER_GATING)
+                .remove(PREF_FILTER_GATE_THRESHOLD)
+                .remove(PREF_FILTER_STANDSTILL_HOLD)
+                .remove(PREF_FILTER_STANDSTILL_SPEED)
+                .remove(PREF_FILTER_ADAPTIVE_NOISE)
+                .remove(PREF_FILTER_PROCESS_NOISE)
+                .apply();
+    }
+
     public static java.util.Map<String, ?> dump(Context context) {
         return new java.util.TreeMap<>(getPrefs(context).getAll());
     }

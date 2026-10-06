@@ -37,6 +37,18 @@
         <!-- Smoothing (Kalman filter feeding the mock provider) -->
         <TextView style="@style/LsGroupLabel" android:text="@string/group_smoothing" />
         <LinearLayout style="@style/LsGroupCard">
+            <include layout="@layout/row_setting_action" android:id="@+id/rowFilterPreset" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_action" android:id="@+id/rowFilterAdvanced" />
+            <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_action" android:id="@+id/rowFilterReset" />
+        </LinearLayout>
+
+        <!-- Advanced smoothing parameters, collapsed by default -->
+        <LinearLayout style="@style/LsGroupCard"
+            android:id="@+id/cardFilterAdvanced"
+            android:layout_marginTop="8dp"
+            android:visibility="gone">
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowReportUncertainty" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowLatencyComp" />

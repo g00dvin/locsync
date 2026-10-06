@@ -78,6 +78,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int LARGE_SCREEN_MIN_SW_DP = 600;
     private static final float[] UI_SCALES = {0f, 1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f};   // 0 = auto
     private static final String STATE_VIEW = "view";
+    private static final String STATE_FILTER_ADVANCED = "filterAdvanced";
 
     private static final String[] REQUIRED_PERMISSIONS = {
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -234,7 +235,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
-        outState.putInt(STATE_VIEW, viewFlipper.getDisplayedChild());   // survive the UI-scale recreate
+        outState.putInt(STATE_VIEW, viewFlipper.getDisplayedChild());   // survive the settings recreate
+        outState.putBoolean(STATE_FILTER_ADVANCED,
+                findViewById(R.id.cardFilterAdvanced).getVisibility() == View.VISIBLE);
     }
 
     @Override
@@ -253,6 +256,9 @@ public class MainActivity extends AppCompatActivity {
         bindConnect();
         bindMonitor();
         bindSettings();
+        if (savedInstanceState != null && savedInstanceState.getBoolean(STATE_FILTER_ADVANCED)) {
+            setFilterAdvancedVisible(true);
+        }
         registerReceivers();
 
         showView(savedInstanceState != null ? savedInstanceState.getInt(STATE_VIEW, VIEW_CONNECT) : VIEW_CONNECT);
@@ -445,7 +451,13 @@ public class MainActivity extends AppCompatActivity {
                 Preferences.staticJitterEnabled(this),
                 checked -> Preferences.setStaticJitterEnabled(this, checked));
 
-        // Smoothing
+        // Smoothing: a style preset, the full parameter list behind "Advanced", and a reset
+        bindFilterPresetRow();
+        bindActionChevron(R.id.rowFilterAdvanced, getString(R.string.filter_advanced),
+                getString(R.string.filter_advanced_sub), () -> setFilterAdvancedVisible(
+                        findViewById(R.id.cardFilterAdvanced).getVisibility() != View.VISIBLE));
+        bindActionChevron(R.id.rowFilterReset, getString(R.string.filter_reset),
+                getString(R.string.filter_reset_sub), this::confirmFilterReset);
         bindToggle(R.id.rowReportUncertainty, getString(R.string.filter_report_uncertainty),
                 getString(R.string.filter_report_uncertainty_sub), Preferences.filterReportUncertainty(this),
                 checked -> Preferences.setFilterReportUncertainty(this, checked));
@@ -522,6 +534,57 @@ public class MainActivity extends AppCompatActivity {
                 getString(R.string.license_view),
                 () -> startActivity(new Intent(Intent.ACTION_VIEW,
                         Uri.parse("https://www.gnu.org/licenses/gpl-3.0.html"))));
+    }
+
+    private void bindFilterPresetRow() {
+        FilterPreset preset = FilterPreset.current(this);
+        bindAction(R.id.rowFilterPreset, getString(R.string.filter_preset),
+                getString(R.string.filter_preset_sub, presetName(preset)), true, () -> {
+                    FilterPreset.next(FilterPreset.current(this)).apply(this);
+                    recreate();   // the parameter rows below show the new values
+                });
+    }
+
+    private String presetName(FilterPreset p) {
+        if (p == null) return getString(R.string.filter_preset_custom);
+        return switch (p) {
+            case SMOOTH -> getString(R.string.filter_preset_smooth);
+            case BALANCED -> getString(R.string.filter_preset_balanced);
+            case RESPONSIVE -> getString(R.string.filter_preset_responsive);
+        };
+    }
+
+    private void setFilterAdvancedVisible(boolean visible) {
+        findViewById(R.id.cardFilterAdvanced).setVisibility(visible ? View.VISIBLE : View.GONE);
+        View chevron = findViewById(R.id.rowFilterAdvanced).findViewById(R.id.row_chevron);
+        chevron.setRotation(visible ? 90 : 0);
+    }
+
+    private final Runnable disarmFilterReset = this::disarmFilterReset;
+
+    private void confirmFilterReset() {
+        View row = findViewById(R.id.rowFilterReset);
+        setText(row, R.id.row_sub, getString(R.string.filter_reset_confirm));
+        TextView button = row.findViewById(R.id.row_button);
+        button.setText(R.string.filter_reset_action);
+        button.setVisibility(View.VISIBLE);
+        row.findViewById(R.id.row_chevron).setVisibility(View.GONE);
+        button.setOnClickListener(v -> {
+            uiHandler.removeCallbacks(disarmFilterReset);
+            Preferences.resetFilterSettings(this);
+            Toast.makeText(this, R.string.filter_reset_done, Toast.LENGTH_SHORT).show();
+            recreate();
+        });
+        uiHandler.removeCallbacks(disarmFilterReset);
+        uiHandler.postDelayed(disarmFilterReset, 5000);
+    }
+
+    private void disarmFilterReset() {
+        uiHandler.removeCallbacks(disarmFilterReset);
+        View row = findViewById(R.id.rowFilterReset);
+        setText(row, R.id.row_sub, getString(R.string.filter_reset_sub));
+        row.findViewById(R.id.row_button).setVisibility(View.GONE);
+        row.findViewById(R.id.row_chevron).setVisibility(View.VISIBLE);
     }
 
     /** Tapping cycles through the scales; the activity is recreated so the new size shows at once. */
