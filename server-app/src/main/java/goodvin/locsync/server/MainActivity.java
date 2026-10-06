@@ -195,10 +195,19 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        // The tile already marked the service enabled; onCreate starts it, but a running activity
-        // (singleTask) gets the request here instead.
-        if (ACTION_START_SERVER.equals(intent.getAction()) && !GNSSServerService.isServiceRunning()) {
+        handleStartRequest(intent);
+    }
+
+    /** Start request from the Quick Settings tile (it couldn't start the service itself). */
+    private void handleStartRequest(Intent intent) {
+        if (intent == null || !ACTION_START_SERVER.equals(intent.getAction())) return;
+        intent.setAction(null);   // once: not again on recreate
+        if (GNSSServerService.isServiceRunning()) return;
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED) {
             startGNSSService();
+        } else {
+            requestPermissions();   // the user starts the server once the permission is granted
         }
     }
 
@@ -225,6 +234,7 @@ public class MainActivity extends AppCompatActivity {
         if (GNSSServerService.isServiceEnabled(this) && !GNSSServerService.isServiceRunning()) {
             startGNSSService();
         }
+        handleStartRequest(getIntent());
     }
 
     @Override
