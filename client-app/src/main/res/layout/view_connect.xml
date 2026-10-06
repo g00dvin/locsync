@@ -138,12 +138,12 @@
         android:orientation="horizontal">
 
         <include layout="@layout/tile_stat" android:id="@+id/tileSpeed"
-            android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" />
+            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
 
         <Space android:layout_width="8dp" android:layout_height="1dp" />
 
         <include layout="@layout/tile_stat" android:id="@+id/tileAccuracy"
-            android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" />
+            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
     </LinearLayout>
 
     <LinearLayout
@@ -155,12 +155,12 @@
         android:orientation="horizontal">
 
         <include layout="@layout/tile_stat" android:id="@+id/tileSats"
-            android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" />
+            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
 
         <Space android:layout_width="8dp" android:layout_height="1dp" />
 
         <include layout="@layout/tile_stat" android:id="@+id/tileFresh"
-            android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" />
+            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
     </LinearLayout>
 
     <Space
