@@ -101,4 +101,7 @@
     <string name="server_track_recording_sub">Every fix the phone gets, with when it arrived and whether it was sent. With the head unit\'s track it shows where delay comes from.</string>
     <string name="record_gps_reference">Also record raw GPS</string>
     <string name="record_gps_reference_sub">While recording on Fused, log raw GPS fixes too (never sent) to compare how much Fused smooths and lags. Uses more battery.</string>
+    <string name="tile_off">Off</string>
+    <string name="tile_waiting">Waiting for the head unit</string>
+    <string name="tile_client">Head unit connected</string>
 </resources>

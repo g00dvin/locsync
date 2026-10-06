@@ -94,4 +94,7 @@
     <string name="server_track_recording_sub">Каждый фикс телефона: когда пришёл и ушёл ли клиенту. Вместе с треком магнитолы показывает, откуда берётся задержка.</string>
     <string name="record_gps_reference">Записывать и чистый GPS</string>
     <string name="record_gps_reference_sub">При записи на Fused параллельно записывать фиксы чистого GPS (клиенту не отправляются), чтобы сравнить, насколько Fused сглаживает и запаздывает. Больше расход батареи.</string>
+    <string name="tile_off">Выключен</string>
+    <string name="tile_waiting">Ждёт магнитолу</string>
+    <string name="tile_client">Магнитола подключена</string>
 </resources>

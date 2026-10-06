@@ -199,6 +199,7 @@ public class GNSSServerService extends Service {
 
         running = true;
         instance = this;
+        ServerTileService.requestRefresh(this);
 
         WifiManager wifi = getSystemService(WifiManager.class);
         if (wifi != null) {
@@ -225,6 +226,7 @@ public class GNSSServerService extends Service {
     public void onDestroy() {
         running = false;
         instance = null;
+        ServerTileService.requestRefresh(this);
 
         cancelBluetoothAutoStop();
         stopServer();
@@ -366,6 +368,7 @@ public class GNSSServerService extends Service {
                 mainHandler.post(this::startLocationUpdates);
                 cancelBluetoothAutoStop();
                 mainHandler.post(() -> updateNotification("Client connected"));
+                ServerTileService.requestRefresh(this);
             }
         } else {
             Log.w(TAG, "Unexpected packet type from client: " + header.type);
@@ -739,6 +742,7 @@ public class GNSSServerService extends Service {
     }
 
     private void onClientGone() {
+        ServerTileService.requestRefresh(this);
         long idleMs = Preferences.gpsIdleStopSeconds(this) * 1000L;
         AppLog.d(TAG, "No client; scheduling stop of location updates in " + idleMs + " ms");
         mainHandler.removeCallbacks(this.stopLocationUpdates);

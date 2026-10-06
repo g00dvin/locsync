@@ -78,6 +78,8 @@ import goodvin.locsync.shared.VersionGetter;
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "GNSSServerActivity";
     private static final int VIEW_CONNECT = 0, VIEW_MONITOR = 1, VIEW_SETTINGS = 2;
+    /** Quick Settings tile fallback: open the app and start the server from the foreground. */
+    static final String ACTION_START_SERVER = "goodvin.locsync.server.action.START_FROM_TILE";
 
     private static final String[] FOREGROUND_LOCATION_PERMISSIONS = {
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -189,6 +191,16 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     };
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // The tile already marked the service enabled; onCreate starts it, but a running activity
+        // (singleTask) gets the request here instead.
+        if (ACTION_START_SERVER.equals(intent.getAction()) && !GNSSServerService.isServiceRunning()) {
+            startGNSSService();
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
