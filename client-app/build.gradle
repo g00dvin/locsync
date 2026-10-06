@@ -51,6 +51,18 @@ android {
         }
     }
 
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+            // README screenshots render the real screens with Robolectric; opt-in, not part of CI:
+            // ./gradlew :client-app:testDebugUnitTest -Pscreenshots --tests '*ScreenshotsTest'
+            all {
+                if (!project.hasProperty('screenshots')) exclude '**/*ScreenshotsTest*'
+                systemProperty 'screenshots.dir', rootProject.file('docs/screenshots').path
+            }
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false
@@ -80,6 +92,7 @@ dependencies {
     implementation project(':shared')
 
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.17'
 }
 
 // Configure protobuf plugin
