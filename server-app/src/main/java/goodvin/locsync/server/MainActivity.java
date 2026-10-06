@@ -73,12 +73,17 @@ import goodvin.locsync.shared.LogExporter;
 import goodvin.locsync.shared.PowerOrbView;
 import goodvin.locsync.shared.SatelliteBarsView;
 import goodvin.locsync.shared.SettingsRows;
+import goodvin.locsync.shared.UpdateChecker;
+import goodvin.locsync.shared.UpdateRow;
 import goodvin.locsync.shared.SparklineView;
 import goodvin.locsync.shared.VersionGetter;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "GNSSServerActivity";
     private static final int VIEW_CONNECT = 0, VIEW_MONITOR = 1, VIEW_SETTINGS = 2;
+    private UpdateRow updateRow;
+    private Runnable bannerAction;
+    private boolean bannerIsUpdate, updateBannerDismissed;
     /** Quick Settings tile fallback: open the app and start the server from the foreground. */
     static final String ACTION_START_SERVER = "goodvin.locsync.server.action.START_FROM_TILE";
 
@@ -324,8 +329,13 @@ public class MainActivity extends AppCompatActivity {
         setText(statCard3, R.id.statLabel, getString(R.string.uptime_label));
 
         powerOrb.setOnClickListener(v -> togglePower());
-        connectBanner.setOnClickListener(v -> requestPermissions());
-        findViewById(R.id.bannerDismiss).setOnClickListener(v -> connectBanner.setVisibility(View.GONE));
+        connectBanner.setOnClickListener(v -> {
+            if (bannerAction != null) bannerAction.run();
+        });
+        findViewById(R.id.bannerDismiss).setOnClickListener(v -> {
+            if (bannerIsUpdate) updateBannerDismissed = true;   // don't bring it back this session
+            connectBanner.setVisibility(View.GONE);
+        });
     }
 
     private void bindMonitor() {
@@ -484,6 +494,9 @@ public class MainActivity extends AppCompatActivity {
         String shown = buildLabel.isEmpty() ? appVersion : buildLabel;
         bindAction(R.id.rowVersion, String.format(getString(R.string.version_label), shown),
                 getString(R.string.about_protocol), false, null);
+        updateRow = new UpdateRow(this, findViewById(R.id.rowUpdate), "locsync-server-", appVersion,
+                this::updateBanner);
+        if (buildLabel.isEmpty()) updateRow.autoCheck();   // branch/CI builds aren't releases
         bindActionChevron(R.id.rowLicense, getString(R.string.license_gpl3),
                 getString(R.string.license_view),
                 () -> startActivity(new Intent(Intent.ACTION_VIEW,
@@ -539,8 +552,16 @@ public class MainActivity extends AppCompatActivity {
     private void updateBanner() {
         boolean bgMissing = ContextCompat.checkSelfPermission(this,
                 Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED;
+        UpdateChecker.Release update = updateRow != null ? updateRow.available() : null;
+        bannerIsUpdate = false;
         if (bgMissing) {
             bannerText.setText(R.string.warn_background_location);
+            bannerAction = this::requestPermissions;
+            connectBanner.setVisibility(View.VISIBLE);
+        } else if (update != null && !updateBannerDismissed) {
+            bannerText.setText(getString(R.string.update_banner, update.tag()));
+            bannerAction = updateRow::install;
+            bannerIsUpdate = true;
             connectBanner.setVisibility(View.VISIBLE);
         } else {
             connectBanner.setVisibility(View.GONE);

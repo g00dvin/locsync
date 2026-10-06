@@ -87,4 +87,15 @@
     <string name="cd_back">Back</string>
     <string name="cd_power">Start or stop</string>
     <string name="cd_dismiss">Dismiss</string>
+    <string name="update_title">Updates</string>
+    <string name="update_check">Check</string>
+    <string name="update_install">Install</string>
+    <string name="update_sub_idle">%1$s installed. Checked automatically once a day.</string>
+    <string name="update_available">Version %1$s is available</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_downloading">Downloading… %1$d%%</string>
+    <string name="update_error">Update failed: %1$s</string>
+    <string name="update_latest_toast">You have the latest version</string>
+    <string name="update_allow_install">Allow installing from this app, then tap Install again</string>
+    <string name="update_banner">Version %1$s is available — tap to update</string>
 </resources>

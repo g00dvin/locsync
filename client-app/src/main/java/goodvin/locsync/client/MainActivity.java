@@ -66,6 +66,8 @@ import goodvin.locsync.shared.LogExporter;
 import goodvin.locsync.shared.PowerOrbView;
 import goodvin.locsync.shared.SettingsRows;
 import goodvin.locsync.shared.SparklineView;
+import goodvin.locsync.shared.UpdateChecker;
+import goodvin.locsync.shared.UpdateRow;
 import goodvin.locsync.shared.VersionGetter;
 
 public class MainActivity extends AppCompatActivity {
@@ -114,7 +116,9 @@ public class MainActivity extends AppCompatActivity {
     private String appVersion = "<unknown>";
     private String warningMessage = null;   // version mismatch / mock-provider error, shown in banner
     private boolean mockError = false;
-    private Runnable bannerAction = null;    // what tapping the connect banner does (depends on the issue)
+    private Runnable bannerAction = null;
+    private UpdateRow updateRow;
+    private boolean bannerIsUpdate, updateBannerDismissed;    // what tapping the connect banner does (depends on the issue)
     private long connectedSinceElapsed = 0;
 
     // Latest values for the connect/monitor readouts.
@@ -378,8 +382,10 @@ public class MainActivity extends AppCompatActivity {
         connectBanner.setOnClickListener(v -> {
             if (bannerAction != null) bannerAction.run();
         });
-        findViewById(R.id.bannerDismiss).setOnClickListener(v ->
-                connectBanner.setVisibility(View.GONE));
+        findViewById(R.id.bannerDismiss).setOnClickListener(v -> {
+            if (bannerIsUpdate) updateBannerDismissed = true;   // don't bring it back this session
+            connectBanner.setVisibility(View.GONE);
+        });
     }
 
     private void bindMonitor() {
@@ -538,6 +544,9 @@ public class MainActivity extends AppCompatActivity {
         String shown = buildLabel.isEmpty() ? appVersion : buildLabel;
         bindAction(R.id.rowVersion, String.format(getString(R.string.version_label), shown),
                 getString(R.string.about_protocol), false, null);
+        updateRow = new UpdateRow(this, findViewById(R.id.rowUpdate), "locsync-client-", appVersion,
+                this::refreshState);
+        if (buildLabel.isEmpty()) updateRow.autoCheck();   // branch/CI builds aren't releases
         bindActionChevron(R.id.rowLicense, getString(R.string.license_gpl3),
                 getString(R.string.license_view),
                 () -> startActivity(new Intent(Intent.ACTION_VIEW,
@@ -713,6 +722,12 @@ public class MainActivity extends AppCompatActivity {
         } else if (!isMockAppSelected()) {
             msg = getString(R.string.mock_app_not_selected);
             action = this::openMockLocationSettings;
+        }
+        UpdateChecker.Release update = updateRow != null ? updateRow.available() : null;
+        bannerIsUpdate = msg == null && update != null && !updateBannerDismissed;
+        if (bannerIsUpdate) {
+            msg = getString(R.string.update_banner, update.tag());
+            action = updateRow::install;
         }
 
         bannerAction = action;

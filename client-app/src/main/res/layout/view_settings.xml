@@ -95,6 +95,8 @@
         <LinearLayout style="@style/LsGroupCard">
             <include layout="@layout/row_setting_action" android:id="@+id/rowVersion" />
             <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_action" android:id="@+id/rowUpdate" />
+            <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowLicense" />
         </LinearLayout>
 

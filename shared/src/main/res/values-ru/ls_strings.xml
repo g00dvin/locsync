@@ -78,4 +78,15 @@
     <string name="cd_back">Назад</string>
     <string name="cd_power">Запустить или остановить</string>
     <string name="cd_dismiss">Скрыть</string>
+    <string name="update_title">Обновления</string>
+    <string name="update_check">Проверить</string>
+    <string name="update_install">Установить</string>
+    <string name="update_sub_idle">Установлена %1$s. Проверяется автоматически раз в день.</string>
+    <string name="update_available">Доступна версия %1$s</string>
+    <string name="update_checking">Проверяем…</string>
+    <string name="update_downloading">Загрузка… %1$d%%</string>
+    <string name="update_error">Не удалось обновить: %1$s</string>
+    <string name="update_latest_toast">Установлена последняя версия</string>
+    <string name="update_allow_install">Разрешите установку из этого приложения и нажмите «Установить» ещё раз</string>
+    <string name="update_banner">Доступна версия %1$s — нажмите, чтобы обновить</string>
 </resources>
