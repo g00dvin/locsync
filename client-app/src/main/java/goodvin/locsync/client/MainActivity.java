@@ -485,7 +485,7 @@ public class MainActivity extends AppCompatActivity {
                 checked -> Preferences.setFilterTurnModel(this, checked));
         bindNumberInput(R.id.rowTurnResponsiveness, getString(R.string.filter_turn_responsiveness),
                 Preferences.filterTurnResponsiveness(this), 0.1, 1,
-                v -> Preferences.setFilterTurnResponsiveness(this, (float) v));
+                v -> { Preferences.setFilterTurnResponsiveness(this, (float) v); refreshFilterPresetSub(); });
         bindToggle(R.id.rowBearingComp, getString(R.string.filter_bearing_comp),
                 getString(R.string.filter_bearing_comp_sub), Preferences.filterBearingCompensation(this),
                 checked -> Preferences.setFilterBearingCompensation(this, checked));
@@ -500,19 +500,19 @@ public class MainActivity extends AppCompatActivity {
                 checked -> Preferences.setFilterGating(this, checked));
         bindNumberInput(R.id.rowGateThreshold, getString(R.string.filter_gate_threshold),
                 Preferences.filterGateThreshold(this), 4, 100,
-                v -> Preferences.setFilterGateThreshold(this, (float) v));
+                v -> { Preferences.setFilterGateThreshold(this, (float) v); refreshFilterPresetSub(); });
         bindToggle(R.id.rowStandstillHold, getString(R.string.filter_standstill),
                 getString(R.string.filter_standstill_sub), Preferences.filterStandstillHold(this),
                 checked -> Preferences.setFilterStandstillHold(this, checked));
         bindNumberInput(R.id.rowStandstillSpeed, getString(R.string.filter_standstill_speed),
                 Preferences.filterStandstillSpeed(this), 0.1, 3,
-                v -> Preferences.setFilterStandstillSpeed(this, (float) v));
+                v -> { Preferences.setFilterStandstillSpeed(this, (float) v); refreshFilterPresetSub(); });
         bindToggle(R.id.rowAdaptiveNoise, getString(R.string.filter_adaptive_noise),
                 getString(R.string.filter_adaptive_noise_sub), Preferences.filterAdaptiveNoise(this),
                 checked -> Preferences.setFilterAdaptiveNoise(this, checked));
         bindNumberInput(R.id.rowProcessNoise, getString(R.string.filter_process_noise_base),
                 Preferences.filterProcessNoise(this), 0.2, 10,
-                v -> Preferences.setFilterProcessNoise(this, (float) v));
+                v -> { Preferences.setFilterProcessNoise(this, (float) v); refreshFilterPresetSub(); });
 
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,
@@ -550,6 +550,12 @@ public class MainActivity extends AppCompatActivity {
                     FilterPreset.next(FilterPreset.current(this)).apply(this);
                     recreate();   // the parameter rows below show the new values
                 });
+    }
+
+    /** Hand-editing a preset parameter turns the Style row into "Custom" (or back) at once. */
+    private void refreshFilterPresetSub() {
+        setText(R.id.rowFilterPreset, R.id.row_sub,
+                getString(R.string.filter_preset_sub, presetName(FilterPreset.current(this))));
     }
 
     private String presetName(FilterPreset p) {
