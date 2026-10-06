@@ -59,6 +59,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import goodvin.locsync.proto.LocationProto;
 import goodvin.locsync.shared.AppLog;
 import goodvin.locsync.shared.LinkState;
 import goodvin.locsync.shared.LogExporter;
@@ -824,6 +825,8 @@ public class MainActivity extends AppCompatActivity {
         navDot.getBackground().mutate().setTint(dotColor);
         findViewById(R.id.navCard).setOnClickListener(mockSelected ? null : v -> openMockLocationSettings());
 
+        updatePhoneCard(connected);
+
         String none = getString(R.string.value_none);
         if (loc == null) {
             String hint = connected ? getString(R.string.hint_no_fix) : "";
@@ -866,6 +869,33 @@ public class MainActivity extends AppCompatActivity {
         setTile(tileFresh, String.format(Locale.US, "%.1f", age), getString(R.string.unit_s_ago),
                 getString(fresh ? R.string.hint_fresh : R.string.hint_stale),
                 fresh ? textColor : getColor(R.color.ls_error));
+    }
+
+    /** "Phone: 78%, charging · 36 °C" and a warning when it overheats or runs flat. */
+    private void updatePhoneCard(boolean connected) {
+        View card = findViewById(R.id.phoneCard);
+        LocationProto.PhoneState phone = connected ? GNSSClientService.getPhoneState() : null;
+        if (phone == null) {
+            card.setVisibility(View.GONE);
+            return;
+        }
+        card.setVisibility(View.VISIBLE);
+        float temp = phone.hasBatteryTempC() ? phone.getBatteryTempC() : Float.NaN;
+        StringBuilder title = new StringBuilder(getString(phone.getCharging()
+                ? R.string.phone_battery_charging : R.string.phone_battery, phone.getBatteryPercent()));
+        if (!Float.isNaN(temp)) title.append(" · ").append(String.format(Locale.US, "%.0f °C", temp));
+        TextView titleView = findViewById(R.id.phoneTitle);
+        titleView.setText(title);
+        PhoneHealth health = PhoneHealth.of(phone.getBatteryPercent(), phone.getCharging(), temp,
+                phone.getThermalStatus());
+        TextView detail = findViewById(R.id.phoneDetail);
+        detail.setText(switch (health) {
+            case HOT -> R.string.phone_hot;
+            case LOW_BATTERY -> R.string.phone_low_battery;
+            default -> R.string.phone_ok;
+        });
+        findViewById(R.id.phoneDot).getBackground().mutate().setTint(getColor(
+                health == PhoneHealth.OK ? R.color.ls_accent_400 : R.color.ls_error));
     }
 
     private void setTile(View tile, String value, String unit, String hint, int valueColor) {

@@ -73,6 +73,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
     private Location lastReceivedLocation;
     private static long lastUpdateTime;
+    // The phone's battery and heat from the last response (null until a server that sends it).
+    private static volatile LocationProto.PhoneState phoneState;
+    private static volatile long phoneStateElapsedMs;
     private int lastBroadcastSatelliteCount = -1;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile long lastResponseTime = 0;     // elapsedRealtime of the last RESPONSE
@@ -414,6 +417,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                         "Receiving from server", srcAddr);
             }
 
+            if (response.hasPhone()) {
+                phoneState = response.getPhone();
+                phoneStateElapsedMs = SystemClock.elapsedRealtime();
+            }
             if (response.hasLocationUpdate()) {
                 handleLocationUpdate(response);
             } else {
@@ -828,6 +835,15 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         intent.setPackage(WIDGET_PACKAGE);
         intent.putExtra("count", count);
         sendBroadcast(intent);
+    }
+
+    private static final long PHONE_STATE_STALE_MS = 30_000;
+
+    /** The phone's battery/heat, or null when unknown or older than 30 s (server gone or too old). */
+    public static LocationProto.PhoneState getPhoneState() {
+        LocationProto.PhoneState s = phoneState;
+        if (s == null || SystemClock.elapsedRealtime() - phoneStateElapsedMs > PHONE_STATE_STALE_MS) return null;
+        return s;
     }
 
     public static long getLastUpdateTime() {

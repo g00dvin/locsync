@@ -205,4 +205,9 @@
     <string name="filter_reset_confirm">Все настройки сглаживания вернутся к значениям по умолчанию</string>
     <string name="filter_reset_action">Сбросить</string>
     <string name="filter_reset_done">Настройки сглаживания сброшены</string>
+    <string name="phone_battery">Телефон: батарея %1$d%%</string>
+    <string name="phone_battery_charging">Телефон: батарея %1$d%%, заряжается</string>
+    <string name="phone_ok">Заряд и температура в норме</string>
+    <string name="phone_hot">Перегревается: GPS может работать хуже или отключиться. Уберите телефон с солнца или от обдува печки.</string>
+    <string name="phone_low_battery">Мало заряда: подключите зарядку</string>
 </resources>

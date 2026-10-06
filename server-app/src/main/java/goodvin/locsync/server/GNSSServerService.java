@@ -24,6 +24,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.location.GnssStatus;
@@ -31,10 +32,12 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.net.wifi.WifiManager;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.util.Log;
 import goodvin.locsync.shared.AppLog;
@@ -415,7 +418,37 @@ public class GNSSServerService extends Service {
         mainHandler.postDelayed(metricsTick, METRICS_INTERVAL_MS);
     }
 
+    private static final int PHONE_STATE_EVERY_TICKS = 5;   // battery/heat change slowly
+    private int phoneStateTick = 0;
+
+    /** Battery level, charging and heat for the head unit (sent with every response). */
+    private void samplePhoneState() {
+        Intent battery = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (battery == null) return;
+        LocationProto.PhoneState.Builder phone = LocationProto.PhoneState.newBuilder();
+        int level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+        int scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+        if (level >= 0 && scale > 0) phone.setBatteryPercent(Math.round(level * 100f / scale));
+        int status = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+        phone.setCharging(status == BatteryManager.BATTERY_STATUS_CHARGING
+                || status == BatteryManager.BATTERY_STATUS_FULL);
+        int tenths = battery.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Integer.MIN_VALUE);
+        if (tenths != Integer.MIN_VALUE) phone.setBatteryTempC(tenths / 10f);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            PowerManager pm = getSystemService(PowerManager.class);
+            if (pm != null) phone.setThermalStatus(pm.getCurrentThermalStatus());
+        }
+        lastServerResponse.setPhone(phone);   // main thread, like every other builder write
+    }
+
     private void sampleMetrics() {
+        if (phoneStateTick++ % PHONE_STATE_EVERY_TICKS == 0) {
+            try {
+                samplePhoneState();
+            } catch (RuntimeException e) {
+                Log.w(TAG, "phone state sampling failed", e);
+            }
+        }
         try {
             // Compute + broadcast the snapshot every tick so the Monitor screen always shows live
             // link-health data; the metrics toggle only gates persistence (CSV + logcat).

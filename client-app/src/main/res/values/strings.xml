@@ -208,4 +208,9 @@
     <string name="filter_reset_confirm">All smoothing settings will return to their defaults</string>
     <string name="filter_reset_action">Reset</string>
     <string name="filter_reset_done">Smoothing settings reset</string>
+    <string name="phone_battery">Phone: battery %1$d%%</string>
+    <string name="phone_battery_charging">Phone: battery %1$d%%, charging</string>
+    <string name="phone_ok">Battery and temperature are fine</string>
+    <string name="phone_hot">Overheating: GPS may get worse or stop. Keep the phone out of the sun or away from the heater.</string>
+    <string name="phone_low_battery">Battery is low: connect the charger</string>
 </resources>
