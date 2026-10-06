@@ -119,4 +119,6 @@
     <string name="setup_notifications_sub">Показывают, что сервер работает, и дают кнопку «Стоп»</string>
     <string name="setup_hotspot">Точка доступа и магнитола</string>
     <string name="setup_hotspot_sub">Включите точку доступа Wi-Fi на телефоне, подключите к ней магнитолу и запустите на ней LocSync Client</string>
+    <string name="boot_autostart">Запуск при загрузке телефона</string>
+    <string name="boot_autostart_sub">Запускать сервер после перезагрузки телефона, если его не остановили из уведомления. Обычно не нужно: его запускают Bluetooth или Wi-Fi машины.</string>
 </resources>

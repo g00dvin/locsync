@@ -207,6 +207,20 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_WAIT_ACCURATE, false);
     }
 
+    private static final String PREF_BOOT_AUTO_START = "bootAutoStartEnabled";
+
+    /**
+     * Start the server when the phone finishes booting. Off by default: the server is only needed in
+     * the car, where Bluetooth/Wi-Fi of the car start it.
+     */
+    public static void setBootAutoStartEnabled(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_BOOT_AUTO_START, enabled).apply();
+    }
+
+    public static boolean bootAutoStartEnabled(Context context) {
+        return getPrefs(context).getBoolean(PREF_BOOT_AUTO_START, false);
+    }
+
     private static final String PREF_WIFI_AUTO_START = "wifiAutoStartEnabled";
     private static final String PREF_WIFI_TRIGGER_SSID = "wifiTriggerSsid";
 

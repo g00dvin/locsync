@@ -126,4 +126,6 @@
     <string name="setup_notifications_sub">Shows that the server is running, with a Stop button</string>
     <string name="setup_hotspot">Hotspot and head unit</string>
     <string name="setup_hotspot_sub">Turn on the phone\'s Wi-Fi hotspot, connect the head unit to it and start LocSync Client there</string>
+    <string name="boot_autostart">Start when the phone boots</string>
+    <string name="boot_autostart_sub">Starts the server after the phone restarts, unless it was stopped from the notification. Usually not needed: the car\'s Bluetooth or Wi-Fi start it.</string>
 </resources>

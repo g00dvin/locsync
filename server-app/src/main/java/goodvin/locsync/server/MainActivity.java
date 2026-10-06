@@ -453,6 +453,9 @@ public class MainActivity extends AppCompatActivity {
                 checked -> Preferences.setWaitForAccurate(this, checked));
 
         // Automation
+        bindToggle(R.id.rowBootAutostart, getString(R.string.boot_autostart),
+                getString(R.string.boot_autostart_sub), Preferences.bootAutoStartEnabled(this),
+                checked -> Preferences.setBootAutoStartEnabled(this, checked));
         View rowBt = findViewById(R.id.rowBluetooth);
         setText(rowBt, R.id.row_label, getString(R.string.bluetooth_auto_start_enabled));
         TextView btSub = rowBt.findViewById(R.id.row_sub);
