@@ -104,4 +104,8 @@
     <string name="wifi_network_none">Не выбрана: подключите телефон к Wi-Fi машины и нажмите «Текущая»</string>
     <string name="wifi_network_use_current">Текущая</string>
     <string name="wifi_network_unknown">Телефон не в Wi-Fi или Android скрывает имя сети: включите геолокацию и попробуйте снова</string>
+    <string name="autostart_channel">Автозапуск</string>
+    <string name="wifi_start_failed_title">Не удалось запустить по Wi-Fi машины</string>
+    <string name="wifi_start_failed_text">Android не разрешил запуск в фоне. Откройте LocSync Server и разрешите работу батареи без ограничений и доступ к местоположению «Разрешить в любом режиме».</string>
+    <string name="wifi_needs_background_location">Чтобы узнавать Wi-Fi машины в фоне, разрешите доступ к местоположению «Разрешить в любом режиме» (Настройки → Разрешения)</string>
 </resources>

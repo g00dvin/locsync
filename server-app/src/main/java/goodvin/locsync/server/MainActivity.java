@@ -29,6 +29,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -235,7 +236,7 @@ public class MainActivity extends AppCompatActivity {
             startGNSSService();
         }
         handleStartRequest(getIntent());
-        WifiTrigger.sync(this);   // (re)arm after an app update, which drops network callbacks
+        WifiTrigger.sync(this, false);   // arm if missing (e.g. after an app update)
     }
 
     @Override
@@ -446,7 +447,8 @@ public class MainActivity extends AppCompatActivity {
         bindToggle(R.id.rowWifiAutostart, getString(R.string.wifi_autostart),
                 getString(R.string.wifi_autostart_sub), Preferences.wifiAutoStartEnabled(this), checked -> {
                     Preferences.setWifiAutoStartEnabled(this, checked);
-                    WifiTrigger.sync(this);
+                    if (checked) warnIfWifiNameHidden();
+                    WifiTrigger.sync(this, false);
                     GNSSServerService.refreshWifiMonitor();
                 });
         bindActionButton(R.id.rowWifiNetwork, getString(R.string.wifi_network), wifiNetworkSummary(),
@@ -786,8 +788,18 @@ public class MainActivity extends AppCompatActivity {
         }
         Preferences.setWifiTriggerSsid(this, ssid);
         setText(R.id.rowWifiNetwork, R.id.row_sub, wifiNetworkSummary());
-        WifiTrigger.sync(this);
+        warnIfWifiNameHidden();
+        WifiTrigger.sync(this, false);
         GNSSServerService.refreshWifiMonitor();
+    }
+
+    /** In the background Android reveals the Wi-Fi name only with "Allow all the time" location. */
+    private void warnIfWifiNameHidden() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                && ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, R.string.wifi_needs_background_location, Toast.LENGTH_LONG).show();
+        }
     }
 
     // --- bluetooth trigger devices (behaviour preserved) ---

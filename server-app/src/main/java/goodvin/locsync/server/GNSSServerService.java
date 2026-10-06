@@ -964,10 +964,6 @@ public class GNSSServerService extends Service {
     //   - cancelBluetoothAutoStop() is called on BT/Wi-Fi reconnect and on new client connect.
     //   - btAutoStopService() re-checks conditions as a safety net before actually stopping.
 
-    /**
-     * Called from BluetoothReceiver (BT disconnect) and onClientGone (client timed out).
-     * Schedules auto-stop only if both conditions are met.
-     */
     /** Settings changed: follow the car's Wi-Fi (or stop following it) while the server runs. */
     public static void refreshWifiMonitor() {
         GNSSServerService s = instance;
@@ -975,7 +971,7 @@ public class GNSSServerService extends Service {
     }
 
     private void syncWifiMonitor() {
-        boolean wanted = Preferences.wifiAutoStartEnabled(this) && Preferences.wifiTriggerSsid(this) != null;
+        boolean wanted = WifiTrigger.isActive(this);
         if (wanted && wifiMonitor == null) {
             wifiMonitor = new WifiTrigger.Monitor(this, () -> mainHandler.post(this::doEvaluateAutoStop));
             wifiMonitor.start();
@@ -985,6 +981,10 @@ public class GNSSServerService extends Service {
         }
     }
 
+    /**
+     * Called from BluetoothReceiver (BT disconnect), on leaving the car's Wi-Fi and from onClientGone
+     * (client timed out). Schedules auto-stop only if both conditions are met.
+     */
     public static void evaluateAutoStop() {
         if (instance != null) {
             instance.doEvaluateAutoStop();
@@ -1003,7 +1003,7 @@ public class GNSSServerService extends Service {
 
         // Only auto-stop if Bluetooth or Wi-Fi auto-start/stop is enabled
         boolean bt = Preferences.bluetoothAutoStartEnabled(this);
-        boolean wifi = Preferences.wifiAutoStartEnabled(this);
+        boolean wifi = WifiTrigger.isActive(this);
         if (!bt && !wifi) {
             AppLog.d(TAG, "Auto-start/stop disabled in preferences, skipping auto-stop evaluation");
             return;
@@ -1025,7 +1025,7 @@ public class GNSSServerService extends Service {
     /** No enabled trigger (Bluetooth device, car Wi-Fi) is connected. */
     private boolean triggersGone() {
         boolean btGone = !Preferences.bluetoothAutoStartEnabled(this) || BluetoothReceiver.allTriggerDevicesDisconnected();
-        boolean wifiGone = !Preferences.wifiAutoStartEnabled(this) || !WifiTrigger.isConnected();
+        boolean wifiGone = !WifiTrigger.isActive(this) || !WifiTrigger.isConnected();
         return btGone && wifiGone;
     }
 

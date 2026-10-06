@@ -63,7 +63,7 @@ public class BroadcastsReceiver extends BroadcastReceiver {
 
             case Intent.ACTION_BOOT_COMPLETED:
                 AppLog.d(TAG, "Device boot completed, checking if GNSS server should auto-start");
-                WifiTrigger.sync(appContext);   // network callbacks don't survive a reboot
+                WifiTrigger.sync(appContext, true);   // network callbacks don't survive a reboot
 
                 // Check if the service was previously enabled
                 if (GNSSServerService.isServiceEnabled(appContext)) {

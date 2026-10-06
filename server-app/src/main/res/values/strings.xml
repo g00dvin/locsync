@@ -111,4 +111,8 @@
     <string name="wifi_network_none">Not chosen: connect the phone to the car\'s Wi-Fi and tap “Current”</string>
     <string name="wifi_network_use_current">Current</string>
     <string name="wifi_network_unknown">Not on Wi-Fi, or Android hides the network name: turn on location and try again</string>
+    <string name="autostart_channel">Auto-start</string>
+    <string name="wifi_start_failed_title">Couldn\'t start on the car\'s Wi-Fi</string>
+    <string name="wifi_start_failed_text">Android didn\'t allow starting in the background. Open LocSync Server and allow unrestricted battery use and location “Allow all the time”.</string>
+    <string name="wifi_needs_background_location">To recognise the car\'s Wi-Fi in the background, allow location “Allow all the time” (Settings → Permissions)</string>
 </resources>
