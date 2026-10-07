@@ -25,14 +25,18 @@ public class UpdateCheckerTest {
     }
 
     @Test
-    public void picksThisAppsReleaseApk() throws Exception {
-        String json = "{\"tag_name\":\"v3.7.0\",\"assets\":["
-                + "{\"name\":\"locsync-server-v3.7.0.apk\",\"browser_download_url\":\"https://x/server.apk\"},"
-                + "{\"name\":\"locsync-client-v3.7.0-debug.apk\",\"browser_download_url\":\"https://x/debug.apk\"},"
-                + "{\"name\":\"locsync-client-v3.7.0.apk\",\"browser_download_url\":\"https://x/client.apk\"}]}";
-        UpdateChecker.Release r = UpdateChecker.parseRelease(json, "locsync-client-");
-        assertEquals("v3.7.0", r.tag());
-        assertEquals("https://x/client.apk", r.apkUrl());
-        assertNull(UpdateChecker.parseRelease("{\"tag_name\":\"v3.7.0\",\"assets\":[]}", "locsync-client-"));
+    public void readsTheTagFromTheLatestRedirect() {
+        assertEquals("v3.7.2", UpdateChecker.tagFromLocation("https://github.com/g00dvin/locsync/releases/tag/v3.7.2"));
+        assertEquals("v4.0", UpdateChecker.tagFromLocation("https://github.com/g00dvin/locsync/releases/tag/v4.0"));
+        assertNull(UpdateChecker.tagFromLocation("https://github.com/g00dvin/locsync/releases/tag/v4.0-rc1"));
+        assertNull(UpdateChecker.tagFromLocation("https://github.com/g00dvin/locsync/releases/tag/../../x"));
+        assertNull(UpdateChecker.tagFromLocation("https://github.com/g00dvin/locsync/releases"));
+        assertNull(UpdateChecker.tagFromLocation(null));
+    }
+
+    @Test
+    public void buildsTheAssetUrl() {
+        assertEquals("https://github.com/g00dvin/locsync/releases/download/v3.7.2/locsync-client-v3.7.2.apk",
+                UpdateChecker.apkUrl("v3.7.2", "locsync-client-"));
     }
 }

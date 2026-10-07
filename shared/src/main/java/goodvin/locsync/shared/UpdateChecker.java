@@ -20,10 +20,6 @@ package goodvin.locsync.shared;
 import android.content.Context;
 import android.content.SharedPreferences;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -31,7 +27,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 
 /**
  * Looks up the latest GitHub release and downloads this app's APK from it. Both apps are installed
@@ -39,7 +34,8 @@ import java.nio.charset.StandardCharsets;
  * them off the main thread.
  */
 public final class UpdateChecker {
-    static final String LATEST_RELEASE_URL = "https://api.github.com/repos/g00dvin/locsync/releases/latest";
+    static final String LATEST_RELEASE_URL = "https://github.com/g00dvin/locsync/releases/latest";
+    static final String RELEASE_DOWNLOAD_URL = "https://github.com/g00dvin/locsync/releases/download/";
     private static final String PREFS = "locsync_updates";
     private static final String KEY_CHECKED_AT = "checkedAt";
     private static final String KEY_TAG = "tag";
@@ -54,46 +50,60 @@ public final class UpdateChecker {
 
     /** Asks GitHub for the latest release; null when it has no APK for this app ({@code apkPrefix}). */
     public static Release fetchLatest(Context context, String apkPrefix) throws IOException {
-        // Count the attempt, not just a success: offline or rate-limited (60/h) checks must not
-        // retry on every screen start.
+        // Count the attempt, not just a success: offline checks must not retry on every screen start.
         prefs(context).edit().putLong(KEY_CHECKED_AT, System.currentTimeMillis()).apply();
+        String tag = latestTag();
+        Release release = tag == null ? null : apkExists(apkUrl(tag, apkPrefix)) ? new Release(tag, apkUrl(tag, apkPrefix)) : null;
+        remember(context, release);
+        return release;
+    }
+
+    /**
+     * The latest release's tag, from where github.com/.../releases/latest redirects to. The REST API
+     * allows only 60 anonymous requests an hour per IP, which mobile carriers share between many
+     * subscribers (HTTP 403); the website has no such limit.
+     */
+    private static String latestTag() throws IOException {
         HttpURLConnection conn = open(LATEST_RELEASE_URL);
-        conn.setRequestProperty("Accept", "application/vnd.github+json");
+        conn.setInstanceFollowRedirects(false);
         try {
-            if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-                throw new IOException("GitHub answered " + conn.getResponseCode());
-            }
-            String body;
-            try (InputStream in = conn.getInputStream()) {
-                ByteArrayOutputStream buf = new ByteArrayOutputStream();
-                copy(in, buf, 2L * 1024 * 1024);
-                body = buf.toString(StandardCharsets.UTF_8.name());
-            }
-            Release release = parseRelease(body, apkPrefix);
-            remember(context, release);
-            return release;
-        } catch (org.json.JSONException e) {
-            throw new IOException("Unexpected answer from GitHub", e);
+            int code = conn.getResponseCode();
+            if (code == HttpURLConnection.HTTP_NOT_FOUND) return null;   // no release yet
+            if (code / 100 != 3) throw new IOException("HTTP " + code);
+            return tagFromLocation(conn.getHeaderField("Location"));
         } finally {
             conn.disconnect();
         }
     }
 
-    static Release parseRelease(String json, String apkPrefix) throws org.json.JSONException {
-        JSONObject o = new JSONObject(json);
-        String tag = o.getString("tag_name");
-        JSONArray assets = o.optJSONArray("assets");
-        if (assets == null) return null;
-        for (int i = 0; i < assets.length(); i++) {
-            JSONObject a = assets.getJSONObject(i);
-            String name = a.optString("name");
-            String url = a.optString("browser_download_url");
-            if (name.startsWith(apkPrefix) && name.endsWith(".apk") && !name.endsWith("-debug.apk")
-                    && url.startsWith("https://")) {
-                return new Release(tag, url);
-            }
+    /** ".../releases/tag/v3.7.2" → "v3.7.2"; null when it isn't a plain version tag. */
+    static String tagFromLocation(String location) {
+        if (location == null) return null;
+        int i = location.lastIndexOf("/releases/tag/");
+        if (i < 0) return null;
+        String tag = location.substring(i + "/releases/tag/".length());
+        // Only plain versions: the tag becomes part of a URL, and a pre-release like v4.0-rc1 isn't offered.
+        return tag.matches("v\\d+\\.\\d+(\\.\\d+)?") ? tag : null;
+    }
+
+    /** Release assets are named locsync-client-v3.7.2.apk / locsync-server-v3.7.2.apk. */
+    static String apkUrl(String tag, String apkPrefix) {
+        return RELEASE_DOWNLOAD_URL + tag + "/" + apkPrefix + tag + ".apk";
+    }
+
+    /** The download URL redirects to GitHub's file host when the asset exists, else 404. */
+    private static boolean apkExists(String url) throws IOException {
+        HttpURLConnection conn = open(url);
+        conn.setInstanceFollowRedirects(false);
+        conn.setRequestMethod("HEAD");
+        try {
+            int code = conn.getResponseCode();
+            if (code == HttpURLConnection.HTTP_NOT_FOUND) return false;
+            if (code / 100 == 3 || code == HttpURLConnection.HTTP_OK) return true;
+            throw new IOException("HTTP " + code);
+        } finally {
+            conn.disconnect();
         }
-        return null;
     }
 
     /** True when {@code latest} (e.g. "v3.7.0") is a higher version than {@code installed}. */
@@ -202,17 +212,6 @@ public final class UpdateChecker {
         conn.setInstanceFollowRedirects(true);
         conn.setRequestProperty("User-Agent", "LocSync");
         return conn;
-    }
-
-    private static void copy(InputStream in, OutputStream out, long limit) throws IOException {
-        byte[] buf = new byte[16 * 1024];
-        long done = 0;
-        int n;
-        while ((n = in.read(buf)) > 0) {
-            done += n;
-            if (done > limit) throw new IOException("Answer too large");
-            out.write(buf, 0, n);
-        }
     }
 
     private static SharedPreferences prefs(Context context) {
