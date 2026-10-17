@@ -43,7 +43,9 @@ package goodvin.locsync.client;
  * model means the model is too confident); it never drops below the configured base.
  *
  * <p>The state refers to the time of the last fix; {@link #extrapolate(double)} projects it to the
- * output time without touching the filter, which is how the caller compensates fix latency.
+ * output time without touching the filter, which is how the caller compensates fix latency. The
+ * projection also ramps speed by the recent along-track acceleration (from Doppler speeds), so
+ * the output speed doesn't move in once-a-second steps while the car speeds up or brakes.
  */
 public class LocationKalmanFilter {
 
@@ -103,6 +105,18 @@ public class LocationKalmanFilter {
     private static final double BEARING_QUANT_DETECT = 0.9;
     private boolean bearingCompensation = true;
     private double minBearingAccuracyDeg = 2.0;
+    // Velocity measurement noise split along/across the course (see updateVelocity).
+    private boolean splitVelocityNoise = true;
+    // Along-track acceleration used only to extrapolate the output between fixes (see
+    // updateAcceleration). Not part of the state, like ω.
+    private static final double ACCEL_ALPHA = 0.5;
+    private static final double MAX_ACCEL = 4.0;          // m/s², hard braking / brisk acceleration
+    private static final double MAX_ACCEL_DT = 2.0;       // s; older speed is too stale to difference
+    private static final double MAX_ACCEL_HORIZON = 1.5;  // s; ramp no further than this past a fix
+    private boolean accelExtrapolation = true;
+    private double accel = 0;
+    private double prevSpeed = Double.NaN;
+    private double sincePrevSpeed = 0;
     private double integerBearingShare = 0;
     private boolean gating = true;
     private double gateThreshold = 9.21;    // χ² with 2 dof at 99%
@@ -182,6 +196,22 @@ public class LocationKalmanFilter {
         minBearingAccuracyDeg = Math.max(0, minAccuracyDeg);
     }
 
+    /**
+     * Applies the bearing uncertainty only across the course, so the Doppler speed keeps its own
+     * accuracy along it; when off, both velocity components get the combined (isotropic) noise.
+     */
+    public void setSplitVelocityNoise(boolean enabled) {
+        splitVelocityNoise = enabled;
+    }
+
+    /** Ramps the output speed between fixes with the recent along-track acceleration. */
+    public void setAccelerationExtrapolation(boolean enabled) {
+        accelExtrapolation = enabled;
+        if (!enabled) {
+            accel = 0;
+        }
+    }
+
     /** Adapt how much reported position accuracy is trusted from the innovation statistics. */
     public void setAdaptivePosition(boolean enabled) {
         adaptivePosition = enabled;
@@ -237,6 +267,9 @@ public class LocationKalmanFilter {
         omega = 0;
         prevHeading = Double.NaN;
         sincePrevHeading = 0;
+        accel = 0;
+        prevSpeed = Double.NaN;
+        sincePrevSpeed = 0;
     }
 
     public void update(double lat, double lon, double speed, double bearingDeg,
@@ -340,19 +373,62 @@ public class LocationKalmanFilter {
             omega = 0;
             prevHeading = Double.NaN;
             sincePrevHeading = 0;
+            accel = 0;
+            prevSpeed = Double.NaN;
             updateProcessNoise();
             return;
         }
         if (applyVel) {
-            double br = Math.toRadians(bearingDeg);
-            double vem = speed * Math.sin(br);
-            double vnm = speed * Math.cos(br);
-            double sv = velSigma(speed, speedAccuracy, bearingAccuracyDeg);
-            scalarUpdate(2, vem, sv * sv);
-            scalarUpdate(3, vnm, sv * sv);
+            updateVelocity(speed, bearingDeg, speedAccuracy, bearingAccuracyDeg);
         }
         updateTurnRate(applyVel, speed, bearingDeg);
+        updateAcceleration(hasSpeed, speed);
         updateProcessNoise();
+    }
+
+    /**
+     * Along-track acceleration from the change in Doppler speed between fixes (clean to ~0.1 m/s,
+     * unlike differenced positions). The motion model holds speed constant between fixes, so while
+     * the car speeds up or brakes the injected speed was a staircase: flat for a second, then a
+     * step of the whole second's change (and two or three seconds' worth after a lost fix).
+     */
+    private void updateAcceleration(boolean hasSpeed, double speed) {
+        if (!accelExtrapolation || !hasSpeed) {
+            accel = 0;
+            prevSpeed = Double.NaN;
+            return;
+        }
+        if (!Double.isNaN(prevSpeed) && sincePrevSpeed > 0 && sincePrevSpeed <= MAX_ACCEL_DT) {
+            double raw = (speed - prevSpeed) / sincePrevSpeed;
+            accel += ACCEL_ALPHA * (Math.max(-MAX_ACCEL, Math.min(MAX_ACCEL, raw)) - accel);
+        } else {
+            accel = 0;
+        }
+        prevSpeed = speed;
+        sincePrevSpeed = 0;
+    }
+
+    /**
+     * Velocity measurement from Doppler speed and bearing. Their errors are independent and lie in
+     * different directions: speed accuracy along the course (~0.1 m/s on the highway), bearing
+     * accuracy across it (v·sinσθ, 1.4 m/s at 140 km/h with the 2° floor). Applying the combined
+     * figure to both east and north made the speed 10x less trusted than it is at high speed, so
+     * along-track position noise (it grows with speed: ±2.7 m at 140 km/h on a recorded drive)
+     * leaked into it and the injected speed jittered. Two scalar updates on the along/across axes
+     * keep each error where it belongs; the across one keeps the old combined noise.
+     */
+    private void updateVelocity(double speed, double bearingDeg, double speedAccuracy, double bearingAccuracyDeg) {
+        double br = Math.toRadians(bearingDeg);
+        double ue = Math.sin(br), un = Math.cos(br);
+        double sv = velSigma(speed, speedAccuracy, bearingAccuracyDeg);
+        if (!splitVelocityNoise) {
+            scalarUpdate(2, speed * ue, sv * sv);
+            scalarUpdate(3, speed * un, sv * sv);
+            return;
+        }
+        double ss = speedAccuracy > 0 ? speedAccuracy : defaultSpeedSigma;
+        projectedUpdate(ue, un, speed, ss * ss);   // along the course: measured speed
+        projectedUpdate(un, -ue, 0, sv * sv);      // across it: no sideways motion
     }
 
     /**
@@ -388,6 +464,7 @@ public class LocationKalmanFilter {
         }
         propagate(x, P, dt, omega);
         sincePrevHeading += dt;
+        sincePrevSpeed += dt;
     }
 
     /**
@@ -401,6 +478,7 @@ public class LocationKalmanFilter {
         }
         if (horizonS > 0) {
             propagate(xOut, pOut, horizonS, omega);
+            applyAcceleration(xOut, horizonS);
         }
         Estimate est = estimate;
         est.latitude = lat0 + xOut[1] / M_PER_DEG_LAT;
@@ -412,6 +490,25 @@ public class LocationKalmanFilter {
         est.speedAccuracy = speedAccuracy(xOut, pOut);
         est.bearingAccuracyDeg = bearingAccuracyDeg(xOut, pOut);
         return est;
+    }
+
+    /**
+     * Ramps speed by the along-track acceleration over the horizon (capped, so a lost fix doesn't
+     * keep accelerating) and moves the position by the extra distance, along the current course.
+     */
+    private void applyAcceleration(double[] s, double horizonS) {
+        double v = Math.hypot(s[2], s[3]);
+        if (accel == 0 || v < TURN_MIN_SPEED) {
+            return;
+        }
+        double t = Math.min(horizonS, MAX_ACCEL_HORIZON);
+        double dv = Math.max(accel * t, -v);       // braking stops at zero, never reverses
+        double dist = accel * t * t / 2 + dv * (horizonS - t);
+        double ue = s[2] / v, un = s[3] / v;
+        s[0] += ue * dist;
+        s[1] += un * dist;
+        s[2] += ue * dv;
+        s[3] += un * dv;
     }
 
     /**
@@ -537,6 +634,29 @@ public class LocationKalmanFilter {
         for (int i = 0; i < 4; i++) {
             for (int j = 0; j < 4; j++) {
                 P[i][j] -= k[i] * row[j];
+            }
+        }
+    }
+
+    // Scalar Kalman update for a measurement of the velocity projected on (he, hn): z = he·ve + hn·vn.
+    private void projectedUpdate(double he, double hn, double z, double r) {
+        double[] ph = rowScratch; // P Hᵀ
+        for (int i = 0; i < 4; i++) {
+            ph[i] = P[i][2] * he + P[i][3] * hn;
+        }
+        double s = he * ph[2] + hn * ph[3] + r;
+        double yInnov = z - (he * x[2] + hn * x[3]);
+        double[] k = gainScratch;
+        for (int i = 0; i < 4; i++) {
+            k[i] = ph[i] / s;
+        }
+        for (int i = 0; i < 4; i++) {
+            x[i] += k[i] * yInnov;
+        }
+        // P = P - K (H P); H P is (P Hᵀ)ᵀ since P is symmetric
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                P[i][j] -= k[i] * ph[j];
             }
         }
     }
