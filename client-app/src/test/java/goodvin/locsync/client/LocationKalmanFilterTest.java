@@ -451,4 +451,68 @@ public class LocationKalmanFilterTest {
         assertTrue("honest accuracy should not be tightened much: " + f.getPositionNoiseScale(),
                 f.getPositionNoiseScale() > 0.7);
     }
+
+    // Highway: the phone's positions jitter along the road in proportion to speed (±2.7 m at
+    // 140 km/h on a recorded drive) while its Doppler speed is good to 0.1 m/s. The bearing
+    // uncertainty belongs across the course only; spread over both axes it let the position noise
+    // drag the speed around.
+    @Test
+    public void alongTrackPositionNoiseDoesNotShakeHighwaySpeed() {
+        double speed = 40.0; // 144 km/h, due north
+        LocationKalmanFilter split = newFilter();
+        LocationKalmanFilter isotropic = newFilter();
+        isotropic.setSplitVelocityNoise(false);
+        java.util.Random rnd = new java.util.Random(3);
+        double maxSplit = 0, maxIso = 0;
+        for (int i = 0; i < 120; i++) {
+            double lat = 59.0 + (i * speed + rnd.nextGaussian() * 1.5) / M_PER_DEG_LAT;
+            for (LocationKalmanFilter f : new LocationKalmanFilter[]{split, isotropic}) {
+                if (i > 0) f.predict(1.0);
+                f.update(lat, 30.0, speed, 0.0, 10.0, 0.1, 0.25);
+            }
+            if (i >= 20) {
+                maxSplit = Math.max(maxSplit, Math.abs(split.getSpeed() - speed));
+                maxIso = Math.max(maxIso, Math.abs(isotropic.getSpeed() - speed));
+            }
+        }
+        assertTrue("speed should follow Doppler: off by " + maxSplit, maxSplit < 0.15);
+        assertTrue("isotropic noise should be visibly worse: " + maxIso + " vs " + maxSplit, maxIso > 2 * maxSplit);
+    }
+
+    // Accelerating at 2 m/s²: between fixes the output speed must ramp, not hold the last fix's
+    // value and then step by a whole second's change.
+    @Test
+    public void outputSpeedRampsBetweenFixesWhileAccelerating() {
+        LocationKalmanFilter f = newFilter();
+        double v = 20.0, n = 0;
+        for (int i = 0; i < 10; i++) {
+            if (i > 0) f.predict(1.0);
+            f.update(59.0 + n / M_PER_DEG_LAT, 30.0, v, 0.0, 5.0, 0.1, 0.5);
+            n += v + 1.0;
+            v += 2.0;
+        }
+        double last = f.getSpeed();
+        assertEquals(last + 1.0, f.extrapolate(0.5).speed, 0.2);
+        assertEquals(last + 2.0, f.extrapolate(1.0).speed, 0.3);
+        // a lost fix doesn't keep accelerating
+        assertEquals(f.extrapolate(1.5).speed, f.extrapolate(3.0).speed, 1e-9);
+
+        f.setAccelerationExtrapolation(false);
+        assertEquals(last, f.extrapolate(0.5).speed, 1e-9);
+    }
+
+    @Test
+    public void brakingRampStopsAtZero() {
+        LocationKalmanFilter f = newFilter();
+        f.setStandstill(false, 0);
+        double v = 12.0, n = 0;
+        for (int i = 0; i < 5; i++) {
+            if (i > 0) f.predict(1.0);
+            f.update(59.0 + n / M_PER_DEG_LAT, 30.0, v, 0.0, 5.0, 0.1, 0.5);
+            n += v - 2.0;
+            v -= 4.0; // the last fix is at 4 m/s, braking at 4 m/s²
+        }
+        double s = f.extrapolate(3.0).speed;
+        assertTrue("braking must not reverse or overshoot zero: " + s, s >= 0 && s < 0.5);
+    }
 }
