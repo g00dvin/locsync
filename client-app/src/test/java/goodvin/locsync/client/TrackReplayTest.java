@@ -165,10 +165,21 @@ public class TrackReplayTest {
         System.out.println(replay(fixes, false, TrackReplayTest::v34).summary("v3.4 (age only)"));
         System.out.println(replay(fixes, true, TrackReplayTest::v34).summary("+ Wi-Fi delay sync"));
         System.out.println(replay(fixes, true, kf -> {
-            kf.setAdaptivePosition(false);
-            kf.setTurnResponsiveness(0.5);
+            v34(kf);
+            kf.setBearingHandling(true, 2.0);
         }).summary("+ bearing rounding fix"));
-        System.out.println(replay(fixes, true, kf -> kf.setTurnResponsiveness(0.5)).summary("+ adaptive position trust"));
+        System.out.println(replay(fixes, true, kf -> {
+            v34(kf);
+            kf.setBearingHandling(true, 2.0);
+            kf.setAdaptivePosition(true);
+        }).summary("+ adaptive position trust"));
+        System.out.println(replay(fixes, true, kf -> {
+            kf.setSplitVelocityNoise(false);
+            kf.setAccelerationExtrapolation(false);
+        }).summary("v3.7 (isotropic velocity)"));
+        System.out.println(replay(fixes, true, kf -> kf.setAccelerationExtrapolation(false))
+                .summary("+ speed trusted along course"));
+        System.out.println(replay(fixes, true, kf -> { }).summary("+ acceleration ramp"));
         for (double a : new double[]{0.7, 0.85, 1.0}) {
             System.out.println(replay(fixes, true, kf -> kf.setTurnResponsiveness(a))
                     .summary(String.format(Locale.US, "+ turn responsiveness %.2f", a)));
@@ -180,6 +191,8 @@ public class TrackReplayTest {
         kf.setBearingHandling(false, 0);
         kf.setAdaptivePosition(false);
         kf.setTurnResponsiveness(0.5);
+        kf.setSplitVelocityNoise(false);
+        kf.setAccelerationExtrapolation(false);
     }
 
     static double[] alongCross(double lat, double lon, Fix f) {
