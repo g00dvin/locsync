@@ -28,13 +28,16 @@ import goodvin.locsync.shared.CsvLog;
  * {@link #MAX_BYTES} (~4 MB per hour of driving, so that is many hours).
  *
  * <p>One CSV for both row kinds ({@code type} = fix | out); columns that don't apply are empty.
+ * Fix rows also carry the head unit's wheel and cluster speed ({@code car_*}, empty off eCarX units)
+ * so GPS speed can be compared with the car's.
  * Called from the service's main thread only.
  */
 final class TrackRecorder {
     private static final long MAX_BYTES = 30L * 1024 * 1024;
     static final String HEADER = "wall_ms,elapsed_ms,type,fix_ts,provider,sats,lat,lon,alt,acc,"
             + "speed,bearing,spd_acc,brg_acc,age_s,latency_ms,horizon_ms,"
-            + "f_lat,f_lon,f_speed,f_bearing,nis,stationary,turn_dps,sigma_a";
+            + "f_lat,f_lon,f_speed,f_bearing,nis,stationary,turn_dps,sigma_a,"
+            + "car_speed,car_speed_ipk,car_dt_ms";
 
     private final CsvLog log;
     private final StringBuilder sb = new StringBuilder(256);   // reused: one row at a time
@@ -47,10 +50,15 @@ final class TrackRecorder {
         return new File(dir, "track-client.csv");
     }
 
-    /** A raw fix as received, plus the filter state after it was applied. */
+    /**
+     * A raw fix as received, plus the filter state after it was applied, plus the head unit's speed
+     * ({@code car} may be null). {@code car_dt_ms} is when the car value was read relative to the fix's
+     * arrival ({@code elapsedMs}); signed, not clamped. The GPS value itself describes the moment
+     * {@code arrival - latency_ms}.
+     */
     void fix(long elapsedMs, long fixTs, String provider, int sats, double lat, double lon, double alt, float acc,
              boolean hasSpeed, float speed, boolean hasBearing, float bearing, float spdAcc, float brgAcc,
-             float ageS, long latencyMs, LocationKalmanFilter f) {
+             float ageS, long latencyMs, LocationKalmanFilter f, CarSignals.Snapshot car) {
         start(elapsedMs, "fix");
         sb.append(fixTs).append(',').append(provider == null ? "" : provider).append(',').append(sats).append(',');
         num(lat, 7); num(lon, 7); num(alt, 1); num(acc, 2);
@@ -63,7 +71,13 @@ final class TrackRecorder {
         num(f.getLastNis(), 2);
         sb.append(f.isStationary() ? 1 : 0).append(',');
         num(f.getTurnRateDegPerSec(), 2);
-        CsvLog.appendFixed(sb, f.getProcessNoise(), 3);
+        CsvLog.appendFixed(sb, f.getProcessNoise(), 3).append(',');
+        if (car != null && car.hasAny()) {
+            optional(car.speedKmh, 2); optional(car.speedIpkKmh, 2);
+            sb.append(car.readElapsedMs - elapsedMs);
+        } else {
+            sb.append(",,");
+        }
         log.writeLine(sb);
     }
 
@@ -77,7 +91,7 @@ final class TrackRecorder {
         if (moving) { num(speed, 2); num(bearing, 1); } else sb.append(",,");
         num(spdAcc, 2); num(brgAcc, 1);
         sb.append(",,");                  // age_s, latency_ms
-        CsvLog.appendFixed(sb, horizonMs, 0).append(",,,,,,,,");
+        CsvLog.appendFixed(sb, horizonMs, 0).append(",,,,,,,,,,,");   // filter + car columns
         log.writeLine(sb);
     }
 
@@ -92,6 +106,11 @@ final class TrackRecorder {
     private void start(long elapsedMs, String type) {
         sb.setLength(0);
         sb.append(System.currentTimeMillis()).append(',').append(elapsedMs).append(',').append(type).append(',');
+    }
+
+    /** Like {@link #num} for a value that may be absent. */
+    private void optional(Float v, int decimals) {
+        if (v == null) sb.append(','); else num(v, decimals);
     }
 
     /** Number followed by a comma; NaN leaves the cell empty. */

@@ -1002,10 +1002,10 @@ public class MainActivity extends AppCompatActivity {
                 health == PhoneHealth.OK ? R.color.ls_accent_400 : R.color.ls_error));
     }
 
-    /** "Car: 54 km/h · D" with "Fuel 62% · 480 km · out 7 °C" — the head unit's own signals. */
+    /** e.g. "Car  54 km/h  D" over "fuel 38 L · 408 km · out 1 °C · odo 23,275 km" — the head unit's own signals. */
     private void updateCarCard() {
         View card = findViewById(R.id.carCard);
-        VehicleData.Snapshot s = vehicleData == null ? null : vehicleData.snapshot();
+        CarSignals.Snapshot s = vehicleData == null ? null : vehicleData.snapshot();
         if (s == null || !s.hasAny()) {
             card.setVisibility(View.GONE);
             return;
@@ -1018,15 +1018,15 @@ public class MainActivity extends AppCompatActivity {
             title.append("  ").append(String.format(Locale.US, "%.0f", s.speedKmh))
                     .append(' ').append(getString(R.string.unit_kmh));
         }
-        if (s.gearRaw != null) {
-            title.append("  ").append(getString(R.string.car_gear_fmt, s.gearRaw));
+        if (s.gear != null) {
+            title.append("  ").append(s.gear);
         }
         ((TextView) findViewById(R.id.carTitle)).setText(title);
 
-        // Detail: Energy + Temperatures, " · "-joined.
+        // Detail: Energy + Temperature + Odometer, " · "-joined.
         StringBuilder detail = new StringBuilder();
-        if (s.fuelPercent != null) {
-            append(detail, getString(R.string.car_fuel_fmt, Math.round(s.fuelPercent)));
+        if (s.fuelLitres != null) {
+            append(detail, getString(R.string.car_fuel_fmt, Math.round(s.fuelLitres)));
         }
         if (s.rangeKm != null) {
             append(detail, getString(R.string.car_range_fmt, Math.round(s.rangeKm)));
@@ -1034,8 +1034,8 @@ public class MainActivity extends AppCompatActivity {
         if (s.outsideTempC != null) {
             append(detail, getString(R.string.car_outside_fmt, Math.round(s.outsideTempC)));
         }
-        if (s.coolantTempC != null) {
-            append(detail, getString(R.string.car_coolant_fmt, Math.round(s.coolantTempC)));
+        if (s.odometerKm != null) {
+            append(detail, getString(R.string.car_odo_fmt, Math.round(s.odometerKm)));
         }
         ((TextView) findViewById(R.id.carDetail)).setText(detail.toString());
     }

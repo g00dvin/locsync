@@ -17,8 +17,10 @@
 
 package goodvin.locsync.shared;
 
+import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 
@@ -94,12 +96,31 @@ public final class CsvLog {
             //noinspection ResultOfMethodCallIgnored
             parent.mkdirs();
         }
+        if (file.length() > 0 && !header.equals(firstLine(file))) {
+            // Columns changed since this file was written: set it aside rather than appending rows
+            // the old header doesn't describe. Never touch the size-rotated .old (real drive data).
+            // A BOM or a header cut short by a crash also counts as a mismatch — intended.
+            File stale = new File(file.getParentFile(), file.getName() + ".oldhdr");
+            //noinspection ResultOfMethodCallIgnored
+            stale.delete();
+            //noinspection ResultOfMethodCallIgnored
+            file.renameTo(stale);
+        }
         boolean needHeader = !file.exists() || file.length() == 0;
         writer = new BufferedWriter(new FileWriter(file, true), 16 * 1024);
         bytes = file.length();
         if (needHeader) {
             writer.append(header).append('\n');
             bytes += header.length() + 1;
+        }
+    }
+
+    /** The file's first line, or null if it can't be read (treated as a header mismatch). */
+    private static String firstLine(File f) {
+        try (BufferedReader r = new BufferedReader(new FileReader(f))) {
+            return r.readLine();
+        } catch (IOException e) {
+            return null;
         }
     }
 

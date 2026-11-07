@@ -40,9 +40,10 @@ public class TrackRecorderTest {
         LocationKalmanFilter f = new LocationKalmanFilter(2.0, 1.0);
         f.update(55.75, 37.6, 10.0, 90.0, 4.0, 0.3, 5.0);
         r.fix(1000, 1_700_000_000_000L, "fused", 17, 55.75, 37.6, 150.0, 4.0f,
-                true, 10.0f, true, 90.0f, 0.3f, 5.0f, 0.04f, 40, f);
+                true, 10.0f, true, 90.0f, 0.3f, 5.0f, 0.04f, 40, f, null);
         r.fix(2000, 1_700_000_001_000L, "gps", 0, 55.75, 37.6, 150.0, 4.0f,
-                false, 0f, false, 0f, 0f, 0f, 0.05f, 50, f);
+                false, 0f, false, 0f, 0f, 0f, 0.05f, 50, f,
+                CarSignals.fromRaw(10f, 10.5f, 0x200220, 38f, 408f, 0.5f, 23275f, 1500L));
         r.out(2100, 55.75, 37.6, true, 10.0, 90.0, 6.0, 0.3, Double.NaN, 100);
         r.out(2200, 55.75, 37.6, false, 0.1, 0, 6.0, Double.NaN, Double.NaN, 200);
         r.close();
@@ -55,6 +56,12 @@ public class TrackRecorderTest {
             assertEquals(line, cols, line.split(",", -1).length);
         }
         assertTrue(lines.get(1).contains(",fix,"));
+        String[] noCar = lines.get(1).split(",", -1);
+        assertEquals("", noCar[cols - 3]);   // car_speed
+        assertEquals("", noCar[cols - 2]);   // car_speed_ipk
+        assertEquals("", noCar[cols - 1]);   // car_dt_ms
+        // Car read at 1500, fix arrived at 2000: the car value is 500 ms older than the fix.
+        assertTrue(lines.get(2), lines.get(2).endsWith(",36.00,37.80,-500"));
         assertTrue(lines.get(3).contains(",out,"));
     }
 
