@@ -121,6 +121,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private double filtSpeedAcc = Double.NaN, filtBearingAcc = Double.NaN;
     private double inSpeedAcc = Double.NaN, inBearingAcc = Double.NaN;
     private TrackRecorder trackRecorder;    // non-null while "Record track" is on
+    // Head-unit speed for the track log; runs with the recorder (MainActivity's reader stops in onPause).
+    // ponytail: separate AdaptAPI connection from MainActivity's; share one if the head unit objects to two
+    private VehicleData trackVehicle;
     private final Runnable smoothingTick = this::smoothingTick;
 
     private volatile DatagramSocket udpSocket;
@@ -323,10 +326,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         releaseWifiLocks();
         outAccuracy = outSpeedAcc = outBearingAcc = Double.NaN;
         filtSpeedAcc = filtBearingAcc = inSpeedAcc = inBearingAcc = Double.NaN;
-        if (trackRecorder != null) {
-            trackRecorder.close();
-            trackRecorder = null;
-        }
+        closeTrackRecorder();
         lastLatencyMs = lastHorizonMs = Double.NaN;
         connectionManager.clearLearnedServerAddress();
         lastBroadcastSatelliteCount = -1;
@@ -686,7 +686,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     updateTrackRecorder();
                     if (trackRecorder != null) {
                         trackRecorder.fix(nowElapsed, fixTs, provider, sats, lat, lon, alt, acc, hasSpd, spd, hasBrg, brg,
-                                spdAcc, brgAcc, ageS, latencyMs, kalman);
+                                spdAcc, brgAcc, ageS, latencyMs, kalman,
+                                trackVehicle == null ? null : trackVehicle.snapshot());
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "Error updating Kalman filter", e);
@@ -881,14 +882,27 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     }
 
     /** Opens/closes the track file to follow the "Record track" setting (checked on every fix). */
+    /** Closes the track log and its head-unit reader together. Safe to call when not recording. */
+    private void closeTrackRecorder() {
+        if (trackRecorder != null) {
+            trackRecorder.close();
+            trackRecorder = null;
+        }
+        if (trackVehicle != null) {
+            trackVehicle.stop();
+            trackVehicle = null;
+        }
+    }
+
     private void updateTrackRecorder() {
         boolean wanted = Preferences.trackRecording(this);
         if (wanted && trackRecorder == null) {
             trackRecorder = new TrackRecorder(new java.io.File(getCacheDir(), "logs"));
+            trackVehicle = new VehicleData(this, mainHandler, null);
+            trackVehicle.start();
             AppLog.i(TAG, "Track recording started");
         } else if (!wanted && trackRecorder != null) {
-            trackRecorder.close();
-            trackRecorder = null;
+            closeTrackRecorder();
             AppLog.i(TAG, "Track recording stopped");
         }
     }

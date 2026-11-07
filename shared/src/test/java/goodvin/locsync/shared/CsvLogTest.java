@@ -83,4 +83,24 @@ public class CsvLogTest {
         again.close();
         assertEquals(List.of("a,b", "3,4"), Files.readAllLines(f.toPath()));
     }
+
+    // A file written with an older header must not get new-format rows appended under it.
+    @Test
+    public void headerChangeRotatesFile() throws Exception {
+        File dir = tmp.newFolder();
+        File f = new File(dir, "t.csv");
+        CsvLog v1 = new CsvLog(f, "a,b", 1 << 20);
+        v1.writeLine(new StringBuilder("1,2"));
+        v1.close();
+        File sizeRotated = new File(dir, "t.csv.old");
+        Files.write(sizeRotated.toPath(), List.of("keep"));
+
+        CsvLog v2 = new CsvLog(f, "a,b,c", 1 << 20);
+        v2.writeLine(new StringBuilder("1,2,3"));
+        v2.close();
+
+        assertEquals(List.of("a,b,c", "1,2,3"), Files.readAllLines(f.toPath()));
+        assertEquals(List.of("a,b", "1,2"), Files.readAllLines(new File(dir, "t.csv.oldhdr").toPath()));
+        assertEquals(List.of("keep"), Files.readAllLines(sizeRotated.toPath()));   // size-rotated data untouched
+    }
 }
