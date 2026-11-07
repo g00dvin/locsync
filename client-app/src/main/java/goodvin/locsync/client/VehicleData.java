@@ -20,90 +20,37 @@ package goodvin.locsync.client;
 import android.content.Context;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.SystemClock;
 
 import goodvin.locsync.shared.AppLog;
 
 import java.lang.reflect.Method;
+import java.util.Locale;
 
 /**
- * Reads car signals (Motion / Energy / Temperatures) on an eCarX head unit through the vendor
- * AdaptAPI by reflection, so the app builds and runs without the vendor SDK on the classpath and
- * degrades to "no data" on any other unit. This is the vendor-supported, app-level path — no root
- * and no telnet; it reads only what the platform already exposes to apps.
+ * Reads the head unit's car signals through the eCarX vendor AdaptAPI by reflection, so the app
+ * builds and runs without the vendor SDK and degrades to "no data" on any other unit. App-level,
+ * vendor-supported path: no root, no telnet. IDs and decoding live in {@link CarSignals}.
  *
- * <p>The sensor IDs and their decoding are head-unit specific. They are left UNSET here; fill them
- * from the target car with {@code adb shell dumpsys car_service} (property IDs) and the unit's
- * {@code com.ecarx.xui.adaptapi} jar (the ISensor constant names). Until an ID is set, its field
- * stays {@code null} and the UI shows "—".
+ * <p>{@link #start()} / {@link #stop()} are called on the main thread. Each start spins up a fresh
+ * {@link Poller} (own thread and connection); only the current poller may publish, so a quick
+ * stop/start can't let an old thread overwrite the new one's results.
  */
 final class VehicleData {
-
-    // --- signal IDs: fill from the car; UNSET means "not wired, report nothing" ---
-    static final int UNSET = -1;
-    // Motion
-    static final int ID_SPEED = UNSET;          // vehicle speed
-    static final int ID_RPM = UNSET;            // engine RPM
-    static final int ID_GEAR = UNSET;           // selected gear (raw code)
-    // Energy
-    static final int ID_FUEL_PERCENT = UNSET;   // fuel/charge level, %
-    static final int ID_RANGE = UNSET;          // remaining range
-    // Temperatures
-    static final int ID_OUTSIDE_TEMP = UNSET;   // outside air temperature (raw)
-    static final int ID_COOLANT_TEMP = UNSET;   // engine coolant temperature (raw)
-
-    // --- raw→unit decoding: confirm against the car; these are starting points, not truth ---
-    // GVision's QNX bridge decodes the Geely cluster temps as (raw-700)/10 outside, (raw-600)/10 cabin.
-    static final float TEMP_OUTSIDE_OFFSET = 700f;
-    static final float TEMP_COOLANT_OFFSET = 0f;    // TODO confirm
-    static final float TEMP_SCALE = 10f;
-    static final float SPEED_SCALE = 1f;            // TODO confirm (km/h vs 0.01 km/h etc.)
-    static final float RANGE_SCALE = 1f;            // TODO confirm
 
     private static final String TAG = "VehicleData";
     private static final long POLL_MS = 1000;
     private static final long RETRY_MS = 5000;
+    private static final int STALE_POLLS = 5;   // all-empty reads in a row before reconnecting
 
-    /** Immutable readout. Any field may be null when that signal isn't reported. */
-    static final class Snapshot {
-        final Float speedKmh, rpm, fuelPercent, rangeKm, outsideTempC, coolantTempC;
-        final Integer gearRaw;
-
-        Snapshot(Float speedKmh, Float rpm, Integer gearRaw, Float fuelPercent,
-                 Float rangeKm, Float outsideTempC, Float coolantTempC) {
-            this.speedKmh = speedKmh;
-            this.rpm = rpm;
-            this.gearRaw = gearRaw;
-            this.fuelPercent = fuelPercent;
-            this.rangeKm = rangeKm;
-            this.outsideTempC = outsideTempC;
-            this.coolantTempC = coolantTempC;
-        }
-
-        boolean hasAny() {
-            return speedKmh != null || rpm != null || gearRaw != null || fuelPercent != null
-                    || rangeKm != null || outsideTempC != null || coolantTempC != null;
-        }
-
-        boolean hasMotion()  { return speedKmh != null || rpm != null || gearRaw != null; }
-        boolean hasEnergy()  { return fuelPercent != null || rangeKm != null; }
-        boolean hasTemps()   { return outsideTempC != null || coolantTempC != null; }
-
-        static final Snapshot EMPTY = new Snapshot(null, null, null, null, null, null, null);
-    }
+    /** Set once the vendor SDK proved absent on this unit; later starts are no-ops. */
+    private static volatile boolean sdkMissing;
 
     private final Context context;
     private final Handler uiHandler;      // delivers onUpdate back to the caller's (UI) thread
     private final Runnable onUpdate;      // called on the UI thread after each poll; may be null
-    private volatile Snapshot latest = Snapshot.EMPTY;
-    private volatile boolean stopped = true;
-
-    // Polling runs off the UI thread: Car.create/connect/getSensorEvent are reflective binder calls
-    // that can block if the head-unit service is slow, which would ANR on the main looper.
-    private HandlerThread pollThread;
-    private Handler worker;
-
-    private Object sensorManager;   // com.ecarx.xui.adaptapi.car.sensor.ISensor
-    private Method getSensorEvent;  // ISensor#getSensorEvent(int) -> Number
+    private volatile CarSignals.Snapshot latest = CarSignals.Snapshot.EMPTY;
+    private volatile Poller poller;
 
     VehicleData(Context context, Handler uiHandler, Runnable onUpdate) {
         this.context = context.getApplicationContext();
@@ -111,134 +58,206 @@ final class VehicleData {
         this.onUpdate = onUpdate;
     }
 
-    /** True once at least one signal ID is wired; otherwise the reader is a no-op by design. */
-    static boolean isConfigured() {
-        return ID_SPEED != UNSET || ID_RPM != UNSET || ID_GEAR != UNSET || ID_FUEL_PERCENT != UNSET
-                || ID_RANGE != UNSET || ID_OUTSIDE_TEMP != UNSET || ID_COOLANT_TEMP != UNSET;
-    }
-
-    Snapshot snapshot() {
+    CarSignals.Snapshot snapshot() {
         return latest;
     }
 
     void start() {
-        if (!isConfigured()) {
-            return;   // nothing wired: don't even spin up a thread
+        if (sdkMissing || poller != null) {
+            return;
         }
-        if (pollThread != null) {
-            return;   // already running
-        }
-        stopped = false;
-        pollThread = new HandlerThread("vehicle-poll");
-        pollThread.start();
-        worker = new Handler(pollThread.getLooper());
-        worker.post(pollTask);
+        poller = new Poller();
     }
 
     void stop() {
-        stopped = true;
-        if (worker != null) {
-            worker.removeCallbacks(pollTask);
-            worker = null;
+        Poller p = poller;
+        poller = null;
+        if (p != null) {
+            p.shutdown();
         }
-        if (pollThread != null) {
-            pollThread.quitSafely();
-            pollThread = null;
-        }
-        sensorManager = null;
-        getSensorEvent = null;
-        latest = Snapshot.EMPTY;
+        latest = CarSignals.Snapshot.EMPTY;
     }
 
-    private final Runnable pollTask = this::poll;
-
-    /** Runs on the poll thread. */
-    private void poll() {
-        if (stopped) {
-            return;
+    private void publish(Poller from, CarSignals.Snapshot snap) {
+        if (poller != from) {
+            return;   // a stopped/replaced poller must not overwrite the current state
         }
-        try {
-            if (sensorManager == null) {
-                connect();
-            }
-            latest = read();
-            notifyUi();
-            if (!stopped && worker != null) {
-                worker.postDelayed(pollTask, POLL_MS);
-            }
-        } catch (Exception e) {
-            AppLog.v(TAG, "AdaptAPI read failed, retrying: " + e.getMessage());
-            sensorManager = null;
-            getSensorEvent = null;
-            latest = Snapshot.EMPTY;
-            notifyUi();
-            if (!stopped && worker != null) {
-                worker.postDelayed(pollTask, RETRY_MS);
-            }
-        }
-    }
-
-    private void notifyUi() {
+        latest = snap;
         if (onUpdate != null) {
             uiHandler.post(onUpdate);
         }
     }
 
-    private void connect() throws Exception {
-        Class<?> carCls = Class.forName("com.ecarx.xui.adaptapi.car.Car");
-        Object car = carCls.getMethod("create", Context.class).invoke(null, context);
-        if (car == null) {
-            throw new IllegalStateException("Car.create returned null");
+    /** One polling session: its own thread and AdaptAPI connection. All work runs on {@link #worker}. */
+    private final class Poller implements Runnable {
+        private final HandlerThread thread = new HandlerThread("vehicle-poll");
+        private final Handler worker;
+        private volatile boolean stopped;
+
+        // Reflective binder calls can block if the head-unit service is slow: never on the main looper.
+        private Object car;             // com.ecarx.xui.adaptapi.car.ICar
+        private Object sensorManager;   // com.ecarx.xui.adaptapi.car.sensor.ISensor
+        private Method getLatest;       // ISensor#getSensorLatestValue(int) -> float
+        private Method getEvent;        // ISensor#getSensorEvent(int) -> int
+        private int emptyPolls;
+        private boolean loggedRaw;
+        private boolean loggedFailure;
+
+        Poller() {
+            thread.start();
+            worker = new Handler(thread.getLooper());
+            worker.post(this);
         }
-        // Some builds need an explicit connect() before the managers are live.
-        try {
-            Class<?> connectable = Class.forName("com.ecarx.xui.adaptapi.binder.IConnectable");
-            if (connectable.isInstance(car)) {
-                connectable.getMethod("connect").invoke(car);
+
+        /** Main thread. Disconnect runs on the worker before it quits (quitSafely drains posted work). */
+        void shutdown() {
+            stopped = true;
+            worker.removeCallbacks(this);
+            worker.post(this::disconnect);
+            thread.quitSafely();
+        }
+
+        @Override
+        public void run() {
+            if (stopped) {
+                return;
             }
-        } catch (Exception ignored) {
-            // older adaptapi without IConnectable
-        }
-        Object mgr = car.getClass().getMethod("getSensorManager").invoke(car);
-        if (mgr == null) {
-            throw new IllegalStateException("getSensorManager returned null");
-        }
-        sensorManager = mgr;
-        getSensorEvent = mgr.getClass().getMethod("getSensorEvent", int.class);
-        AppLog.i(TAG, "AdaptAPI sensor manager connected");
-    }
-
-    private Snapshot read() {
-        return new Snapshot(
-                decode(ID_SPEED, SPEED_SCALE, 0f),
-                decode(ID_RPM, 1f, 0f),
-                rawInt(ID_GEAR),
-                decode(ID_FUEL_PERCENT, 1f, 0f),
-                decode(ID_RANGE, RANGE_SCALE, 0f),
-                decode(ID_OUTSIDE_TEMP, 1f / TEMP_SCALE, -TEMP_OUTSIDE_OFFSET / TEMP_SCALE),
-                decode(ID_COOLANT_TEMP, 1f / TEMP_SCALE, -TEMP_COOLANT_OFFSET / TEMP_SCALE));
-    }
-
-    /** raw * scale + offset, or null when the signal isn't wired/available. */
-    private Float decode(int id, float scale, float offset) {
-        Integer raw = rawInt(id);
-        return raw == null ? null : raw * scale + offset;
-    }
-
-    private Integer rawInt(int id) {
-        if (id == UNSET || getSensorEvent == null) {
-            return null;
-        }
-        try {
-            Object v = getSensorEvent.invoke(sensorManager, id);
-            if (v instanceof Number) {
-                int i = ((Number) v).intValue();
-                // AdaptAPI uses Integer.MIN_VALUE as the "no value yet" sentinel.
-                return i == Integer.MIN_VALUE ? null : i;
+            try {
+                if (sensorManager == null) {
+                    connect();
+                }
+                CarSignals.Snapshot snap = read();
+                if (snap.hasAny()) {
+                    emptyPolls = 0;
+                } else if (++emptyPolls >= STALE_POLLS) {
+                    // ponytail: 5-poll heuristic; switch to IConnectWatcher if reconnects flap
+                    emptyPolls = 0;
+                    disconnect();
+                }
+                if (!stopped) {
+                    publish(this, snap);
+                    worker.postDelayed(this, POLL_MS);
+                }
+            } catch (Exception | LinkageError e) {
+                if (CarSignals.isMissingSdk(e)) {
+                    AppLog.i(TAG, "AdaptAPI not present, car card disabled");
+                    sdkMissing = true;
+                    stopped = true;
+                    publish(this, CarSignals.Snapshot.EMPTY);
+                    uiHandler.post(() -> {
+                        if (poller == this) {
+                            stop();
+                        }
+                    });
+                    return;
+                }
+                String msg = "AdaptAPI read failed, retrying: " + e;
+                if (loggedFailure) {
+                    AppLog.v(TAG, msg);
+                } else {
+                    AppLog.i(TAG, msg);
+                    loggedFailure = true;
+                }
+                disconnect();
+                if (!stopped) {
+                    publish(this, CarSignals.Snapshot.EMPTY);
+                    worker.postDelayed(this, RETRY_MS);
+                }
             }
-        } catch (Exception e) {
-            AppLog.v(TAG, "read id=" + id + " failed: " + e.getMessage());
         }
-        return null;
+
+        private void connect() throws Exception {
+            Class<?> carCls = Class.forName("com.ecarx.xui.adaptapi.car.Car");
+            Object c = carCls.getMethod("create", Context.class).invoke(null, context);
+            if (c == null) {
+                throw new IllegalStateException("Car.create returned null");
+            }
+            car = c;
+            // Some builds need an explicit connect() before the managers are live.
+            Class<?> connectable = connectableClass();
+            if (connectable != null && connectable.isInstance(c)) {
+                connectable.getMethod("connect").invoke(c);
+            }
+            Object mgr = c.getClass().getMethod("getSensorManager").invoke(c);
+            if (mgr == null) {
+                throw new IllegalStateException("getSensorManager returned null");
+            }
+            // Resolve on the public interface, not the impl class (robust to non-public impls/proxies).
+            Class<?> iSensor = Class.forName("com.ecarx.xui.adaptapi.car.sensor.ISensor");
+            getLatest = iSensor.getMethod("getSensorLatestValue", int.class);
+            getEvent = iSensor.getMethod("getSensorEvent", int.class);
+            sensorManager = mgr;
+            loggedRaw = false;
+            AppLog.i(TAG, "AdaptAPI sensor manager connected");
+        }
+
+        private void disconnect() {
+            Object c = car;
+            car = null;
+            sensorManager = null;
+            if (c == null) {
+                return;
+            }
+            try {
+                Class<?> connectable = connectableClass();
+                if (connectable != null && connectable.isInstance(c)) {
+                    connectable.getMethod("disconnect").invoke(c);
+                }
+            } catch (Exception | LinkageError e) {
+                AppLog.v(TAG, "AdaptAPI disconnect failed: " + e);
+            }
+        }
+
+        private Class<?> connectableClass() {
+            try {
+                return Class.forName("com.ecarx.xui.adaptapi.binder.IConnectable");
+            } catch (ClassNotFoundException | LinkageError e) {
+                return null;   // older adaptapi without IConnectable
+            }
+        }
+
+        private CarSignals.Snapshot read() {
+            Object mgr = sensorManager;
+            float speed = rawLatest(mgr, CarSignals.SPEED);
+            float ipk = rawLatest(mgr, CarSignals.SPEED_IPK);
+            int gear = rawEvent(mgr, CarSignals.GEAR);
+            float fuel = rawLatest(mgr, CarSignals.FUEL);
+            float range = rawLatest(mgr, CarSignals.RANGE);
+            float temp = rawLatest(mgr, CarSignals.OUTSIDE_TEMP);
+            float odo = rawLatest(mgr, CarSignals.ODOMETER);
+            if (!loggedRaw) {
+                // ponytail: fuel litres / temp °C unverified; this line is the calibration knob
+                AppLog.i(TAG, String.format(Locale.US,
+                        "raw speed=%s(0x%x) ipk=%s(0x%x) gear=0x%x fuel=%s(0x%x) range=%s(0x%x) temp=%s(0x%x) odo=%s(0x%x)",
+                        speed, bits(speed), ipk, bits(ipk), gear, fuel, bits(fuel), range, bits(range),
+                        temp, bits(temp), odo, bits(odo)));
+                loggedRaw = true;
+            }
+            return CarSignals.fromRaw(speed, ipk, gear, fuel, range, temp, odo, SystemClock.elapsedRealtime());
+        }
+
+        /** getSensorLatestValue, or the "unsupported" sentinel if the call fails. */
+        private float rawLatest(Object mgr, int id) {
+            try {
+                return ((Number) getLatest.invoke(mgr, id)).floatValue();
+            } catch (Exception e) {
+                AppLog.v(TAG, "read id=0x" + Integer.toHexString(id) + " failed: " + e);
+                return Float.intBitsToFloat(1);
+            }
+        }
+
+        /** getSensorEvent, or -1 (no value) if the call fails. */
+        private int rawEvent(Object mgr, int id) {
+            try {
+                return ((Number) getEvent.invoke(mgr, id)).intValue();
+            } catch (Exception e) {
+                AppLog.v(TAG, "read id=0x" + Integer.toHexString(id) + " failed: " + e);
+                return -1;
+            }
+        }
+
+        private int bits(float v) {
+            return Float.floatToRawIntBits(v);
+        }
     }
 }
