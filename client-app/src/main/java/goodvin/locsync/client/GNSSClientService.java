@@ -123,7 +123,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private TrackRecorder trackRecorder;    // non-null while "Record track" is on
     // Head-unit speed for the track log; runs with the recorder (MainActivity's reader stops in onPause).
     // ponytail: separate AdaptAPI connection from MainActivity's; share one if the head unit objects to two
-    private VehicleData trackVehicle;
+    // volatile: stopTransport (connectivity thread) may null it while the main-thread fix path reads it.
+    private volatile VehicleData trackVehicle;
     private final Runnable smoothingTick = this::smoothingTick;
 
     private volatile DatagramSocket udpSocket;
@@ -684,10 +685,11 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     stateElapsedMs = measElapsed;
 
                     updateTrackRecorder();
+                    VehicleData car = trackVehicle;   // read once: may be nulled concurrently
                     if (trackRecorder != null) {
                         trackRecorder.fix(nowElapsed, fixTs, provider, sats, lat, lon, alt, acc, hasSpd, spd, hasBrg, brg,
                                 spdAcc, brgAcc, ageS, latencyMs, kalman,
-                                trackVehicle == null ? null : trackVehicle.snapshot());
+                                car == null ? null : car.snapshot());
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "Error updating Kalman filter", e);

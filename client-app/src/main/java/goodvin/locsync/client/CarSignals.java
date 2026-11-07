@@ -114,7 +114,8 @@ final class CarSignals {
     /** True when a failure means the vendor SDK isn't on this unit at all (stop trying), not a transient error. */
     static boolean isMissingSdk(Throwable t) {
         for (Throwable c = t; c != null; c = c.getCause()) {
-            if (c instanceof ClassNotFoundException || c instanceof NoClassDefFoundError) {
+            if (c instanceof ClassNotFoundException || c instanceof NoClassDefFoundError
+                    || c instanceof ExceptionInInitializerError) {
                 return true;
             }
         }

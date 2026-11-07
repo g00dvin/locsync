@@ -67,6 +67,8 @@ public class CarSignalsTest {
         assertTrue(CarSignals.isMissingSdk(new ClassNotFoundException("x")));
         assertTrue(CarSignals.isMissingSdk(new NoClassDefFoundError("x")));
         assertTrue(CarSignals.isMissingSdk(new ExceptionInInitializerError(new NoClassDefFoundError("x"))));
+        // A vendor class whose static init throws: not usable on this unit either, stop retrying.
+        assertTrue(CarSignals.isMissingSdk(new ExceptionInInitializerError(new IllegalStateException("x"))));
         assertTrue(CarSignals.isMissingSdk(
                 new java.lang.reflect.InvocationTargetException(new ClassNotFoundException("x"))));
         assertFalse(CarSignals.isMissingSdk(new NoSuchMethodException("x")));   // hidden API: retry, not give up

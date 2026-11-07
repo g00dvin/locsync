@@ -102,6 +102,7 @@ final class VehicleData {
         private int emptyPolls;
         private boolean loggedRaw;
         private boolean loggedFailure;
+        private boolean reconnecting;   // after the first connect, connect/raw lines drop to verbose
 
         Poller() {
             thread.start();
@@ -188,7 +189,7 @@ final class VehicleData {
             getEvent = iSensor.getMethod("getSensorEvent", int.class);
             sensorManager = mgr;
             loggedRaw = false;
-            AppLog.i(TAG, "AdaptAPI sensor manager connected");
+            log("AdaptAPI sensor manager connected");
         }
 
         private void disconnect() {
@@ -227,11 +228,12 @@ final class VehicleData {
             float odo = rawLatest(mgr, CarSignals.ODOMETER);
             if (!loggedRaw) {
                 // ponytail: fuel litres / temp °C unverified; this line is the calibration knob
-                AppLog.i(TAG, String.format(Locale.US,
+                log(String.format(Locale.US,
                         "raw speed=%s(0x%x) ipk=%s(0x%x) gear=0x%x fuel=%s(0x%x) range=%s(0x%x) temp=%s(0x%x) odo=%s(0x%x)",
                         speed, bits(speed), ipk, bits(ipk), gear, fuel, bits(fuel), range, bits(range),
                         temp, bits(temp), odo, bits(odo)));
                 loggedRaw = true;
+                reconnecting = true;
             }
             return CarSignals.fromRaw(speed, ipk, gear, fuel, range, temp, odo, SystemClock.elapsedRealtime());
         }
@@ -253,6 +255,15 @@ final class VehicleData {
             } catch (Exception e) {
                 AppLog.v(TAG, "read id=0x" + Integer.toHexString(id) + " failed: " + e);
                 return -1;
+            }
+        }
+
+        /** Info on the first connection of this poller; verbose on reconnects (stale/empty cycles). */
+        private void log(String msg) {
+            if (reconnecting) {
+                AppLog.v(TAG, msg);
+            } else {
+                AppLog.i(TAG, msg);
             }
         }
 
