@@ -9,3 +9,6 @@ client-app/libs
 
 # Upstream APKs kept locally for analysis, not part of the project
 /*.apk
+
+# Personal Claude Code settings (not shared)
+.claude/settings.local.json
