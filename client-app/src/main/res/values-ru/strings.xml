@@ -124,6 +124,12 @@
 
     <string name="filter_adaptive_noise">Адаптивное сглаживание</string>
     <string name="filter_adaptive_noise_sub">Сильнее сглаживать на прямой и быстрее реагировать в поворотах или когда фиксы расходятся с прогнозом.</string>
+    <string name="filter_speed_ramp">Плавная скорость между фиксами</string>
+    <string name="filter_speed_ramp_sub">Плавно менять скорость между фиксами при разгоне и торможении. Выкл.: держать скорость фикса до следующего.</string>
+    <string name="filter_output_1hz">Выдавать раз в секунду</string>
+    <string name="filter_output_1hz_sub">Передавать местоположение приложениям раз в секунду, а не 10 раз. Для проверки скорости в навигаторе.</string>
+    <string name="filter_send_speed">Передавать скорость приложениям</string>
+    <string name="filter_send_speed_sub">Выкл.: приложения получают только позицию и направление и считают скорость сами. Для проверки.</string>
     <string name="filter_process_noise_base">Базовый шум процесса σa, м/с² (меньше = плавнее)</string>
     <string name="filter_nis_avg">Средняя невязка (идеал ≈2)</string>
     <string name="filter_process_noise">Шум процесса σa</string>

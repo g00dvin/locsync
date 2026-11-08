@@ -559,6 +559,15 @@ public class MainActivity extends AppCompatActivity {
         bindNumberInput(R.id.rowProcessNoise, getString(R.string.filter_process_noise_base),
                 Preferences.filterProcessNoise(this), 0.2, 10,
                 v -> { Preferences.setFilterProcessNoise(this, (float) v); refreshFilterPresetSub(); });
+        bindToggle(R.id.rowSpeedRamp, getString(R.string.filter_speed_ramp),
+                getString(R.string.filter_speed_ramp_sub), Preferences.filterSpeedRamp(this),
+                checked -> Preferences.setFilterSpeedRamp(this, checked));
+        bindToggle(R.id.rowOutput1Hz, getString(R.string.filter_output_1hz),
+                getString(R.string.filter_output_1hz_sub), Preferences.filterOutput1Hz(this),
+                checked -> Preferences.setFilterOutput1Hz(this, checked));
+        bindToggle(R.id.rowSendSpeed, getString(R.string.filter_send_speed),
+                getString(R.string.filter_send_speed_sub), Preferences.filterSendSpeed(this),
+                checked -> Preferences.setFilterSendSpeed(this, checked));
 
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,

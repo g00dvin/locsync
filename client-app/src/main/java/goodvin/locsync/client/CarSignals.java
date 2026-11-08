@@ -31,7 +31,7 @@ final class CarSignals {
     // ISensor.SENSOR_TYPE_* — continuous (getSensorLatestValue)
     static final int SPEED = 0x100100;          // CAR_SPEED, m/s
     static final int SPEED_IPK = 0x101a00;      // CAR_SPEED_FROM_IPK: what the cluster shows, m/s
-    static final int FUEL = 0x100600;           // FUEL_LEVEL, litres (unverified)
+    static final int FUEL = 0x100600;           // FUEL_LEVEL: integer mL in the float's bits on G426 (see fuelLitres)
     static final int RANGE = 0x100800;          // ENDURANCE_MILEAGE, km
     static final int OUTSIDE_TEMP = 0x100b00;   // TEMPERATURE_AMBIENT, °C (unverified)
     static final int ODOMETER = 0x100700;       // ODOMETER, km
@@ -82,8 +82,23 @@ final class CarSignals {
         // range zeros are placeholders too. With a real odometer a zero range (empty tank) is kept.
         boolean waking = odometer != null && odometer <= 0;
         return new Snapshot(speedKmh(latest(speedMps)), speedKmh(latest(speedIpkMps)), gearLabel(gearCode),
-                waking ? positive(latest(fuel)) : latest(fuel), waking ? positive(latest(range)) : latest(range),
+                waking ? positive(fuelLitres(fuel)) : fuelLitres(fuel), waking ? positive(latest(range)) : latest(range),
                 latest(temp), waking ? null : odometer, readElapsedMs);
+    }
+
+    /**
+     * Fuel in litres. The G426 returns an integer number of millilitres in the float's raw bits
+     * (drive of 2026-11-08: bits 0x7467 = 29799 → 29.8 L, falling with range), which reads as a tiny
+     * subnormal float. A positive subnormal is decoded that way; a normal float passes through as
+     * litres, for units that report it properly.
+     */
+    static Float fuelLitres(float raw) {
+        Float v = latest(raw);
+        int bits = Float.floatToRawIntBits(raw);
+        if (v != null && bits > 1 && bits < 0x00800000) {
+            return bits / 1000f;
+        }
+        return v;
     }
 
     private static Float positive(Float v) {

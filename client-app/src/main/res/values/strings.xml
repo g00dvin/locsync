@@ -131,6 +131,12 @@
 
     <string name="filter_adaptive_noise">Adaptive smoothing</string>
     <string name="filter_adaptive_noise_sub">Smooth harder on straights and follow faster in turns or when fixes keep disagreeing with the prediction.</string>
+    <string name="filter_speed_ramp">Speed ramp between fixes</string>
+    <string name="filter_speed_ramp_sub">Change the speed smoothly between fixes as the car speeds up or brakes. Off: hold each fix\'s speed until the next one.</string>
+    <string name="filter_output_1hz">Output once per second</string>
+    <string name="filter_output_1hz_sub">Hand the location to apps once a second instead of 10 times. For testing navigator speed display.</string>
+    <string name="filter_send_speed">Send speed to apps</string>
+    <string name="filter_send_speed_sub">Off: apps get position and direction only and must work out the speed themselves. For testing.</string>
     <string name="filter_process_noise_base">Base process noise σa, m/s² (lower = smoother)</string>
     <string name="filter_nis_avg">Innovation average (≈2 is ideal)</string>
     <string name="filter_process_noise">Process noise σa</string>

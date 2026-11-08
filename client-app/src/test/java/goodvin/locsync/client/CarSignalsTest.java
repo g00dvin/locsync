@@ -70,6 +70,18 @@ public class CarSignalsTest {
         assertTrue(CarSignals.fromRaw(0f, S, -1, S, S, S, S, 1L).hasAny());               // standing still is data
     }
 
+    // G426 packs integer millilitres into the float's bits; a normal float is litres already.
+    @Test
+    public void fuelDecoding() {
+        assertEquals(29.799f, CarSignals.fuelLitres(Float.intBitsToFloat(29799)), 1e-4f);
+        assertEquals(38f, CarSignals.fuelLitres(38f), 0f);
+        assertEquals(0f, CarSignals.fuelLitres(0f), 0f);
+        assertNull(CarSignals.fuelLitres(S));                       // unsupported sentinel (bits 0x1)
+        assertEquals(-1f, CarSignals.fuelLitres(-1f), 0f);           // negatives aren't subnormal-decoded
+        assertEquals(29.799f, CarSignals.fromRaw(0f, 0f, -1, Float.intBitsToFloat(29799), 364f, 2.6f, 0f, 1L)
+                .fuelLitres, 1e-4f);                                 // the logged case, odometer 0
+    }
+
     @Test
     public void missingSdkIsDetected() {
         assertTrue(CarSignals.isMissingSdk(new ClassNotFoundException("x")));
