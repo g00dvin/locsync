@@ -97,7 +97,10 @@ public class GNSSServerService extends Service {
     private final Runnable armKeepalive = () -> {
         if (!keepaliveArmed) {
             keepaliveArmed = true;
-            this.mainHandler.postDelayed(keepaliveRunnable, KEEPALIVE_TICK_MS);   // `this.`: declared below
+            // A HELLO racing stopServer can leave a tick pending with keepaliveArmed already reset;
+            // drop it so there is never more than one chain.
+            this.mainHandler.removeCallbacks(keepaliveRunnable);   // `this.`: declared below
+            this.mainHandler.postDelayed(keepaliveRunnable, KEEPALIVE_TICK_MS);
         }
     };
     private LocationManager locationManager = null;

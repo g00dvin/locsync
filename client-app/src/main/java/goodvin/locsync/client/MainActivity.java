@@ -307,7 +307,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
         started = true;
-        GNSSClientService.filterStatsWanted = monitorShown();
+        GNSSClientService.setFilterStatsWanted(monitorShown());
         if (monitorShown()) redrawMonitor();   // onResume redraws the rest (refreshState)
         blinkLogDot();
         if (dotAnimator != null) dotAnimator.resume();
@@ -319,7 +319,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onStop() {
         super.onStop();
         started = false;
-        GNSSClientService.filterStatsWanted = false;
+        GNSSClientService.setFilterStatsWanted(false);
         uiHandler.removeCallbacks(uiTick);
         if (dotAnimator != null) dotAnimator.pause();   // a 60 fps animator nobody sees otherwise
     }
@@ -395,7 +395,7 @@ public class MainActivity extends AppCompatActivity {
         btnLeft.setImageResource(connect ? R.drawable.ic_gear_six : R.drawable.ic_arrow_left);
         btnLeft.setContentDescription(getString(connect ? R.string.cd_settings : R.string.cd_back));
         btnRight.setVisibility(connect ? View.VISIBLE : View.INVISIBLE);
-        GNSSClientService.filterStatsWanted = monitorShown();
+        GNSSClientService.setFilterStatsWanted(monitorShown());
         switch (index) {
             case VIEW_MONITOR -> {
                 titleText.setText(R.string.nav_monitor);

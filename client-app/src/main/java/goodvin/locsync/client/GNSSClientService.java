@@ -80,8 +80,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     // The phone's battery and heat from the last response (null until a server that sends it).
     private record PhoneSample(LocationProto.PhoneState state, long elapsedMs) {}
     private static volatile PhoneSample phoneSample;
-    /** Set by MainActivity while its Monitor screen is shown; the filter rows are built only then. */
-    static volatile boolean filterStatsWanted;
+    /** True while MainActivity's Monitor screen is shown; the filter rows are built only then. */
+    private static volatile boolean filterStatsWanted;
     private int lastBroadcastSatelliteCount = -1;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile long lastResponseTime = 0;     // elapsedRealtime of the last RESPONSE
@@ -172,6 +172,18 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
     public static boolean isServiceEnabled(Context context) {
         return Preferences.serviceEnabled(context);
+    }
+
+    /**
+     * Called by MainActivity (main thread) as the Monitor screen shows and hides. On show, the rows go
+     * out at once: the metrics tick sends them only once a second, so the card showed the values from
+     * when it was last open for up to a second.
+     */
+    static void setFilterStatsWanted(boolean wanted) {
+        boolean was = filterStatsWanted;
+        filterStatsWanted = wanted;
+        GNSSClientService s = instance;
+        if (wanted && !was && s != null) s.mainHandler.post(s::broadcastFilterStats);
     }
 
     public static boolean isServiceRunning() {
