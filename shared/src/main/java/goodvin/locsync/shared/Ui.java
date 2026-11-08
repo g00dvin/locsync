@@ -47,21 +47,21 @@ import goodvin.locsync.logexporter.R;
 /** Screen helpers both apps' MainActivity share: log console, data export, "Clear logs" row, formatting. */
 public final class Ui {
     private static final String TAG = "Ui";
-    // Main thread only: SimpleDateFormat isn't thread-safe, and renderLog runs there.
-    private static final SimpleDateFormat LOG_TIME = new SimpleDateFormat("HH:mm:ss", Locale.US);
 
     private Ui() {}
 
     /** The in-app log console: the newest 120 entries, time dimmed, level coloured. */
     public static void renderLog(TextView view) {
         Context c = view.getContext();
+        // Per call: a formatter keeps the time zone it was built with.
+        SimpleDateFormat time = new SimpleDateFormat("HH:mm:ss", Locale.US);
         List<AppLog.Entry> entries = AppLog.snapshot();
         SpannableStringBuilder sb = new SpannableStringBuilder();
         int max = Math.min(entries.size(), 120);
         for (int i = 0; i < max; i++) {
             AppLog.Entry e = entries.get(i);
             int start = sb.length();
-            sb.append(LOG_TIME.format(e.timeMillis)).append(' ');
+            sb.append(time.format(e.timeMillis)).append(' ');
             span(sb, start, sb.length(), c.getColor(R.color.ls_text_dim));
             int ls = sb.length();
             sb.append(e.level).append(' ');
