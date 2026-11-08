@@ -66,7 +66,6 @@ import goodvin.locsync.shared.Metrics;
 import goodvin.locsync.shared.CsvLog;
 import goodvin.locsync.shared.MetricsSnapshot;
 import goodvin.locsync.shared.Protocol;
-import goodvin.locsync.shared.SystemStatsReader;
 
 public class GNSSServerService extends Service {
     private static final String TAG = "GNSSServerService";
@@ -128,7 +127,7 @@ public class GNSSServerService extends Service {
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Metrics metrics = new Metrics();
-    private SystemStatsReader statsReader;
+    private AndroidSystemStatsReader statsReader;
     private CsvLog metricsLog;                       // metrics-<app>.csv; main thread only
     private final StringBuilder metricsRow = new StringBuilder(160);
     private volatile boolean metricsPrimed = false;
@@ -172,31 +171,6 @@ public class GNSSServerService extends Service {
     private boolean hadAccurateFix = true;                 // see Preferences.waitForAccurate
     private long lastFixElapsedNanos = 0;                  // monotonic time of the fix in lastServerResponse
     private ServerTrackRecorder trackRecorder;             // non-null while "Record track" is on
-    private boolean gpsReferenceActive = false;
-    // Raw GPS alongside Fused, for the track only: shows how much Fused smooths and lags.
-    // An explicit class, not a lambda: before API 30 the other LocationListener callbacks are abstract.
-    private final LocationListener gpsReferenceListener = new LocationListener() {
-        @Override
-        public void onLocationChanged(@NonNull Location location) {
-            if (trackRecorder != null) {
-                trackRecorder.fix(SystemClock.elapsedRealtime(), "gps_ref", location, getSatelliteCount(),
-                        false, clientAddr != null);
-            }
-        }
-
-        @Override
-        public void onProviderEnabled(@NonNull String provider) {
-        }
-
-        @Override
-        public void onProviderDisabled(@NonNull String provider) {
-        }
-
-        @Override
-        @SuppressWarnings("deprecation")
-        public void onStatusChanged(String provider, int status, android.os.Bundle extras) {
-        }
-    };
     private static final float ACCURATE_FIX_M = 20f;
     private WifiManager.MulticastLock multicastLock;
 
@@ -292,26 +266,12 @@ public class GNSSServerService extends Service {
     }
 
     private void initializeFusedLocationProviderClient() {
-        // Supported on Android 12+
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            return;
-        }
-
-        // User opted out
-        if (!Preferences.fusedLocationEnabled(this)) {
+        if (fusedLocationProviderClient != null || !Preferences.fusedLocationEnabled(this)
+                || !isFusedLocationSupported(this)) {
             return;
         }
 
         try {
-            // Google Play Services are required
-            if (!isGooglePlayServicesAvailable(this)) {
-                return;
-            }
-
-            if (fusedLocationProviderClient != null) {
-                return;
-            }
-
             fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
         } catch (NoClassDefFoundError e) {
             Log.w(TAG, "Google Play Services not available on this device", e);
@@ -319,6 +279,7 @@ public class GNSSServerService extends Service {
         }
     }
 
+    /** Android 12+ with Google Play Services. */
     public static boolean isFusedLocationSupported(Context context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             return false;
@@ -562,14 +523,6 @@ public class GNSSServerService extends Service {
             } else {
                 requestGpsUpdates(MIN_INTERVAL_MS);
             }
-
-            if (fusedLocationProviderClient != null && Preferences.trackRecording(this)
-                    && Preferences.recordGpsReference(this) && locationManager != null) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, MIN_INTERVAL_MS, 0,
-                        gpsReferenceListener, Looper.getMainLooper());
-                gpsReferenceActive = true;
-                AppLog.i(TAG, "Recording raw GPS alongside Fused for comparison");
-            }
             AppLog.i(TAG, "Location updates started: " + (fusedLocationProviderClient != null ? "fused" : "gps")
                     + ", interval " + MIN_INTERVAL_MS + " ms" + (waitAccurate ? ", waiting for an accurate fix" : ""));
 
@@ -612,7 +565,6 @@ public class GNSSServerService extends Service {
         isGnssActive = false;   // let startLocationUpdates re-issue the request
         if (locationManager != null) {
             locationManager.removeUpdates(locationListener);
-            stopGpsReference();
         }
         if (fusedLocationProviderClient != null) {
             fusedLocationProviderClient.removeLocationUpdates(fusedLocationListener);
@@ -631,7 +583,6 @@ public class GNSSServerService extends Service {
 
         if (locationManager != null) {
             locationManager.removeUpdates(locationListener);
-            stopGpsReference();
             locationManager.unregisterGnssStatusCallback(gnssStatusCallback);
             locationManager = null;
         }
@@ -748,13 +699,6 @@ public class GNSSServerService extends Service {
             String source = "fused".equals(location.getProvider()) ? "fused" : "gps";
             trackRecorder.fix(receivedElapsed, source, location, getSatelliteCount(), sent, clientAddr != null);
         }
-    }
-
-    private void stopGpsReference() {
-        if (gpsReferenceActive && locationManager != null) {
-            locationManager.removeUpdates(gpsReferenceListener);
-        }
-        gpsReferenceActive = false;
     }
 
     /** Opens/closes track-server.csv to follow the "Record track" setting (checked on every fix). */
@@ -988,12 +932,6 @@ public class GNSSServerService extends Service {
             }
         }
         return used;
-    }
-
-    private boolean isGooglePlayServicesAvailable(Context context) {
-        GoogleApiAvailability googleApiAvailability = GoogleApiAvailability.getInstance();
-        int resultCode = googleApiAvailability.isGooglePlayServicesAvailable(context);
-        return resultCode == ConnectionResult.SUCCESS;
     }
 
     // Bluetooth auto-stop methods

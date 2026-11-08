@@ -61,7 +61,6 @@ import goodvin.locsync.shared.Metrics;
 import goodvin.locsync.shared.CsvLog;
 import goodvin.locsync.shared.MetricsSnapshot;
 import goodvin.locsync.shared.Protocol;
-import goodvin.locsync.shared.SystemStatsReader;
 
 public class GNSSClientService extends Service implements ConnectionManager.ConnectionListener {
     private static final String TAG = "GNSSClientService";
@@ -143,7 +142,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private volatile DatagramSocket udpSocket;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Metrics metrics = new Metrics();
-    private SystemStatsReader statsReader;
+    private AndroidSystemStatsReader statsReader;
     private CsvLog metricsLog;                       // metrics-<app>.csv; main thread only
     private final StringBuilder metricsRow = new StringBuilder(160);
     private volatile boolean metricsPrimed = false;
@@ -399,18 +398,17 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
 
         connectionManager.setState(ConnectionManager.ConnectionState.DISCONNECTED, reason, null);
-        sendBroadcast(new Intent("goodvin.locsync.CONNECTION_CHANGED").setPackage(getPackageName()));
     }
 
     private void sendHelloTick() {
         if (!running.get()) {
             return;
         }
-        String target = connectionManager.getSendTarget(); // null in Auto mode until discovered
+        String target = connectionManager.getSendTarget(); // null until discovered
         // Build the target list once (buildProbeTargets() reads DhcpInfo and throttles the sweep).
         final List<String> targets = (target != null)
-                ? Collections.singletonList(target)   // known server (fixed/learned/seeded): unicast
-                : buildProbeTargets();                // auto, not yet found: broadcast + optional sweep
+                ? Collections.singletonList(target)   // known server: unicast
+                : buildProbeTargets();                // not yet found: broadcast + optional sweep
         final DatagramSocket sock = udpSocket;
         if (sock != null) {
             executor.execute(() -> sendProbes(sock, targets));
@@ -427,15 +425,13 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         } else {
             searchingTicks = 0;
         }
-        // Recency check: drop to CONNECTING if no RESPONSE within the window; in Auto mode also
-        // forget the learned server so the next ticks broadcast to re-discover.
+        // Recency check: drop to CONNECTING if no RESPONSE within the window, and forget the
+        // learned server so the next ticks broadcast to re-discover.
         if (connectionManager.isConnected()
                 && SystemClock.elapsedRealtime() - lastResponseTime > CONNECTED_TIMEOUT_MS) {
             connectionManager.setState(ConnectionManager.ConnectionState.CONNECTING,
                     "Waiting for server...", connectionManager.getServerAddress());
-            if (connectionManager.isAutoDiscover()) {
-                connectionManager.clearLearnedServerAddress();
-            }
+            connectionManager.clearLearnedServerAddress();
         }
         mainHandler.postDelayed(helloTick, HELLO_INTERVAL_MS);
     }
@@ -559,9 +555,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
             lastResponseTime = SystemClock.elapsedRealtime();   // monotonic, immune to clock changes
             String srcAddr = packet.getAddress().getHostAddress();
-            if (connectionManager.isAutoDiscover()) {
-                connectionManager.setLearnedServerAddress(srcAddr);
-            }
+            connectionManager.setLearnedServerAddress(srcAddr);
             if (!connectionManager.isConnected()) {
                 connectionManager.setState(ConnectionManager.ConnectionState.CONNECTED,
                         "Receiving from server", srcAddr);

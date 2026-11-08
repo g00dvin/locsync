@@ -22,9 +22,6 @@ import android.content.SharedPreferences;
 
 public class Preferences {
     private static final String PREF_IS_SERVICE_ENABLED = "isServiceEnabled";
-    private static final String PREF_AUTO_DISCOVER = "autoDiscover";
-    private static final String LEGACY_USE_GATEWAY_IP = "useGatewayIp";
-    private static final String PREF_SERVER_ADDRESS = "serverAddress";
     private static final String PREF_LAST_DISCOVERED_IP = "lastDiscoveredServerIp";
     private static final String PREF_STATIC_JITTER_ENABLED = "staticJitterEnabled";
     private static final String PREF_LAST_AUTOSTART_SOURCE = "lastAutostartSource";
@@ -38,29 +35,6 @@ public class Preferences {
 
     public static boolean serviceEnabled(Context context) {
         return getPrefs(context).getBoolean(PREF_IS_SERVICE_ENABLED, false);
-    }
-
-    public static void setAutoDiscover(Context context, boolean value) {
-        getPrefs(context).edit().putBoolean(PREF_AUTO_DISCOVER, value).apply();
-    }
-
-    public static boolean autoDiscover(Context context) {
-        SharedPreferences prefs = getPrefs(context);
-        // One-time migration from the old "useGatewayIp" key (same semantics: both true = auto/gateway).
-        if (!prefs.contains(PREF_AUTO_DISCOVER) && prefs.contains(LEGACY_USE_GATEWAY_IP)) {
-            boolean legacy = prefs.getBoolean(LEGACY_USE_GATEWAY_IP, true);
-            prefs.edit().putBoolean(PREF_AUTO_DISCOVER, legacy).remove(LEGACY_USE_GATEWAY_IP).apply();
-            return legacy;
-        }
-        return prefs.getBoolean(PREF_AUTO_DISCOVER, true);
-    }
-
-    public static void setServerAddress(Context context, String value) {
-        getPrefs(context).edit().putString(PREF_SERVER_ADDRESS, value).apply();
-    }
-
-    public static String serverAddress(Context context) {
-        return getPrefs(context).getString(PREF_SERVER_ADDRESS, "192.168.43.1");
     }
 
     /** Last server IP learned by auto-discovery; seeds the next start so reconnect is instant. */

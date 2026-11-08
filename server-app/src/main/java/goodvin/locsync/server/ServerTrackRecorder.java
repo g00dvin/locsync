@@ -28,8 +28,7 @@ import goodvin.locsync.shared.CsvLog;
  * the client. Together with the head unit's track-client.csv this separates delays in the
  * provider (fix time vs. delivery), on the phone (delivery vs. send) and over Wi-Fi.
  *
- * <p>{@code source}: {@code fused} / {@code gps} = the fix the server uses; {@code gps_ref} = raw
- * GPS recorded alongside Fused for comparison only (never sent). Flushed ~1/s by the caller,
+ * <p>{@code source}: {@code fused} / {@code gps} = the provider of the fix. Flushed ~1/s by the caller,
  * rotated to {@code .old} above 30 MB. Main thread only.
  */
 final class ServerTrackRecorder {

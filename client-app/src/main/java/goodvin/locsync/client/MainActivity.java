@@ -257,8 +257,6 @@ public class MainActivity extends AppCompatActivity {
 
         appVersion = VersionGetter.getAppVersionName(this);
         AppLog.setDebug(Preferences.debugLoggingEnabled(this));
-        // Manual server-address UI was removed; the client always auto-discovers.
-        Preferences.setAutoDiscover(this, true);
 
         bindTopBar();
         bindConnect();
@@ -489,7 +487,6 @@ public class MainActivity extends AppCompatActivity {
         TextView exportBtn = findViewById(R.id.btnExportLogs);
         exportBtn.setText(R.string.export_all_short);
         exportBtn.setOnClickListener(v -> exportAllData());
-        findViewById(R.id.btnExportCsv).setVisibility(View.GONE);
     }
 
     private void bindSettings() {
