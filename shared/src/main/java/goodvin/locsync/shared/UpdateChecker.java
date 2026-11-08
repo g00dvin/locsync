@@ -20,6 +20,7 @@ package goodvin.locsync.shared;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -27,6 +28,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Looks up the latest GitHub release and downloads this app's APK from it. Both apps are installed
@@ -36,6 +39,11 @@ import java.net.URL;
 public final class UpdateChecker {
     static final String LATEST_RELEASE_URL = "https://github.com/g00dvin/locsync/releases/latest";
     static final String RELEASE_DOWNLOAD_URL = "https://github.com/g00dvin/locsync/releases/download/";
+    static final String LATEST_RELEASE_API_URL = "https://api.github.com/repos/g00dvin/locsync/releases/latest";
+    // Only plain versions: the tag becomes part of a URL, and a pre-release like v4.0-rc1 isn't offered.
+    private static final Pattern PLAIN_VERSION = Pattern.compile("v\\d+\\.\\d+(\\.\\d+)?");
+    private static final Pattern TAG_NAME = Pattern.compile("\"tag_name\"\\s*:\\s*\"([^\"]+)\"");
+    private static final int MAX_API_BYTES = 1024 * 1024;
     private static final String PREFS = "locsync_updates";
     private static final String KEY_CHECKED_AT = "checkedAt";
     private static final String KEY_TAG = "tag";
@@ -52,8 +60,20 @@ public final class UpdateChecker {
     public static Release fetchLatest(Context context, String apkPrefix) throws IOException {
         // Count the attempt, not just a success: offline checks must not retry on every screen start.
         prefs(context).edit().putLong(KEY_CHECKED_AT, System.currentTimeMillis()).apply();
-        String tag = latestTag();
-        Release release = tag == null ? null : apkExists(apkUrl(tag, apkPrefix)) ? new Release(tag, apkUrl(tag, apkPrefix)) : null;
+        Release release;
+        try {
+            String tag = latestTag();
+            release = tag == null ? null : apkExists(apkUrl(tag, apkPrefix)) ? new Release(tag, apkUrl(tag, apkPrefix)) : null;
+        } catch (IOException webError) {
+            // github.com's pages can answer 504 while the REST API is fine (seen 2026-11-08). The API
+            // stays the fallback only: see latestTag for its rate limit.
+            try {
+                release = latestFromApi(apkPrefix);
+            } catch (IOException apiError) {
+                webError.addSuppressed(apiError);
+                throw webError;   // the user sees what the website said
+            }
+        }
         remember(context, release);
         return release;
     }
@@ -81,9 +101,42 @@ public final class UpdateChecker {
         if (location == null) return null;
         int i = location.lastIndexOf("/releases/tag/");
         if (i < 0) return null;
-        String tag = location.substring(i + "/releases/tag/".length());
-        // Only plain versions: the tag becomes part of a URL, and a pre-release like v4.0-rc1 isn't offered.
-        return tag.matches("v\\d+\\.\\d+(\\.\\d+)?") ? tag : null;
+        return plainTag(location.substring(i + "/releases/tag/".length()));
+    }
+
+    private static String plainTag(String tag) {
+        return PLAIN_VERSION.matcher(tag).matches() ? tag : null;
+    }
+
+    private static Release latestFromApi(String apkPrefix) throws IOException {
+        HttpURLConnection conn = open(LATEST_RELEASE_API_URL);
+        conn.setRequestProperty("Accept", "application/vnd.github+json");
+        try {
+            int code = conn.getResponseCode();
+            if (code == HttpURLConnection.HTTP_NOT_FOUND) return null;   // no release yet
+            if (code != HttpURLConnection.HTTP_OK) throw new IOException("API HTTP " + code);
+            ByteArrayOutputStream body = new ByteArrayOutputStream();
+            try (InputStream in = conn.getInputStream()) {
+                byte[] buf = new byte[8192];
+                for (int n; (n = in.read(buf)) > 0; ) {
+                    body.write(buf, 0, n);
+                    if (body.size() > MAX_API_BYTES) throw new IOException("API response too large");
+                }
+            }
+            return releaseFromApiJson(body.toString("UTF-8"), apkPrefix);
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    /** The REST API's latest release; null unless its tag is a plain version with this app's APK attached. */
+    static Release releaseFromApiJson(String json, String apkPrefix) {
+        // ponytail: string matching, not a JSON parser (org.json is a stub in unit tests); enough for
+        // one release's tag_name and asset names. A quoted file name only appears as an asset "name".
+        Matcher m = TAG_NAME.matcher(json);
+        String tag = m.find() ? plainTag(m.group(1)) : null;
+        if (tag == null || !json.contains("\"" + apkPrefix + tag + ".apk\"")) return null;
+        return new Release(tag, apkUrl(tag, apkPrefix));
     }
 
     /** Release assets are named locsync-client-v3.7.2.apk / locsync-server-v3.7.2.apk. */
