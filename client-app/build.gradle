@@ -17,106 +17,13 @@
 
 apply plugin: 'com.android.application'
 apply plugin: 'com.google.protobuf'
+apply from: rootProject.file('gradle/android-app.gradle')
 
 android {
     namespace "goodvin.locsync.client"
 
-    compileSdkVersion 36
-
     defaultConfig {
         applicationId "goodvin.locsync.client"
         minSdk 28
-        targetSdkVersion 36
-        versionCode rootProject.ext.appVersionCode
-        versionName rootProject.ext.appVersionName
-        // Optional build label (branch-shortsha) for debug/CI builds; empty for tagged releases.
-        resValue "string", "build_label", (System.getenv("BUILD_LABEL") ?: "")
-        // Built by the release workflow (VERSION_NAME = tag): only these offer in-app updates.
-        resValue "bool", "release_build", (System.getenv("VERSION_NAME") && !System.getenv("BUILD_LABEL") ? "true" : "false")
-    }
-
-    buildFeatures {
-        resValues true
-    }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_21
-        targetCompatibility JavaVersion.VERSION_21
-    }
-
-    signingConfigs {
-        release {
-            storeFile file('../keystore.jks')
-            storePassword System.getenv("KEY_PASSWORD")
-            keyAlias "key0"
-            keyPassword System.getenv("KEY_PASSWORD")
-        }
-    }
-
-    testOptions {
-        unitTests {
-            includeAndroidResources = true
-            // README screenshots render the real screens with Robolectric; opt-in, not part of CI:
-            // ./gradlew :client-app:testDebugUnitTest -Pscreenshots --tests '*ScreenshotsTest'
-            all {
-                if (!project.hasProperty('screenshots')) exclude '**/*ScreenshotsTest*'
-                systemProperty 'screenshots.dir', rootProject.file('docs/screenshots').path
-            }
-        }
-    }
-
-    buildTypes {
-        release {
-            minifyEnabled false
-            signingConfig signingConfigs.release
-        }
-        debug {
-            debuggable true
-        }
-    }
-}
-
-androidComponents {
-    onVariants(selector().all()) { variant ->
-        variant.outputs.forEach { output ->
-            def suffix = variant.buildType == "debug" ? "-debug" : ""
-            output.outputFileName.set("locsync-client-${android.defaultConfig.versionName}${suffix}.apk")
-        }
-    }
-}
-
-dependencies {
-    implementation libs.appcompat
-    implementation libs.core
-    implementation libs.constraintlayout
-    implementation libs.protobuf.javalite
-
-    implementation project(':shared')
-
-    testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.robolectric:robolectric:4.17'
-}
-
-// Configure protobuf plugin
-protobuf {
-    protoc {
-        artifact = 'com.google.protobuf:protoc:3.21.7'
-    }
-    generateProtoTasks {
-        all().configureEach { task ->
-            task.plugins {
-                java {
-                    option 'lite'
-                }
-            }
-        }
-    }
-}
-
-android.sourceSets {
-    main {
-        proto {
-            srcDir '../proto'
-        }
     }
 }

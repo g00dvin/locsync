@@ -24,7 +24,6 @@
     <string name="status_client_connecting">Connecting to server…</string>
     <string name="status_client_connected">Connected</string>
     <string name="status_hint_start">Tap the circle to start</string>
-    <string name="status_hint_stop">Tap again to stop</string>
     <string name="uptime_label">Uptime</string>
     <string name="signal_title">Signal</string>
     <string name="link_health_title">Link health</string>
@@ -37,11 +36,9 @@
     <string name="warn_background_location">⚠ Background location is not set to “Allow all the time”. Tap to open permissions.</string>
 
     <!-- Additional redesign copy (sub-lines, section labels, monitor readouts) -->
-    <string name="nav_connect">Connect</string>
     <string name="section_filter">Smoothing filter</string>
     <string name="section_location">Location information</string>
     <string name="signal_used_total" translatable="false">%1$d/%2$d</string>
-    <string name="signal_sats" translatable="false">%d</string>
     <string name="lh_packets">Packets/s</string>
     <string name="lh_bytes">Bytes/s</string>
     <string name="lh_max_gap">Max gap ms</string>
@@ -50,7 +47,6 @@
     <string name="lh_cpu">CPU</string>
     <string name="stat_satellites">Satellites</string>
     <string name="stat_sent">Sent</string>
-    <string name="stat_recv">Recv</string>
     <string name="unit_pkts" translatable="false">pkt/s</string>
     <string name="unit_kbs" translatable="false">KB/s</string>
     <string name="value_none" translatable="false">—</string>
@@ -67,7 +63,6 @@
     <string name="export_logs_short">Logs</string>
     <string name="export_csv_short">Export CSV</string>
     <string name="group_permissions">Permissions</string>
-    <string name="group_server_address">Server address</string>
     <string name="group_location_provider">Location provider</string>
     <string name="group_automation">Automation</string>
     <string name="group_diagnostics">Diagnostics</string>

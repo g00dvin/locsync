@@ -37,12 +37,10 @@
     <color name="ls_accent_900">#2B2741</color>
     <color name="ls_neutral_500">#9397AB</color>
     <color name="ls_neutral_800">#3F424D</color>
-    <color name="ls_neutral_900">#292B31</color>
     <color name="ls_error">#E07A72</color>
 
     <!-- Named helpers for literals the design table calls out, so layouts stay free of ad-hoc hexes -->
     <color name="ls_bar_unlit">#2B2D3A</color>
-    <color name="ls_ring_stopped">#17E9E9ED</color>
     <color name="ls_outline_soft">#29E9E9ED</color>
     <color name="ls_chevron">#59E9E9ED</color>
     <color name="ls_radio_unchecked">#47E9E9ED</color>

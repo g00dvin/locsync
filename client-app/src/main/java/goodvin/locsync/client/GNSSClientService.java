@@ -80,8 +80,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     // The phone's battery and heat from the last response (null until a server that sends it).
     private record PhoneSample(LocationProto.PhoneState state, long elapsedMs) {}
     private static volatile PhoneSample phoneSample;
-    /** Set by MainActivity while its Monitor screen is shown; the filter rows are built only then. */
-    static volatile boolean filterStatsWanted;
+    /** True while MainActivity's Monitor screen is shown; the filter rows are built only then. */
+    private static volatile boolean filterStatsWanted;
     private int lastBroadcastSatelliteCount = -1;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile long lastResponseTime = 0;     // elapsedRealtime of the last RESPONSE
@@ -172,6 +172,18 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
     public static boolean isServiceEnabled(Context context) {
         return Preferences.serviceEnabled(context);
+    }
+
+    /**
+     * Called by MainActivity (main thread) as the Monitor screen shows and hides. On show, the rows go
+     * out at once: the metrics tick sends them only once a second, so the card showed the values from
+     * when it was last open for up to a second.
+     */
+    static void setFilterStatsWanted(boolean wanted) {
+        boolean was = filterStatsWanted;
+        filterStatsWanted = wanted;
+        GNSSClientService s = instance;
+        if (wanted && !was && s != null) s.mainHandler.post(s::broadcastFilterStats);
     }
 
     public static boolean isServiceRunning() {
@@ -308,7 +320,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         } catch (SecurityException e) {
             broadcastMockLocationStatus(getString(R.string.mock_location_permission_denied), true);
         } catch (Exception e) {
-            broadcastMockLocationStatus(String.format(getString(R.string.mock_location_setup_failed), e.getMessage()), true);
+            broadcastMockLocationStatus(getString(R.string.mock_location_setup_failed, e.getMessage()), true);
         }
 
         try {
@@ -638,33 +650,13 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             // Feed the fix into the Kalman filter on the main thread; the smoothing loop
             // (also main-thread) reads/predicts the same filter, so all access is confined
             // to one thread and no synchronization is needed.
-            final double lat = locationUpdate.getLatitude();
-            final double lon = locationUpdate.getLongitude();
-            final float spd = locationUpdate.getSpeed();
-            final float brg = locationUpdate.getBearing();
-            final float acc = locationUpdate.getAccuracy();
-            final float spdAcc = locationUpdate.getSpeedAccuracy();
-            final float brgAcc = locationUpdate.getBearingAccuracy();
-            final boolean hasSpdAcc = locationUpdate.hasSpeedAccuracy();
-            final boolean hasBrgAcc = locationUpdate.hasBearingAccuracy();
-            final boolean hasSpd = locationUpdate.hasSpeed();
-            final boolean hasBrg = locationUpdate.hasBearing();
-            final long fixTs = locationUpdate.getTimestamp();
-            final double alt = locationUpdate.getAltitude();
-            final boolean hasVacc = locationUpdate.hasVerticalAccuracy();
-            final float vacc = locationUpdate.getVerticalAccuracy();
-            final boolean hasMsl = locationUpdate.hasMslAltitude();
-            final double msl = locationUpdate.getMslAltitude();
-            final boolean hasMslAcc = locationUpdate.hasMslAltitudeAccuracy();
-            final float mslAcc = locationUpdate.getMslAltitudeAccuracy();
-            final float ageS = locationUpdate.getLocationAge();
-            final String provider = locationUpdate.getProvider();
-            final int sats = response.getSatellites();
+            final LocationProto.LocationUpdate u = locationUpdate;   // immutable: read on the main thread below
             // Taken on the receive thread, before the hop to the main thread, so queueing there
             // doesn't count as network delay.
             final long arrivalElapsed = SystemClock.elapsedRealtime();
             mainHandler.post(() -> {
                 try {
+                    final long fixTs = u.getTimestamp();
                     // Skip keepalive resends of a fix already fed to the filter. The server re-sends the
                     // last response ~1 Hz to keep the connection live; re-feeding that same stale fix (and,
                     // in a tunnel, its phantom speed=0) is what pinned velocity and froze the icon.
@@ -676,8 +668,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     long prevFixTs = lastFedFixTimestampMs;
                     lastFedFixTimestampMs = fixTs;
                     metrics.recordFix();
-                    inSpeedAcc = hasSpdAcc ? spdAcc : Double.NaN;
-                    inBearingAcc = hasBrgAcc ? brgAcc : Double.NaN;
+                    inSpeedAcc = u.hasSpeedAccuracy() ? u.getSpeedAccuracy() : Double.NaN;
+                    inBearingAcc = u.hasBearingAccuracy() ? u.getBearingAccuracy() : Double.NaN;
                     filterConfig = Preferences.filterConfig(this);
                     kalman.setTurnModel(filterConfig.turnModel);
                     kalman.setTurnResponsiveness(filterConfig.turnResponsiveness);
@@ -692,7 +684,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     long nowElapsed = arrivalElapsed;
                     // When the fix was taken, on our clock: its age on arrival is the phone-side age
                     // plus Wi-Fi delivery delay (FixClock), plus any user-configured extra latency.
-                    long ageMs = Math.round(Math.max(0, ageS) * 1000);
+                    long ageMs = Math.round(Math.max(0, u.getLocationAge()) * 1000);
                     long arrivalLatencyMs = filterConfig.networkDelayCompensation
                             ? fixClock.latencyMs(arrivalElapsed, fixTs, ageMs) : ageMs;
                     lastNetworkDelayMs = filterConfig.networkDelayCompensation
@@ -729,12 +721,12 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     // readable: phone Doppler glitches by up to 10 km/h in town, the wheels don't.
                     VehicleData car = vehicle;   // read once: may be nulled concurrently
                     Float wheel = car == null ? null : car.speedKmhAt(measElapsed);
-                    double fSpd = spd, fSpdAcc = spdAcc;
-                    boolean fHasSpd = hasSpd;
+                    double fSpd = u.getSpeed(), fSpdAcc = u.getSpeedAccuracy();
+                    boolean fHasSpd = u.hasSpeed();
                     if (wheel != null && wheelCalibration != null) {
                         Float before = car.speedKmhAt(measElapsed - 1000);
-                        if (hasSpd && hasSpdAcc && before != null
-                                && wheelCalibration.update(spd * 3.6, spdAcc, wheel, before)
+                        if (u.hasSpeed() && u.hasSpeedAccuracy() && before != null
+                                && wheelCalibration.update(u.getSpeed() * 3.6, u.getSpeedAccuracy(), wheel, before)
                                 && wheelCalibration.accepted() % CALIBRATION_SAVE_EVERY == 0) {
                             saveWheelCalibration();
                         }
@@ -746,18 +738,20 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                             fHasSpd = true;
                         }
                     }
-                    kalman.update(lat, lon, fSpd, brg, acc, fSpdAcc, brgAcc, fHasSpd, hasBrg);
-                    lastAltitude = alt;
-                    lastVerticalAcc = hasVacc ? vacc : Float.NaN;
-                    lastMslAltitude = hasMsl ? msl : Double.NaN;
-                    lastMslAltitudeAcc = hasMslAcc ? mslAcc : Float.NaN;
+                    kalman.update(u.getLatitude(), u.getLongitude(), fSpd, u.getBearing(), u.getAccuracy(), fSpdAcc, u.getBearingAccuracy(), fHasSpd, u.hasBearing());
+                    lastAltitude = u.getAltitude();
+                    lastVerticalAcc = u.hasVerticalAccuracy() ? u.getVerticalAccuracy() : Float.NaN;
+                    lastMslAltitude = u.hasMslAltitude() ? u.getMslAltitude() : Double.NaN;
+                    lastMslAltitudeAcc = u.hasMslAltitudeAccuracy() ? u.getMslAltitudeAccuracy() : Float.NaN;
                     lastFixElapsedMs = nowElapsed;
                     stateElapsedMs = measElapsed;
 
                     updateTrackRecorder();
                     if (trackRecorder != null) {
-                        trackRecorder.fix(nowElapsed, fixTs, provider, sats, lat, lon, alt, acc, hasSpd, spd, hasBrg, brg,
-                                spdAcc, brgAcc, ageS, latencyMs, kalman,
+                        trackRecorder.fix(nowElapsed, fixTs, u.getProvider(), response.getSatellites(),
+                                u.getLatitude(), u.getLongitude(), u.getAltitude(), u.getAccuracy(),
+                                u.hasSpeed(), u.getSpeed(), u.hasBearing(), u.getBearing(),
+                                u.getSpeedAccuracy(), u.getBearingAccuracy(), u.getLocationAge(), latencyMs, kalman,
                                 car == null ? null : car.snapshot());
                     }
                 } catch (Exception e) {
@@ -769,7 +763,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             broadcastMockLocationStatus(getString(R.string.mock_location_permission_denied), true);
         } catch (Exception e) {
             Log.e(TAG, "Error setting mock location", e);
-            broadcastMockLocationStatus(String.format(getString(R.string.mock_location_setup_failed), e.getMessage()), true);
+            broadcastMockLocationStatus(getString(R.string.mock_location_setup_failed, e.getMessage()), true);
         }
     }
 
@@ -893,7 +887,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             broadcastMockLocationStatus(getString(R.string.mock_location_permission_denied), true);
         } catch (Exception e) {
             Log.e(TAG, "Error setting mock location", e);
-            broadcastMockLocationStatus(String.format(getString(R.string.mock_location_setup_failed), e.getMessage()), true);
+            broadcastMockLocationStatus(getString(R.string.mock_location_setup_failed, e.getMessage()), true);
         }
     }
 
@@ -1106,7 +1100,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                 getString(R.string.app_name),
                 NotificationManager.IMPORTANCE_LOW
         );
-        channel.setDescription(String.format(getString(R.string.notification_channel_description), getString(R.string.app_name)));
+        channel.setDescription(getString(R.string.notification_channel_description, getString(R.string.app_name)));
 
         notificationManager.createNotificationChannel(channel);
     }
@@ -1117,12 +1111,12 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                 this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         String title = isConnected ?
-                String.format(getString(R.string.notification_title_connected), getString(R.string.app_name)) :
-                String.format(getString(R.string.notification_title_disconnected), getString(R.string.app_name));
+                getString(R.string.notification_title_connected, getString(R.string.app_name)) :
+                getString(R.string.notification_title_disconnected, getString(R.string.app_name));
 
         String text = isConnected ?
                 (lastReceivedLocation != null ?
-                        String.format(getString(R.string.notification_text_connected),
+                        getString(R.string.notification_text_connected,
                                 (System.currentTimeMillis() - lastUpdateTime) / 1000.0) :
                         getString(R.string.notification_text_connected_no_age)) :
                 getString(R.string.notification_text_disconnected);

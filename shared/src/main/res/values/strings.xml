@@ -17,12 +17,6 @@
   -->
 
 <resources>
-    <string name="export_logs">Logs</string>
-    <string name="export_logs_success">Logs exported successfully</string>
-    <string name="export_logs_error">Failed to export logs: %s</string>
-    <string name="export_logs_no_logs">No logs available to export</string>
-    <string name="share_logs">Share Logs</string>
-    <string name="export_logs_in_progress">Exporting logs…</string>
 
     <string name="copyright_notice" translatable="false">© 2025-2026 Dezz (Telegram: <a href="https://t.me/DezzK">DezzK</a>)\n© 2026 LocSync</string>
     <string name="clear_logs">Clear logs &amp; metrics</string>
@@ -35,4 +29,7 @@
     <string name="export_all_short">Export all data</string>
     <string name="export_all_in_progress">Preparing the archive…</string>
     <string name="export_all_failed">Could not create the archive</string>
+    <string name="permission_fine_location">Fine Location</string>
+    <string name="permission_coarse_location">Coarse Location</string>
+    <string name="permission_background_location">Background Location</string>
 </resources>
