@@ -80,6 +80,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     // The phone's battery and heat from the last response (null until a server that sends it).
     private record PhoneSample(LocationProto.PhoneState state, long elapsedMs) {}
     private static volatile PhoneSample phoneSample;
+    /** Set by MainActivity while its Monitor screen is shown; the filter rows are built only then. */
+    static volatile boolean filterStatsWanted;
     private int lastBroadcastSatelliteCount = -1;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile long lastResponseTime = 0;     // elapsedRealtime of the last RESPONSE
@@ -942,7 +944,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         if (trackRecorder != null) {
             trackRecorder.flush();
         }
-        broadcastFilterStats();
+        if (filterStatsWanted) broadcastFilterStats();
         mainHandler.postDelayed(metricsTick, METRICS_INTERVAL_MS);
     }
 

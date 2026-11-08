@@ -42,7 +42,6 @@
     <string name="section_location">Location information</string>
     <string name="signal_used_total" translatable="false">%1$d/%2$d</string>
     <string name="signal_sats" translatable="false">%d</string>
-    <string name="live_monitoring">Real-time monitoring</string>
     <string name="lh_packets">Packets/s</string>
     <string name="lh_bytes">Bytes/s</string>
     <string name="lh_max_gap">Max gap ms</string>

@@ -121,7 +121,6 @@ public class MainActivity extends AppCompatActivity {
     private TextView sparkAgeVal, sparkPktVal, sparkSatVal;
 
     private CompoundButton fusedSwitch, bluetoothSwitch;
-    private boolean liveMonitoring = false;   // real-time Monitor updates, off by default
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final SimpleDateFormat logTime = new SimpleDateFormat("HH:mm:ss", Locale.US);
@@ -134,9 +133,9 @@ public class MainActivity extends AppCompatActivity {
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             refreshState();
-            if (liveMonitoring) {
+            if (viewFlipper.getDisplayedChild() == VIEW_MONITOR) {
                 updateMonitorLocation();
-                if (viewFlipper.getDisplayedChild() == VIEW_MONITOR) renderLog();
+                renderLog();
             }
             blinkLogDot();
             mainHandler.postDelayed(this, 1000);
@@ -190,13 +189,11 @@ public class MainActivity extends AppCompatActivity {
                 mAgeP95 = intent.getDoubleExtra("ageP95Ms", Double.NaN);
                 mCpu = intent.getDoubleExtra("cpuPct", Double.NaN);
                 mFixes = intent.getDoubleExtra("fixesPerSec", Double.NaN);
-                updateConnectReadouts();
-                if (liveMonitoring) {
-                    if (!Double.isNaN(mAgeMean)) sparkAgeView.push((float) mAgeMean);
-                    if (!Double.isNaN(mPktSent)) sparkPktView.push((float) mPktSent);
-                    sparkSatView.push(GNSSServerService.currentSatelliteCount());
-                    updateMonitorMetrics();
-                }
+                // The connect readouts pick these up on the next 1 s tick (refreshState).
+                if (!Double.isNaN(mAgeMean)) sparkAgeView.push((float) mAgeMean);
+                if (!Double.isNaN(mPktSent)) sparkPktView.push((float) mPktSent);
+                sparkSatView.push(GNSSServerService.currentSatelliteCount());
+                if (viewFlipper.getDisplayedChild() == VIEW_MONITOR) updateMonitorMetrics();
             }
         }
     };
@@ -228,15 +225,11 @@ public class MainActivity extends AppCompatActivity {
         AppLog.setDebug(Preferences.debugLoggingEnabled(this));
 
         appVersion = VersionGetter.getAppVersionName(this);
-        liveMonitoring = Preferences.liveMonitoring(this);
 
         bindTopBar();
         bindConnect();
         bindMonitor();
         bindSettings();
-
-        ContextCompat.registerReceiver(this, metricsReceiver,
-                new IntentFilter("goodvin.locsync.METRICS"), ContextCompat.RECEIVER_NOT_EXPORTED);
 
         boolean firstRun = savedInstanceState == null && !Preferences.setupShown(this);
         if (firstRun && !SetupChecklist.isFreshInstall(this)) {
@@ -251,12 +244,12 @@ public class MainActivity extends AppCompatActivity {
         }
         handleStartRequest(getIntent());
         WifiTrigger.sync(this, false);   // arm if missing (e.g. after an app update)
+        BluetoothReceiver.sync(this);
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        unregisterReceiver(metricsReceiver);
         mainHandler.removeCallbacksAndMessages(null);
     }
 
@@ -264,15 +257,23 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
         if (viewFlipper.getDisplayedChild() == VIEW_SETUP) Preferences.setSetupShown(this);
+        // Metrics only feed this screen; while it's stopped nothing needs them.
+        ContextCompat.registerReceiver(this, metricsReceiver,
+                new IntentFilter("goodvin.locsync.METRICS"), ContextCompat.RECEIVER_NOT_EXPORTED);
+        serverIpCheckedElapsed = 0;   // e.g. back from the hotspot settings
         refreshPermissions();
         refreshState();
+        if (viewFlipper.getDisplayedChild() == VIEW_MONITOR) updateMonitorMetrics();
+        if (dotAnimator != null) dotAnimator.resume();
         mainHandler.post(tick);
     }
 
     @Override
     protected void onStop() {
         super.onStop();
+        unregisterReceiver(metricsReceiver);
         mainHandler.removeCallbacks(tick);
+        if (dotAnimator != null) dotAnimator.pause();   // a 60 fps animator nobody sees otherwise
     }
 
     // --- binding ---
@@ -308,6 +309,9 @@ public class MainActivity extends AppCompatActivity {
             case VIEW_MONITOR -> {
                 titleText.setText(R.string.nav_monitor);
                 subtitleText.setVisibility(View.GONE);
+                updateMonitorLocation();   // only kept current while shown
+                updateMonitorMetrics();
+                renderLog();
             }
             case VIEW_SETTINGS -> {
                 titleText.setText(R.string.nav_settings);
@@ -373,13 +377,6 @@ public class MainActivity extends AppCompatActivity {
         setText(R.id.lhAgeMean, R.id.metricLabel, getString(R.string.lh_age_mean));
         setText(R.id.lhAgeP95, R.id.metricLabel, getString(R.string.lh_age_p95));
         setText(R.id.lhCpu, R.id.metricLabel, getString(R.string.lh_cpu));
-
-        CompoundButton liveSwitch = findViewById(R.id.monitorLiveSwitch);
-        liveSwitch.setChecked(liveMonitoring);
-        liveSwitch.setOnCheckedChangeListener((b, checked) -> {
-            liveMonitoring = checked;
-            Preferences.setLiveMonitoring(this, checked);
-        });
 
         View sparkAge = findViewById(R.id.sparkAge);
         View sparkPkt = findViewById(R.id.sparkPkt);
@@ -467,6 +464,7 @@ public class MainActivity extends AppCompatActivity {
             boolean next = !bluetoothSwitch.isChecked();
             bluetoothSwitch.setChecked(next);
             Preferences.setBluetoothAutoStartEnabled(this, next);
+            BluetoothReceiver.sync(this);
         });
         bindNumberInput(R.id.rowBtStopDelay, getString(R.string.bt_stop_delay),
                 Preferences.bluetoothStopDelaySeconds(this), 0, 600,
@@ -787,7 +785,21 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // Enumerating the network interfaces is a syscall walk; the waiting screen asks every second.
+    private static final long SERVER_IP_TTL_MS = 5000;
+    private String cachedServerIp;
+    private long serverIpCheckedElapsed = 0;
+
     private String serverIp() {
+        long now = SystemClock.elapsedRealtime();
+        if (serverIpCheckedElapsed == 0 || now - serverIpCheckedElapsed > SERVER_IP_TTL_MS) {
+            cachedServerIp = findServerIp();
+            serverIpCheckedElapsed = now;
+        }
+        return cachedServerIp;
+    }
+
+    private String findServerIp() {
         try {
             for (NetworkInterface intf : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 String name = intf.getDisplayName();

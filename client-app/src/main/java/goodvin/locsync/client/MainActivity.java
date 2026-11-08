@@ -39,7 +39,6 @@ import android.text.style.ForegroundColorSpan;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
-import android.widget.CompoundButton;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ViewFlipper;
@@ -110,7 +109,8 @@ public class MainActivity extends AppCompatActivity {
     private SparklineView sparkAgeView, sparkPktView, sparkSatView;
     private TextView sparkAgeVal, sparkPktVal, sparkSatVal;
 
-    private boolean liveMonitoring = false;   // real-time Monitor updates, off by default
+    // onStart..onStop: the receivers keep storing what they get, but touch the UI only while started.
+    private boolean started;
 
     private final Handler uiHandler = new Handler();
     private VehicleData vehicleData;
@@ -154,7 +154,8 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
             if ("goodvin.locsync.CONNECTION_CHANGED".equals(intent.getAction())) {
-                refreshState();
+                trackConnectedSince(currentState());   // keeps the uptime right while stopped
+                if (started) refreshState();
             }
         }
     };
@@ -171,11 +172,10 @@ public class MainActivity extends AppCompatActivity {
                     lastLocationAge = intent.getFloatExtra("locationAge", 0);
                     lastLocationRecvElapsed = SystemClock.elapsedRealtime();
                 }
+                if (!started) return;
                 updateConnectReadouts();
-                if (liveMonitoring) {
-                    sparkSatView.push(lastSatellites);
-                    updateMonitorLocation();
-                }
+                sparkSatView.push(lastSatellites);
+                if (monitorShown()) updateMonitorLocation();
             }
         }
     };
@@ -186,7 +186,7 @@ public class MainActivity extends AppCompatActivity {
             if ("goodvin.locsync.MOCK_LOCATION_STATUS".equals(intent.getAction())) {
                 warningMessage = intent.getStringExtra("message");
                 mockError = intent.getBooleanExtra("error", true);
-                refreshState();
+                if (started) refreshState();
             }
         }
     };
@@ -204,12 +204,11 @@ public class MainActivity extends AppCompatActivity {
                 mAgeP95 = intent.getDoubleExtra("ageP95Ms", Double.NaN);
                 mCpu = intent.getDoubleExtra("cpuPct", Double.NaN);
                 mFixes = intent.getDoubleExtra("fixesPerSec", Double.NaN);
+                if (!started) return;
                 updateConnectReadouts();
-                if (liveMonitoring) {
-                    if (!Double.isNaN(mAgeMean)) sparkAgeView.push((float) mAgeMean);
-                    if (!Double.isNaN(mPktRecv)) sparkPktView.push((float) mPktRecv);
-                    updateMonitorMetrics();
-                }
+                if (!Double.isNaN(mAgeMean)) sparkAgeView.push((float) mAgeMean);
+                if (!Double.isNaN(mPktRecv)) sparkPktView.push((float) mPktRecv);
+                if (monitorShown()) updateMonitorMetrics();
             }
         }
     };
@@ -217,7 +216,8 @@ public class MainActivity extends AppCompatActivity {
     private final BroadcastReceiver filterStatsReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if ("goodvin.locsync.FILTER_STATS".equals(intent.getAction()) && liveMonitoring) {
+            // The service sends these only while filterStatsWanted (Monitor shown).
+            if ("goodvin.locsync.FILTER_STATS".equals(intent.getAction()) && started) {
                 renderFilterStats(intent.getStringArrayExtra("labels"), intent.getStringArrayExtra("values"));
             }
         }
@@ -262,7 +262,6 @@ public class MainActivity extends AppCompatActivity {
         AppLog.setDebug(Preferences.debugLoggingEnabled(this));
         // Manual server-address UI was removed; the client always auto-discovers.
         Preferences.setAutoDiscover(this, true);
-        liveMonitoring = Preferences.liveMonitoring(this);
 
         bindTopBar();
         bindConnect();
@@ -287,7 +286,6 @@ public class MainActivity extends AppCompatActivity {
         showView(firstView);
         refreshPermissions();
         refreshState();
-        startUIUpdates();
 
         if (GNSSClientService.isServiceEnabled(this) && !GNSSClientService.isServiceRunning()) {
             startGNSSService();
@@ -306,6 +304,38 @@ public class MainActivity extends AppCompatActivity {
         unregisterReceiver(metricsReceiver);
         unregisterReceiver(filterStatsReceiver);
         uiHandler.removeCallbacksAndMessages(null);
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        started = true;
+        GNSSClientService.filterStatsWanted = monitorShown();
+        if (monitorShown()) redrawMonitor();   // onResume redraws the rest (refreshState)
+        blinkLogDot();
+        if (dotAnimator != null) dotAnimator.resume();
+        uiHandler.removeCallbacks(uiTick);
+        uiHandler.postDelayed(uiTick, 1000);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        started = false;
+        GNSSClientService.filterStatsWanted = false;
+        uiHandler.removeCallbacks(uiTick);
+        if (dotAnimator != null) dotAnimator.pause();   // a 60 fps animator nobody sees otherwise
+    }
+
+    private boolean monitorShown() {
+        return started && viewFlipper.getDisplayedChild() == VIEW_MONITOR;
+    }
+
+    /** The Monitor readouts are only kept current while it is shown; fill them in when it comes up. */
+    private void redrawMonitor() {
+        updateMonitorLocation();
+        updateMonitorMetrics();
+        renderLog();
     }
 
     @Override
@@ -368,10 +398,12 @@ public class MainActivity extends AppCompatActivity {
         btnLeft.setImageResource(connect ? R.drawable.ic_gear_six : R.drawable.ic_arrow_left);
         btnLeft.setContentDescription(getString(connect ? R.string.cd_settings : R.string.cd_back));
         btnRight.setVisibility(connect ? View.VISIBLE : View.INVISIBLE);
+        GNSSClientService.filterStatsWanted = monitorShown();
         switch (index) {
             case VIEW_MONITOR -> {
                 titleText.setText(R.string.nav_monitor);
                 subtitleText.setVisibility(View.GONE);
+                if (started) redrawMonitor();
             }
             case VIEW_SETTINGS -> {
                 titleText.setText(R.string.nav_settings);
@@ -439,13 +471,6 @@ public class MainActivity extends AppCompatActivity {
         setText(R.id.lhAgeMean, R.id.metricLabel, getString(R.string.lh_age_mean));
         setText(R.id.lhAgeP95, R.id.metricLabel, getString(R.string.lh_age_p95));
         setText(R.id.lhCpu, R.id.metricLabel, getString(R.string.lh_cpu));
-
-        CompoundButton liveSwitch = findViewById(R.id.monitorLiveSwitch);
-        liveSwitch.setChecked(liveMonitoring);
-        liveSwitch.setOnCheckedChangeListener((b, checked) -> {
-            liveMonitoring = checked;
-            Preferences.setLiveMonitoring(this, checked);
-        });
 
         View sparkAge = findViewById(R.id.sparkAge);
         View sparkPkt = findViewById(R.id.sparkPkt);
@@ -771,15 +796,18 @@ public class MainActivity extends AppCompatActivity {
         return LinkState.of(running, connected);
     }
 
-    private void refreshState() {
-        LinkState state = currentState();
-        powerOrb.setState(state);
-
+    private void trackConnectedSince(LinkState state) {
         if (state == LinkState.CONNECTED) {
             if (connectedSinceElapsed == 0) connectedSinceElapsed = SystemClock.elapsedRealtime();
         } else {
             connectedSinceElapsed = 0;
         }
+    }
+
+    private void refreshState() {
+        LinkState state = currentState();
+        powerOrb.setState(state);
+        trackConnectedSince(state);
 
         switch (state) {
             case CONNECTED -> {
@@ -1162,23 +1190,22 @@ public class MainActivity extends AppCompatActivity {
 
     // --- periodic tick ---
 
-    private void startUIUpdates() {
-        uiHandler.postDelayed(new Runnable() {
-            @Override public void run() {
-                if (currentState() == LinkState.CONNECTED) {
-                    statusSub.setText(connectedSub());
-                }
-                if (viewFlipper.getDisplayedChild() == VIEW_CONNECT) {
-                    updateConnectReadouts();   // freshness and the navigator status age every second
-                }
-                blinkLogDot();
-                if (liveMonitoring && viewFlipper.getDisplayedChild() == VIEW_MONITOR) {
-                    renderLog();
-                }
-                uiHandler.postDelayed(this, 1000);
+    /** Runs once a second between onStart and onStop. */
+    private final Runnable uiTick = new Runnable() {
+        @Override public void run() {
+            if (currentState() == LinkState.CONNECTED) {
+                statusSub.setText(connectedSub());
             }
-        }, 1000);
-    }
+            if (viewFlipper.getDisplayedChild() == VIEW_CONNECT) {
+                updateConnectReadouts();   // freshness and the navigator status age every second
+            }
+            blinkLogDot();
+            if (viewFlipper.getDisplayedChild() == VIEW_MONITOR) {
+                renderLog();
+            }
+            uiHandler.postDelayed(this, 1000);
+        }
+    };
 
     private ObjectAnimator dotAnimator;
     private void blinkLogDot() {

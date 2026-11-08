@@ -63,6 +63,10 @@ public class PowerOrbView extends View {
     private float connect = 0f;
     private ValueAnimator breathAnimator;
     private ValueAnimator connectAnimator;
+    private boolean shown;   // last onVisibilityAggregated: the breathing runs only while on screen
+
+    // Built once per size (onSizeChanged); the animations vary them through paint alpha and scale.
+    private RadialGradient haloWaiting, haloConnected, coreStopped, coreWaiting, coreConnected;
 
     // Token colors resolved once.
     private int cAccent, cAccent300, cAccent400, cAccent700, cAccent900, cNeutral500;
@@ -148,6 +152,7 @@ public class PowerOrbView extends View {
             invalidate();
         });
         breathAnimator.start();
+        if (!shown) breathAnimator.pause();
     }
 
     private void stopBreathing() {
@@ -177,6 +182,43 @@ public class PowerOrbView extends View {
     }
 
     @Override
+    public void onVisibilityAggregated(boolean isVisible) {
+        super.onVisibilityAggregated(isVisible);
+        shown = isVisible;
+        if (breathAnimator != null) {
+            if (isVisible) breathAnimator.resume(); else breathAnimator.pause();
+        }
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        float cx = w / 2f;
+        float cy = h / 2f;
+        // Halo: accent → transparent; core: lit from above (#3F424D → #292B31, #8B7FD0 → #5D5294,
+        // #D2CEFD → #B5ABFC(34%) → #9184D9).
+        haloWaiting = halo(cx, cy, cAccent, 0.28f, 0.72f);
+        haloConnected = halo(cx, cy, cAccent, 0.34f, 0.70f);
+        coreStopped = core(cx, cy, new int[]{0xFF3F424D, 0xFF292B31}, new float[]{0f, 0.78f});
+        coreWaiting = core(cx, cy, new int[]{0xFF8B7FD0, 0xFF5D5294}, new float[]{0f, 0.78f});
+        coreConnected = core(cx, cy, new int[]{cAccent300, cAccent400, cAccent}, new float[]{0f, 0.34f, 1f});
+    }
+
+    private RadialGradient halo(float cx, float cy, int rgb, float centreAlpha, float transparentStop) {
+        int centre = withAlpha(rgb, centreAlpha);
+        return new RadialGradient(cx, cy, dp(HALO_DP) / 2f,
+                new int[]{centre, centre, withAlpha(rgb, 0f)},
+                new float[]{0f, Math.max(0f, transparentStop - 0.35f), transparentStop},
+                Shader.TileMode.CLAMP);
+    }
+
+    private RadialGradient core(float cx, float cy, int[] colors, float[] stops) {
+        float r = dp(CORE_DP) / 2f;
+        float focusY = cy - r * 0.36f; // centre offset upward so it reads lit from above
+        return new RadialGradient(cx, focusY, r, colors, stops, Shader.TileMode.CLAMP);
+    }
+
+    @Override
     protected void onDetachedFromWindow() {
         stopBreathing();
         cancelConnectIn();
@@ -185,6 +227,7 @@ public class PowerOrbView extends View {
 
     @Override
     protected void onDraw(Canvas canvas) {
+        if (coreStopped == null) return;   // not laid out yet
         float cx = getWidth() / 2f;
         float cy = getHeight() / 2f;
 
@@ -202,8 +245,7 @@ public class PowerOrbView extends View {
         stroke.setColor(Color.argb(0x17, 0xE9, 0xE9, 0xED));
         canvas.drawCircle(cx, cy, dp(RING_DP) / 2f, stroke);
 
-        // Core: #3F424D centre → #292B31 at 78%, lit from above.
-        drawCore(canvas, cx, cy, 0xFF3F424D, 0xFF292B31, 1f);
+        drawShaded(canvas, coreStopped, cx, cy, dp(CORE_DP) / 2f, 1f, 1f);
         drawTopHighlight(canvas, cx, cy, Color.argb(0x1A, 0xE9, 0xE9, 0xED), 1f);
         drawGlyph(canvas, cx, cy, cNeutral500, false, 1f);
     }
@@ -212,7 +254,7 @@ public class PowerOrbView extends View {
         // Halo: accent 28% → transparent at ~0.72 radius; opacity .35↔.75, scale .98↔1.06.
         float haloAlpha = lerp(0.35f, 0.75f, breath);
         float haloScale = lerp(0.98f, 1.06f, breath);
-        drawHalo(canvas, cx, cy, cAccent, 0.28f * haloAlpha / 0.75f, 0.72f, haloScale);
+        drawShaded(canvas, haloWaiting, cx, cy, dp(HALO_DP) / 2f, haloAlpha / 0.75f, haloScale);
 
         // Ring: accent 35%.
         stroke.setStrokeWidth(dp(1));
@@ -223,7 +265,7 @@ public class PowerOrbView extends View {
         // Core: #8B7FD0 → #5D5294, scale 1↔1.04, opacity .9↔1.
         float coreScale = lerp(1f, 1.04f, breath);
         float coreAlpha = lerp(0.9f, 1f, breath);
-        drawCoreScaled(canvas, cx, cy, 0xFF8B7FD0, 0xFF5D5294, coreAlpha, coreScale);
+        drawShaded(canvas, coreWaiting, cx, cy, dp(CORE_DP) / 2f, coreAlpha, coreScale);
         drawTopHighlight(canvas, cx, cy, Color.argb(0x38, 0xF5, 0xF4, 0xFF), coreScale);
         drawGlyph(canvas, cx, cy, 0xFFE7E5FE, false, 1f);
     }
@@ -236,7 +278,7 @@ public class PowerOrbView extends View {
         canvas.translate(0, dy);
 
         // Halo: accent 34% → transparent at 70%.
-        drawHalo(canvas, cx, cy, cAccent, 0.34f * a, 0.70f, 1f);
+        drawShaded(canvas, haloConnected, cx, cy, dp(HALO_DP) / 2f, a, 1f);
 
         // Ring: accent 100%.
         stroke.setStrokeWidth(dp(1));
@@ -245,7 +287,7 @@ public class PowerOrbView extends View {
         canvas.drawCircle(cx, cy, dp(RING_DP) / 2f, stroke);
 
         // Core: #D2CEFD → #B5ABFC(34%) → #9184D9.
-        drawCore3(canvas, cx, cy, cAccent300, cAccent400, cAccent, a);
+        drawShaded(canvas, coreConnected, cx, cy, dp(CORE_DP) / 2f, a, 1f);
         drawTopHighlight(canvas, cx, cy, withAlpha(Color.WHITE, 0.66f * a), 1f);
         drawGlyph(canvas, cx, cy, cAccent900, true, a);
 
@@ -254,48 +296,17 @@ public class PowerOrbView extends View {
 
     // --- layer helpers ---
 
-    private void drawHalo(Canvas canvas, float cx, float cy, int rgb, float centreAlpha,
-                          float transparentStop, float scale) {
-        float r = dp(HALO_DP) / 2f * scale;
-        if (r <= 0 || centreAlpha <= 0) {
-            return;
-        }
-        int centre = withAlpha(rgb, Math.min(1f, centreAlpha));
-        RadialGradient g = new RadialGradient(cx, cy, r,
-                new int[]{centre, centre, withAlpha(rgb, 0f)},
-                new float[]{0f, Math.max(0f, transparentStop - 0.35f), transparentStop},
-                Shader.TileMode.CLAMP);
-        fill.setShader(g);
+    /** A cached gradient circle, faded by paint alpha and scaled about the centre. */
+    private void drawShaded(Canvas canvas, Shader shader, float cx, float cy, float r, float alpha, float scale) {
+        if (alpha <= 0) return;
+        fill.setShader(shader);
+        fill.setAlpha(Math.round(255 * clamp01(alpha)));
+        canvas.save();
+        canvas.scale(scale, scale, cx, cy);
+        canvas.drawCircle(cx, cy, r, fill);
+        canvas.restore();
+        fill.setShader(null);
         fill.setAlpha(255);
-        canvas.drawCircle(cx, cy, r, fill);
-        fill.setShader(null);
-    }
-
-    private void drawCore(Canvas canvas, float cx, float cy, int inner, int outer, float alpha) {
-        drawCoreScaled(canvas, cx, cy, inner, outer, alpha, 1f);
-    }
-
-    private void drawCoreScaled(Canvas canvas, float cx, float cy, int inner, int outer,
-                                float alpha, float scale) {
-        float r = dp(CORE_DP) / 2f * scale;
-        float focusY = cy - r * 0.36f; // centre offset upward so it reads lit from above
-        RadialGradient g = new RadialGradient(cx, focusY, r,
-                new int[]{withAlpha(inner, alpha), withAlpha(outer, alpha)},
-                new float[]{0f, 0.78f}, Shader.TileMode.CLAMP);
-        fill.setShader(g);
-        canvas.drawCircle(cx, cy, r, fill);
-        fill.setShader(null);
-    }
-
-    private void drawCore3(Canvas canvas, float cx, float cy, int inner, int mid, int outer, float alpha) {
-        float r = dp(CORE_DP) / 2f;
-        float focusY = cy - r * 0.36f;
-        RadialGradient g = new RadialGradient(cx, focusY, r,
-                new int[]{withAlpha(inner, alpha), withAlpha(mid, alpha), withAlpha(outer, alpha)},
-                new float[]{0f, 0.34f, 1f}, Shader.TileMode.CLAMP);
-        fill.setShader(g);
-        canvas.drawCircle(cx, cy, r, fill);
-        fill.setShader(null);
     }
 
     private void drawTopHighlight(Canvas canvas, float cx, float cy, int color, float scale) {
