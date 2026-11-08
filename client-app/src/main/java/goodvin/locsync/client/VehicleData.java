@@ -39,36 +39,45 @@ import java.util.Locale;
 final class VehicleData {
 
     private static final String TAG = "VehicleData";
-    private static final long POLL_MS = 1000;
+    private static final long FULL_READ_MS = 1000;   // all signals; in between, speed only
     private static final long RETRY_MS = 5000;
-    private static final int STALE_POLLS = 5;   // all-empty reads in a row before reconnecting
+    private static final int STALE_POLLS = 5;   // all-empty full reads in a row before reconnecting
 
     /** Set once the vendor SDK proved absent on this unit; later starts are no-ops. */
     private static volatile boolean sdkMissing;
 
     private final Context context;
     private final Handler uiHandler;      // delivers onUpdate back to the caller's (UI) thread
-    private final Runnable onUpdate;      // called on the UI thread after each poll; may be null
+    private final Runnable onUpdate;      // called on the UI thread after each full read; may be null
+    private final long pollMs;
+    private final int fullEvery;          // polls per full read
+    private final CarSignals.SpeedHistory speeds = new CarSignals.SpeedHistory();
     private volatile CarSignals.Snapshot latest = CarSignals.Snapshot.EMPTY;
     private volatile Poller poller;
 
-    VehicleData(Context context, Handler uiHandler, Runnable onUpdate) {
+    /** @param pollMs how often the speed is read; all signals are read about once a second */
+    VehicleData(Context context, Handler uiHandler, Runnable onUpdate, long pollMs) {
         this.context = context.getApplicationContext();
         this.uiHandler = uiHandler;
         this.onUpdate = onUpdate;
+        this.pollMs = pollMs;
+        this.fullEvery = (int) Math.max(1, FULL_READ_MS / pollMs);
     }
 
     CarSignals.Snapshot snapshot() {
         return latest;
     }
 
-    void start() {
+    /** Wheel speed (km/h) at {@code elapsedMs} (SystemClock.elapsedRealtime), or null if not covered. */
+    Float speedKmhAt(long elapsedMs) {
+        return speeds.at(elapsedMs);
+    }
+
+    synchronized void start() {
         if (sdkMissing || poller != null) {
             return;
         }
-        synchronized (this) {
-            poller = new Poller();   // under the lock: its first publish waits until it's current
-        }
+        poller = new Poller();   // under the lock: its first publish waits until it's current
     }
 
     void stop() {
@@ -77,9 +86,19 @@ final class VehicleData {
             p = poller;
             poller = null;
             latest = CarSignals.Snapshot.EMPTY;
+            speeds.add(0, null);
         }
         if (p != null) {
             p.shutdown();
+        }
+    }
+
+    /** Speed-only poll between full reads; same current-poller rule as {@link #publish}. */
+    private void addSpeed(Poller from, long elapsedMs, Float kmh) {
+        synchronized (this) {
+            if (poller == from) {
+                speeds.add(elapsedMs, kmh);
+            }
         }
     }
 
@@ -90,6 +109,7 @@ final class VehicleData {
                 return;   // a stopped/replaced poller must not overwrite the current state
             }
             latest = snap;
+            speeds.add(snap.readElapsedMs, snap.speedKmh);
         }
         if (onUpdate != null) {
             uiHandler.post(onUpdate);
@@ -108,6 +128,7 @@ final class VehicleData {
         private Method getLatest;       // ISensor#getSensorLatestValue(int) -> float
         private Method getEvent;        // ISensor#getSensorEvent(int) -> int
         private int emptyPolls;
+        private int polls;
         private boolean loggedRaw;
         private boolean loggedFailure;
         private boolean reconnecting;   // after the first connect, connect/raw lines drop to verbose
@@ -134,6 +155,15 @@ final class VehicleData {
             try {
                 if (sensorManager == null) {
                     connect();
+                    polls = 0;
+                }
+                if (polls++ % fullEvery != 0) {
+                    float raw = rawLatest(sensorManager, CarSignals.SPEED);
+                    if (!stopped) {
+                        addSpeed(this, SystemClock.elapsedRealtime(), CarSignals.speedKmh(CarSignals.latest(raw)));
+                        worker.postDelayed(this, pollMs);
+                    }
+                    return;
                 }
                 CarSignals.Snapshot snap = read();
                 if (snap.hasAny()) {
@@ -145,7 +175,7 @@ final class VehicleData {
                 }
                 if (!stopped) {
                     publish(this, snap);
-                    worker.postDelayed(this, POLL_MS);
+                    worker.postDelayed(this, pollMs);
                 }
             } catch (Exception | LinkageError e) {
                 if (CarSignals.isMissingSdk(e)) {
@@ -235,11 +265,12 @@ final class VehicleData {
             float temp = rawLatest(mgr, CarSignals.OUTSIDE_TEMP);
             float odo = rawLatest(mgr, CarSignals.ODOMETER);
             if (!loggedRaw) {
-                // ponytail: fuel litres / temp °C unverified; this line is the calibration knob
+                // The calibration knob for units and encodings (fuel turned out to be mL in raw bits).
+                float steer = rawLatest(mgr, CarSignals.STEERING_ANGLE);
                 log(String.format(Locale.US,
-                        "raw speed=%s(0x%x) ipk=%s(0x%x) gear=0x%x fuel=%s(0x%x) range=%s(0x%x) temp=%s(0x%x) odo=%s(0x%x)",
+                        "raw speed=%s(0x%x) ipk=%s(0x%x) gear=0x%x fuel=%s(0x%x) range=%s(0x%x) temp=%s(0x%x) odo=%s(0x%x) steer=%s(0x%x)",
                         speed, bits(speed), ipk, bits(ipk), gear, fuel, bits(fuel), range, bits(range),
-                        temp, bits(temp), odo, bits(odo)));
+                        temp, bits(temp), odo, bits(odo), steer, bits(steer)));
                 loggedRaw = true;
                 reconnecting = true;
             }

@@ -272,6 +272,26 @@ public class Preferences {
     private static final String PREF_FILTER_SPEED_RAMP = "filterSpeedRamp";
     private static final String PREF_FILTER_OUTPUT_1HZ = "filterOutput1Hz";
     private static final String PREF_FILTER_SEND_SPEED = "filterSendSpeed";
+    private static final String PREF_FILTER_CAR_SPEED = "filterCarSpeed";
+    private static final String PREF_CAR_SPEED_FACTOR = "carSpeedFactor";
+
+    public static void setFilterCarSpeed(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_CAR_SPEED, enabled).apply();
+    }
+
+    public static boolean filterCarSpeed(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_CAR_SPEED, true);
+    }
+
+    /** Learned GPS/wheel speed ratio, or null before the first calibration. Not a smoothing setting. */
+    public static Float carSpeedFactor(Context context) {
+        SharedPreferences p = getPrefs(context);
+        return p.contains(PREF_CAR_SPEED_FACTOR) ? p.getFloat(PREF_CAR_SPEED_FACTOR, 1f) : null;
+    }
+
+    public static void setCarSpeedFactor(Context context, float factor) {
+        getPrefs(context).edit().putFloat(PREF_CAR_SPEED_FACTOR, factor).apply();
+    }
 
     public static void setFilterSpeedRamp(Context context, boolean enabled) {
         getPrefs(context).edit().putBoolean(PREF_FILTER_SPEED_RAMP, enabled).apply();
@@ -377,6 +397,7 @@ public class Preferences {
         c.speedRamp = filterSpeedRamp(context);
         c.output1Hz = filterOutput1Hz(context);
         c.sendSpeed = filterSendSpeed(context);
+        c.carSpeed = filterCarSpeed(context);
         return c;
     }
 
@@ -413,6 +434,7 @@ public class Preferences {
                 .remove(PREF_FILTER_SPEED_RAMP)
                 .remove(PREF_FILTER_OUTPUT_1HZ)
                 .remove(PREF_FILTER_SEND_SPEED)
+                .remove(PREF_FILTER_CAR_SPEED)
                 .apply();
     }
 

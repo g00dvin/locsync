@@ -61,4 +61,6 @@ public final class FilterConfig {
     public boolean output1Hz = false;
     /** Put the speed (and speed accuracy) in the injected location; off = position and bearing only. */
     public boolean sendSpeed = true;
+    /** Use the car's wheel speed (eCarX units) for the filter and the output instead of GPS speed. */
+    public boolean carSpeed = true;
 }

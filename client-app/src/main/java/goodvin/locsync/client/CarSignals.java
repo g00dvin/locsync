@@ -35,6 +35,7 @@ final class CarSignals {
     static final int RANGE = 0x100800;          // ENDURANCE_MILEAGE, km
     static final int OUTSIDE_TEMP = 0x100b00;   // TEMPERATURE_AMBIENT, °C (unverified)
     static final int ODOMETER = 0x100700;       // ODOMETER, km
+    static final int STEERING_ANGLE = 0x101000; // STEERING_WHEEL_ANGLE: logged raw only, readability unknown
     // event (getSensorEvent)
     static final int GEAR = 0x200200;
 
@@ -128,6 +129,108 @@ final class CarSignals {
             default:
                 return code >= GEAR_FIRST && code <= GEAR_TENTH
                         ? Integer.toString(code - GEAR_FIRST + 1) : null;
+        }
+    }
+
+    /**
+     * Recent wheel speeds (km/h) by read time, to sample the car's speed at a GPS fix's measurement
+     * time. Written by the poll thread, read by the main thread.
+     */
+    static final class SpeedHistory {
+        static final long MAX_GAP_MS = 600;     // don't interpolate across a longer hole
+        static final long MAX_AHEAD_MS = 300;   // past the newest sample, hold it this long
+        private static final int SIZE = 32;
+        private final long[] times = new long[SIZE];
+        private final float[] speeds = new float[SIZE];
+        private int count, next;
+
+        /** A null speed (not readable) clears the history, so nothing is interpolated across it. */
+        synchronized void add(long elapsedMs, Float kmh) {
+            if (kmh == null) {
+                count = 0;
+                return;
+            }
+            if (count > 0 && elapsedMs <= times[(next + SIZE - 1) % SIZE]) {
+                return;   // out of order or duplicate
+            }
+            times[next] = elapsedMs;
+            speeds[next] = kmh;
+            next = (next + 1) % SIZE;
+            count = Math.min(count + 1, SIZE);
+        }
+
+        /** Speed at {@code t}, interpolated between the samples around it; null when not covered. */
+        synchronized Float at(long t) {
+            if (count == 0) {
+                return null;
+            }
+            int newest = (next + SIZE - 1) % SIZE;
+            if (t >= times[newest]) {
+                return t - times[newest] <= MAX_AHEAD_MS ? speeds[newest] : null;
+            }
+            for (int k = 1; k < count; k++) {
+                int i = (newest - k + SIZE) % SIZE;   // walk back from the newest
+                if (times[i] <= t) {
+                    int j = (i + 1) % SIZE;
+                    long gap = times[j] - times[i];
+                    if (gap > MAX_GAP_MS) {
+                        return null;
+                    }
+                    return speeds[i] + (speeds[j] - speeds[i]) * (t - times[i]) / (float) gap;
+                }
+            }
+            return null;   // older than everything kept
+        }
+    }
+
+    /**
+     * GPS speed / wheel speed. The wheel signal reads ~2.8% under GPS on the G426 (drive of
+     * 2026-11-08), and tyres differ, so the factor is learned on steady, clean highway fixes and
+     * persisted. GPS lags the wheels by ~400 ms, hence the steadiness condition.
+     */
+    static final class WheelCalibration {
+        static final double MIN = 0.9, MAX = 1.1;
+        private static final double ALPHA = 0.05;
+        private static final int WARMUP = 20;              // accepted fixes before the tight window
+        private static final double WINDOW = 0.04, WARMUP_WINDOW = 0.15;
+        private static final double MIN_KMH = 40;
+        private static final double MAX_SPEED_ACC_MPS = 0.5;
+        private static final double MAX_CHANGE_KMH = 0.5;  // wheel change over the last second
+
+        private double factor;
+        private int accepted;
+
+        /** @param learned the persisted factor, or null to start from 1 with a wide window */
+        WheelCalibration(Float learned) {
+            factor = learned == null ? 1.0 : Math.max(MIN, Math.min(MAX, learned));
+            accepted = learned == null ? 0 : WARMUP;
+        }
+
+        double factor() {
+            return factor;
+        }
+
+        int accepted() {
+            return accepted;
+        }
+
+        /**
+         * One fix. {@code wheelSecondBefore} is the wheel speed one second before the fix's
+         * measurement time. Returns true when the fix was used.
+         */
+        boolean update(double gpsKmh, double gpsSpeedAccMps, double wheelKmh, double wheelSecondBefore) {
+            if (gpsKmh < MIN_KMH || wheelKmh < MIN_KMH
+                    || !(gpsSpeedAccMps > 0 && gpsSpeedAccMps <= MAX_SPEED_ACC_MPS)
+                    || Math.abs(wheelKmh - wheelSecondBefore) > MAX_CHANGE_KMH) {
+                return false;
+            }
+            double ratio = gpsKmh / wheelKmh;
+            if (Math.abs(ratio - factor) > (accepted < WARMUP ? WARMUP_WINDOW : WINDOW)) {
+                return false;   // a GPS speed glitch, not the tyres
+            }
+            factor = Math.max(MIN, Math.min(MAX, factor + ALPHA * (ratio - factor)));
+            accepted++;
+            return true;
         }
     }
 

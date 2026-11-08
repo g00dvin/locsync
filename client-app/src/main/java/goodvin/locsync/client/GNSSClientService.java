@@ -124,10 +124,18 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private double filtSpeedAcc = Double.NaN, filtBearingAcc = Double.NaN;
     private double inSpeedAcc = Double.NaN, inBearingAcc = Double.NaN;
     private TrackRecorder trackRecorder;    // non-null while "Record track" is on
-    // Head-unit speed for the track log; runs with the recorder (MainActivity's reader stops in onPause).
+    // The car's own signals while the transport runs (MainActivity's reader stops in onPause): wheel
+    // speed for the filter and the output, and the track log's car columns. No-op off eCarX units.
     // ponytail: separate AdaptAPI connection from MainActivity's; share one if the head unit objects to two
-    // volatile: stopTransport (connectivity thread) may null it while the main-thread fix path reads it.
-    private volatile VehicleData trackVehicle;
+    // Created and nulled on the main thread (see startTransport/stopTransport); volatile for other readers.
+    private volatile VehicleData vehicle;
+    private static final long VEHICLE_POLL_MS = 200;
+    // Wheel speed as a velocity measurement: far steadier than Doppler in town (no multipath). This is
+    // its along-course 1-sigma in m/s; a replay of the 2026-11-08 drive was flat from 0.1 to 0.5.
+    private static final double CAR_SPEED_ACC_MPS = 0.15;
+    private static final long CAR_SPEED_MAX_AGE_MS = 300;  // newest wheel sample still "live" for output
+    private static final int CALIBRATION_SAVE_EVERY = 60;  // accepted fixes between saves
+    private CarSignals.WheelCalibration wheelCalibration;  // main thread; created in startTransport
     private final Runnable smoothingTick = this::smoothingTick;
 
     private volatile DatagramSocket udpSocket;
@@ -303,6 +311,16 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
         nextTickUptimeMs = 0;
         outputMoving = false;
+        // Created and stopped on the main thread, so a quick stop/start can't leak or reorder them.
+        mainHandler.post(() -> {
+            if (!running.get() || vehicle != null) {
+                return;
+            }
+            wheelCalibration = new CarSignals.WheelCalibration(Preferences.carSpeedFactor(this));
+            VehicleData v = new VehicleData(this, mainHandler, null, VEHICLE_POLL_MS);
+            v.start();
+            vehicle = v;
+        });
         mainHandler.post(smoothingTick);
 
         lastTickWallMs = 0;
@@ -331,6 +349,14 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         outAccuracy = outSpeedAcc = outBearingAcc = Double.NaN;
         filtSpeedAcc = filtBearingAcc = inSpeedAcc = inBearingAcc = Double.NaN;
         closeTrackRecorder();
+        mainHandler.post(() -> {
+            VehicleData v = vehicle;
+            vehicle = null;
+            if (v != null) {
+                v.stop();
+            }
+            saveWheelCalibration();
+        });
         lastLatencyMs = lastHorizonMs = Double.NaN;
         connectionManager.clearLearnedServerAddress();
         lastBroadcastSatelliteCount = -1;
@@ -681,7 +707,28 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                         }
                         kalman.predict(Math.max(0, Math.min(dt, 5.0)));
                     }
-                    kalman.update(lat, lon, spd, brg, acc, spdAcc, brgAcc, hasSpd, hasBrg);
+                    // The car's wheel speed at the fix's measurement time replaces the GPS speed when
+                    // readable: phone Doppler glitches by up to 10 km/h in town, the wheels don't.
+                    VehicleData car = vehicle;   // read once: may be nulled concurrently
+                    Float wheel = car == null ? null : car.speedKmhAt(measElapsed);
+                    double fSpd = spd, fSpdAcc = spdAcc;
+                    boolean fHasSpd = hasSpd;
+                    if (wheel != null && wheelCalibration != null) {
+                        Float before = car.speedKmhAt(measElapsed - 1000);
+                        if (hasSpd && hasSpdAcc && before != null
+                                && wheelCalibration.update(spd * 3.6, spdAcc, wheel, before)
+                                && wheelCalibration.accepted() % CALIBRATION_SAVE_EVERY == 0) {
+                            saveWheelCalibration();
+                        }
+                        if (filterConfig.carSpeed) {
+                            // ponytail: a switch between wheel and GPS speed is a one-fix blip in the
+                            // speed ramp; reset the ramp on a source change if it ever shows
+                            fSpd = wheel * wheelCalibration.factor() / 3.6;
+                            fSpdAcc = CAR_SPEED_ACC_MPS;
+                            fHasSpd = true;
+                        }
+                    }
+                    kalman.update(lat, lon, fSpd, brg, acc, fSpdAcc, brgAcc, fHasSpd, hasBrg);
                     lastAltitude = alt;
                     lastVerticalAcc = hasVacc ? vacc : Float.NaN;
                     lastMslAltitude = hasMsl ? msl : Double.NaN;
@@ -690,7 +737,6 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     stateElapsedMs = measElapsed;
 
                     updateTrackRecorder();
-                    VehicleData car = trackVehicle;   // read once: may be nulled concurrently
                     if (trackRecorder != null) {
                         trackRecorder.fix(nowElapsed, fixTs, provider, sats, lat, lon, alt, acc, hasSpd, spd, hasBrg, brg,
                                 spdAcc, brgAcc, ageS, latencyMs, kalman,
@@ -749,7 +795,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     /** One log line per change of the experiment switches, to tell the test-drive runs apart in the data. */
     private void logExperimentSwitches() {
         String now = "speedRamp=" + filterConfig.speedRamp + " output1Hz=" + filterConfig.output1Hz
-                + " sendSpeed=" + filterConfig.sendSpeed;
+                + " sendSpeed=" + filterConfig.sendSpeed + " carSpeed=" + filterConfig.carSpeed;
         if (!now.equals(lastExperiment)) {
             lastExperiment = now;
             AppLog.i(TAG, "Output switches: " + now);
@@ -768,12 +814,24 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         loc.setAltitude(lastAltitude);
         applyVerticalAccuracyFiltered(loc);
         double speed = est.speed;
+        // The speed apps display: the live wheel speed when it's fresh, so it follows the car without
+        // the once-a-second steps or the extrapolation; position still comes from the filter.
+        VehicleData car = vehicle;
+        if (filterConfig.carSpeed && car != null && wheelCalibration != null) {
+            long now = SystemClock.elapsedRealtime();
+            Float wheel = car.speedKmhAt(now);
+            if (wheel != null) {
+                speed = wheel * wheelCalibration.factor() / 3.6;
+            }
+        }
         // Hysteresis around the standstill threshold: without it speed/bearing flickered on and off
         // 126 times in an hour of driving (creeping in traffic, pulling away).
         if (outputMoving) {
             outputMoving = speed >= filterConfig.standstillSpeed * MOVING_HIDE_FACTOR;
         } else {
-            outputMoving = speed >= filterConfig.standstillSpeed * MOVING_SHOW_FACTOR;
+            // Show only once the filter moves too: the wheels lead GPS when pulling away, and a
+            // still filter has no course yet (its bearing would read north).
+            outputMoving = Math.min(speed, est.speed) >= filterConfig.standstillSpeed * MOVING_SHOW_FACTOR;
         }
         boolean moving = outputMoving;
         filtSpeedAcc = est.speedAccuracy;
@@ -908,15 +966,20 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
     }
 
-    /** Closes the track log and its head-unit reader together. Safe to call when not recording. */
+    /** Closes the track log. Safe to call when not recording. */
     private void closeTrackRecorder() {
         if (trackRecorder != null) {
             trackRecorder.close();
             trackRecorder = null;
         }
-        if (trackVehicle != null) {
-            trackVehicle.stop();
-            trackVehicle = null;
+    }
+
+    private void saveWheelCalibration() {
+        CarSignals.WheelCalibration c = wheelCalibration;
+        if (c != null && c.accepted() > 0) {
+            Preferences.setCarSpeedFactor(this, (float) c.factor());
+            AppLog.i(TAG, String.format(java.util.Locale.US, "Wheel speed factor %.4f saved (%d fixes)",
+                    c.factor(), c.accepted()));
         }
     }
 
@@ -925,8 +988,6 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         boolean wanted = Preferences.trackRecording(this);
         if (wanted && trackRecorder == null) {
             trackRecorder = new TrackRecorder(new java.io.File(getCacheDir(), "logs"));
-            trackVehicle = new VehicleData(this, mainHandler, null);
-            trackVehicle.start();
             AppLog.i(TAG, "Track recording started");
         } else if (!wanted && trackRecorder != null) {
             closeTrackRecorder();
