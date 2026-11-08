@@ -56,7 +56,6 @@ public class ScreenshotsTest {
                 Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_BACKGROUND_LOCATION,
                 Manifest.permission.POST_NOTIFICATIONS);
         GNSSServerService.setServiceEnabled(app, false);   // don't start the real service
-        Preferences.setLiveMonitoring(app, true);
         Preferences.setSetupShown(app);                // open on Home, not the first-run checklist
 
         // A running service with a connected head unit and a fix, without starting its socket or GPS.

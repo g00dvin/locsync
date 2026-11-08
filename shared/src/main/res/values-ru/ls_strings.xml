@@ -38,7 +38,6 @@
     <string name="nav_connect">Подключение</string>
     <string name="section_filter">Фильтр сглаживания</string>
     <string name="section_location">Информация о местоположении</string>
-    <string name="live_monitoring">Мониторинг в реальном времени</string>
     <string name="lh_packets">Пакеты/с</string>
     <string name="lh_bytes">Байты/с</string>
     <string name="lh_max_gap">Макс. разрыв, мс</string>

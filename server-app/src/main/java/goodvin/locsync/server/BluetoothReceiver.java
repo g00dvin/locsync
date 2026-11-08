@@ -19,8 +19,10 @@ package goodvin.locsync.server;
 
 import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.util.Log;
 import goodvin.locsync.shared.AppLog;
 
@@ -42,6 +44,19 @@ public class BluetoothReceiver extends BroadcastReceiver {
     // Tracks which registered trigger devices are currently connected (in-memory).
     // Reset on process death, which is acceptable — we'll get fresh ACL events.
     private static final Set<String> connectedTriggerDevices = new HashSet<>();
+
+    /**
+     * Enables this receiver only while Bluetooth auto-start is on, so ACL events don't wake the
+     * process otherwise. Component state survives app updates; the manifest default is enabled.
+     */
+    static void sync(Context context) {
+        context.getPackageManager().setComponentEnabledSetting(
+                new ComponentName(context, BluetoothReceiver.class),
+                Preferences.bluetoothAutoStartEnabled(context)
+                        ? PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+                        : PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP);
+    }
 
     /** Returns true if no registered trigger devices are currently connected. */
     public static boolean allTriggerDevicesDisconnected() {

@@ -58,7 +58,6 @@ public class ScreenshotsTest {
         shadowOf(appOps).setMode(AppOpsManager.OPSTR_MOCK_LOCATION, android.os.Process.myUid(),
                 app.getPackageName(), AppOpsManager.MODE_ALLOWED);
         Preferences.setServiceEnabled(app, false);   // don't start the real service
-        Preferences.setLiveMonitoring(app, true);
         Preferences.setSetupShown(app);                // open on Home, not the first-run checklist
 
         // A "running" service connected to the phone, without starting its sockets.

@@ -91,6 +91,15 @@ public class GNSSServerService extends Service {
     private volatile SocketAddress clientAddr = null;   // the single current client
     private volatile long lastHeard = 0;                // elapsedRealtime of the last HELLO from clientAddr
     private final Runnable keepaliveRunnable = this::keepaliveTick;
+    // Main thread only. The keepalive tick runs only while a client is present: a HELLO arms it,
+    // and it stops re-arming itself once the client is gone (no wakeups while nobody listens).
+    private boolean keepaliveArmed = false;
+    private final Runnable armKeepalive = () -> {
+        if (!keepaliveArmed) {
+            keepaliveArmed = true;
+            this.mainHandler.postDelayed(keepaliveRunnable, KEEPALIVE_TICK_MS);   // `this.`: declared below
+        }
+    };
     private LocationManager locationManager = null;
     private FusedLocationProviderClient fusedLocationProviderClient = null;
     private final com.google.android.gms.location.LocationListener fusedLocationListener = this::handleLocationUpdate;
@@ -338,7 +347,6 @@ public class GNSSServerService extends Service {
                 return;
             }
 
-            mainHandler.post(() -> mainHandler.postDelayed(keepaliveRunnable, KEEPALIVE_TICK_MS));
             mainHandler.post(this::startMetricsSampler);
 
             byte[] buffer = new byte[Protocol.MAX_PACKET_BYTES];
@@ -378,6 +386,7 @@ public class GNSSServerService extends Service {
             boolean isNewClient = (clientAddr == null);
             clientAddr = packet.getSocketAddress();
             lastHeard = SystemClock.elapsedRealtime();   // monotonic: wall-clock changes can't fake a timeout
+            mainHandler.post(armKeepalive);   // every HELLO, not just a new client: no-op while armed
             if (isNewClient) {
                 AppLog.i(TAG, "Client present: " + clientAddr);
                 mainHandler.post(this::startLocationUpdates);
@@ -405,6 +414,7 @@ public class GNSSServerService extends Service {
     private void stopServer() {
         AppLog.d(TAG, "Stopping UDP server");
         mainHandler.removeCallbacks(keepaliveRunnable);
+        mainHandler.post(() -> keepaliveArmed = false);   // main-thread field; stopServer also runs on the executor
         mainHandler.removeCallbacks(metricsTick);
         metricsPrimed = false;
         // Re-sampled when the server starts again. Builder writes stay on the main thread: stopServer
@@ -801,7 +811,9 @@ public class GNSSServerService extends Service {
                 executor.execute(() -> broadcastLocationUpdate(resp));
             }
         }
-        if (running) {
+        // Not re-armed per send either: the client timeout above must keep being checked.
+        keepaliveArmed = running && clientAddr != null;
+        if (keepaliveArmed) {
             mainHandler.postDelayed(keepaliveRunnable, KEEPALIVE_TICK_MS);
         }
     }
