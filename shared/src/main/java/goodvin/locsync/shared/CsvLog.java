@@ -103,8 +103,10 @@ public final class CsvLog {
             File stale = new File(file.getParentFile(), file.getName() + ".oldhdr");
             //noinspection ResultOfMethodCallIgnored
             stale.delete();
-            //noinspection ResultOfMethodCallIgnored
-            file.renameTo(stale);
+            if (!file.renameTo(stale)) {
+                // Rows stay dropped until it can be moved: new columns under the old header are unreadable.
+                throw new IOException("can't move " + file + " aside");
+            }
         }
         boolean needHeader = !file.exists() || file.length() == 0;
         writer = new BufferedWriter(new FileWriter(file, true), 16 * 1024);

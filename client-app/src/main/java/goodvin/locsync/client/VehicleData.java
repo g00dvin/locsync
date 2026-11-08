@@ -66,23 +66,31 @@ final class VehicleData {
         if (sdkMissing || poller != null) {
             return;
         }
-        poller = new Poller();
+        synchronized (this) {
+            poller = new Poller();   // under the lock: its first publish waits until it's current
+        }
     }
 
     void stop() {
-        Poller p = poller;
-        poller = null;
+        Poller p;
+        synchronized (this) {
+            p = poller;
+            poller = null;
+            latest = CarSignals.Snapshot.EMPTY;
+        }
         if (p != null) {
             p.shutdown();
         }
-        latest = CarSignals.Snapshot.EMPTY;
     }
 
     private void publish(Poller from, CarSignals.Snapshot snap) {
-        if (poller != from) {
-            return;   // a stopped/replaced poller must not overwrite the current state
+        // Locked with stop(): a poll that passed the check can't land after stop() cleared the state.
+        synchronized (this) {
+            if (poller != from) {
+                return;   // a stopped/replaced poller must not overwrite the current state
+            }
+            latest = snap;
         }
-        latest = snap;
         if (onUpdate != null) {
             uiHandler.post(onUpdate);
         }
@@ -141,7 +149,7 @@ final class VehicleData {
                 }
             } catch (Exception | LinkageError e) {
                 if (CarSignals.isMissingSdk(e)) {
-                    AppLog.i(TAG, "AdaptAPI not present, car card disabled");
+                    AppLog.i(TAG, "AdaptAPI not present, car card disabled until the app restarts");
                     sdkMissing = true;
                     stopped = true;
                     publish(this, CarSignals.Snapshot.EMPTY);

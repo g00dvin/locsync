@@ -103,4 +103,21 @@ public class CsvLogTest {
         assertEquals(List.of("a,b", "1,2"), Files.readAllLines(new File(dir, "t.csv.oldhdr").toPath()));
         assertEquals(List.of("keep"), Files.readAllLines(sizeRotated.toPath()));   // size-rotated data untouched
     }
+
+    // If the old-header file can't be moved aside, new rows are dropped rather than appended under it.
+    @Test
+    public void headerChangeWithoutRenameDropsRows() throws Exception {
+        File dir = tmp.newFolder();
+        File f = new File(dir, "t.csv");
+        Files.write(f.toPath(), List.of("a,b", "1,2"));
+        File blocker = new File(dir, "t.csv.oldhdr");          // non-empty dir: delete and rename both fail
+        assertTrue(blocker.mkdir());
+        Files.write(new File(blocker, "x").toPath(), List.of("x"));
+
+        CsvLog v2 = new CsvLog(f, "a,b,c", 1 << 20);
+        v2.writeLine(new StringBuilder("1,2,3"));
+        v2.close();
+
+        assertEquals(List.of("a,b", "1,2"), Files.readAllLines(f.toPath()));
+    }
 }

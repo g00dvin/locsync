@@ -29,6 +29,8 @@ import java.nio.file.Files;
 import java.util.List;
 
 public class TrackRecorderTest {
+    private static final float S = Float.intBitsToFloat(1);   // AdaptAPI "unsupported" sentinel
+
     @Rule
     public TemporaryFolder tmp = new TemporaryFolder();
 
@@ -44,6 +46,12 @@ public class TrackRecorderTest {
         r.fix(2000, 1_700_000_001_000L, "gps", 0, 55.75, 37.6, 150.0, 4.0f,
                 false, 0f, false, 0f, 0f, 0f, 0.05f, 50, f,
                 CarSignals.fromRaw(10f, 10.5f, 0x200220, 38f, 408f, 0.5f, 23275f, 1500L));
+        r.fix(2050, 1_700_000_001_050L, "gps", 0, 55.75, 37.6, 150.0, 4.0f,
+                false, 0f, false, 0f, 0f, 0f, 0.05f, 50, f,
+                CarSignals.fromRaw(S, S, 0x200220, 38f, 408f, 0.5f, 23275f, 1500L));   // car data, no speed
+        r.fix(2060, 1_700_000_001_060L, "gps", 0, 55.75, 37.6, 150.0, 4.0f,
+                false, 0f, false, 0f, 0f, 0f, 0.05f, 50, f,
+                CarSignals.fromRaw(S, 10.5f, 0x200220, 38f, 408f, 0.5f, 23275f, 1560L));  // cluster speed only
         r.out(2100, 55.75, 37.6, true, 10.0, 90.0, 6.0, 0.3, Double.NaN, 100);
         r.out(2200, 55.75, 37.6, false, 0.1, 0, 6.0, Double.NaN, Double.NaN, 200);
         r.close();
@@ -51,7 +59,7 @@ public class TrackRecorderTest {
         List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
         assertEquals(TrackRecorder.HEADER, lines.get(0));
         int cols = TrackRecorder.HEADER.split(",", -1).length;
-        assertEquals(5, lines.size());
+        assertEquals(7, lines.size());
         for (String line : lines.subList(1, lines.size())) {
             assertEquals(line, cols, line.split(",", -1).length);
         }
@@ -62,7 +70,9 @@ public class TrackRecorderTest {
         assertEquals("", noCar[cols - 1]);   // car_dt_ms
         // Car read at 1500, fix arrived at 2000: the car value is 500 ms older than the fix.
         assertTrue(lines.get(2), lines.get(2).endsWith(",36.00,37.80,-500"));
-        assertTrue(lines.get(3).contains(",out,"));
+        assertTrue(lines.get(3), lines.get(3).endsWith(",,,"));                // no speed: no car_dt_ms
+        assertTrue(lines.get(4), lines.get(4).endsWith(",,37.80,-500"));
+        assertTrue(lines.get(5).contains(",out,"));
     }
 
     // Recording is appended across service restarts; the header is written only once.

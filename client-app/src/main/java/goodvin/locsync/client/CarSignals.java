@@ -78,11 +78,16 @@ final class CarSignals {
     static Snapshot fromRaw(float speedMps, float speedIpkMps, int gearCode, float fuel, float range,
                             float temp, float odo, long readElapsedMs) {
         Float odometer = latest(odo);
-        if (odometer != null && odometer <= 0) {
-            odometer = null;   // a real car never reads 0 km; ignition-off placeholder
-        }
+        // A real car never reads 0 km: that's the wake-up placeholder, and while it shows, fuel and
+        // range zeros are placeholders too. With a real odometer a zero range (empty tank) is kept.
+        boolean waking = odometer != null && odometer <= 0;
         return new Snapshot(speedKmh(latest(speedMps)), speedKmh(latest(speedIpkMps)), gearLabel(gearCode),
-                latest(fuel), latest(range), latest(temp), odometer, readElapsedMs);
+                waking ? positive(latest(fuel)) : latest(fuel), waking ? positive(latest(range)) : latest(range),
+                latest(temp), waking ? null : odometer, readElapsedMs);
+    }
+
+    private static Float positive(Float v) {
+        return v != null && v > 0 ? v : null;
     }
 
     /** A getSensorLatestValue result, or null for the "unsupported" sentinel and non-finite values. */
