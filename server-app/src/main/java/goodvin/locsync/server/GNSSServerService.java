@@ -63,7 +63,7 @@ import java.util.concurrent.Executors;
 import goodvin.locsync.proto.LocationProto;
 import goodvin.locsync.shared.AndroidSystemStatsReader;
 import goodvin.locsync.shared.Metrics;
-import goodvin.locsync.shared.MetricsCsvWriter;
+import goodvin.locsync.shared.CsvLog;
 import goodvin.locsync.shared.MetricsSnapshot;
 import goodvin.locsync.shared.Protocol;
 import goodvin.locsync.shared.SystemStatsReader;
@@ -85,7 +85,7 @@ public class GNSSServerService extends Service {
     private static boolean running = false;
     private static GNSSServerService instance = null;
 
-    private String serverStartError = null;
+    private volatile String serverStartError = null;   // written on the executor, read on main
 
     private volatile DatagramSocket udpSocket;
     private volatile SocketAddress clientAddr = null;   // the single current client
@@ -117,7 +117,8 @@ public class GNSSServerService extends Service {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Metrics metrics = new Metrics();
     private SystemStatsReader statsReader;
-    private MetricsCsvWriter csvWriter;
+    private CsvLog metricsLog;                       // metrics-<app>.csv; main thread only
+    private final StringBuilder metricsRow = new StringBuilder(160);
     private volatile boolean metricsPrimed = false;
     private static final long METRICS_INTERVAL_MS = 1000;
     private static final String METRICS_TAG = "METRICS";
@@ -240,6 +241,9 @@ public class GNSSServerService extends Service {
         cancelBluetoothAutoStop();
         stopServer();
         stopLocationUpdates();
+        if (metricsLog != null) {
+            metricsLog.close();
+        }
 
         locationManager = null;
 
@@ -353,6 +357,8 @@ public class GNSSServerService extends Service {
     }
 
     private void handlePacket(DatagramPacket packet) {
+        // The client's HELLOs: gives the Monitor's max gap (client → phone link) a value
+        metrics.recordPacketRecv(packet.getLength(), SystemClock.elapsedRealtime());
         Protocol.Header header;
         try {
             header = Protocol.parse(packet.getData(), packet.getLength());
@@ -401,7 +407,9 @@ public class GNSSServerService extends Service {
         mainHandler.removeCallbacks(keepaliveRunnable);
         mainHandler.removeCallbacks(metricsTick);
         metricsPrimed = false;
-        lastServerResponse.clearPhone();   // re-sampled when the server starts again
+        // Re-sampled when the server starts again. Builder writes stay on the main thread: stopServer
+        // also runs on the executor (bind failure); FIFO keeps this ahead of a restart's sampling.
+        mainHandler.post(lastServerResponse::clearPhone);
         clientAddr = null;
         if (udpSocket != null) {
             udpSocket.close();
@@ -411,8 +419,9 @@ public class GNSSServerService extends Service {
 
     private void startMetricsSampler() {
         if (statsReader == null) statsReader = new AndroidSystemStatsReader(this);
-        if (csvWriter == null) {
-            csvWriter = new MetricsCsvWriter(new java.io.File(getCacheDir(), "logs"), "server", 5_000_000);
+        if (metricsLog == null) {
+            metricsLog = new CsvLog(new java.io.File(new java.io.File(getCacheDir(), "logs"), "metrics-server.csv"),
+                    MetricsSnapshot.csvHeader(), 5_000_000);
         }
         mainHandler.removeCallbacks(metricsTick);
         metricsPrimed = false;
@@ -465,16 +474,15 @@ public class GNSSServerService extends Service {
                     String ts = metricsTs.format(new java.util.Date());
                     long uptimeS = SystemClock.elapsedRealtime() / 1000;
                     if (Preferences.metricsEnabled(this)) {
-                        csvWriter.append(MetricsSnapshot.csvHeader(), s.toCsvRow(ts, uptimeS));
+                        metricsRow.setLength(0);
+                        metricsLog.writeLine(s.toCsvRow(metricsRow, ts, uptimeS));
+                        metricsLog.flush();   // export reads the file; flush also notices "Clear logs"
                         Log.i(METRICS_TAG, s.toLogLine());
                     }
                     sendBroadcast(new Intent("goodvin.locsync.METRICS")
                             .setPackage(getPackageName())
-                            .putExtra("text", s.toDisplayString())
                             .putExtra("pktSentPerSec", s.pktSentPerSec)
-                            .putExtra("pktRecvPerSec", s.pktRecvPerSec)
                             .putExtra("bytesSentPerSec", s.bytesSentPerSec)
-                            .putExtra("bytesRecvPerSec", s.bytesRecvPerSec)
                             .putExtra("maxGapMs", s.maxGapMs)
                             .putExtra("ageMeanMs", s.ageMeanMs)
                             .putExtra("ageP95Ms", s.ageP95Ms)
@@ -661,8 +669,12 @@ public class GNSSServerService extends Service {
         }
         recordFix(receivedElapsed, location, clientAddr != null);
         metrics.recordFix();
+        float ageS = fixAgeSeconds(location);
+        metrics.recordFixAgeMs(ageS * 1000.0);
 
-        AppLog.d(TAG, "Handling location update: " + location);
+        if (AppLog.isDebug()) {   // per fix: would fill the 1000-entry log ring in minutes
+            AppLog.d(TAG, "Handling location update: " + location);
+        }
 
         // Create protobuf message
         LocationProto.LocationUpdate.Builder builder = LocationProto.LocationUpdate.newBuilder()
@@ -670,7 +682,7 @@ public class GNSSServerService extends Service {
                 .setLatitude(location.getLatitude())
                 .setLongitude(location.getLongitude())
                 .setProvider(location.getProvider())
-                .setLocationAge(fixAgeSeconds(location));
+                .setLocationAge(ageS);
 
         if (location.hasAltitude()) {
             builder.setAltitude(location.getAltitude());

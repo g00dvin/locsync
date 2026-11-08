@@ -58,7 +58,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import goodvin.locsync.proto.LocationProto;
 import goodvin.locsync.shared.AndroidSystemStatsReader;
 import goodvin.locsync.shared.Metrics;
-import goodvin.locsync.shared.MetricsCsvWriter;
+import goodvin.locsync.shared.CsvLog;
 import goodvin.locsync.shared.MetricsSnapshot;
 import goodvin.locsync.shared.Protocol;
 import goodvin.locsync.shared.SystemStatsReader;
@@ -142,7 +142,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Metrics metrics = new Metrics();
     private SystemStatsReader statsReader;
-    private MetricsCsvWriter csvWriter;
+    private CsvLog metricsLog;                       // metrics-<app>.csv; main thread only
+    private final StringBuilder metricsRow = new StringBuilder(160);
     private volatile boolean metricsPrimed = false;
     private long lastTickWallMs = 0;
     private static final long METRICS_INTERVAL_MS = 1000;
@@ -237,8 +238,18 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
         super.onDestroy();
 
+        // Before the executor shuts down: a later Wi-Fi onAvailable would start the transport and
+        // submit to a dead executor (RejectedExecutionException on ConnectivityThread).
+        try {
+            getSystemService(ConnectivityManager.class).unregisterNetworkCallback(networkCallback);
+        } catch (IllegalArgumentException e) {
+            // never registered (onCreate failed before it)
+        }
         stopTransport("Service destroyed");
         executor.shutdown();
+        if (metricsLog != null) {
+            metricsLog.close();
+        }
     }
 
     public IBinder onBind(Intent intent) {
@@ -252,11 +263,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
         updateNotification();
 
-        // Notify activity about connection status change
-        sendBroadcast(new Intent("goodvin.locsync.CONNECTION_CHANGED")
-                .setPackage(getPackageName())
-                .putExtra("state", state.toString())
-                .putExtra("serverAddress", serverAddress));
+        // Notify the activity; it re-reads the state itself
+        sendBroadcast(new Intent("goodvin.locsync.CONNECTION_CHANGED").setPackage(getPackageName()));
     }
 
     private void startTransport() {
@@ -301,7 +309,15 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             broadcastMockLocationStatus(String.format(getString(R.string.mock_location_setup_failed), e.getMessage()), true);
         }
 
-        executor.execute(this::receiveLoop);
+        try {
+            executor.execute(this::receiveLoop);
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // A network callback already in flight while the service is destroyed
+            running.set(false);
+            sock.close();
+            udpSocket = null;
+            return;
+        }
         mainHandler.post(helloTick);
 
         stateElapsedMs = 0;
@@ -369,9 +385,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
 
         connectionManager.setState(ConnectionManager.ConnectionState.DISCONNECTED, reason, null);
-        sendBroadcast(new Intent("goodvin.locsync.CONNECTION_CHANGED")
-                .setPackage(getPackageName())
-                .putExtra("state", ConnectionManager.ConnectionState.DISCONNECTED.toString()));
+        sendBroadcast(new Intent("goodvin.locsync.CONNECTION_CHANGED").setPackage(getPackageName()));
     }
 
     private void sendHelloTick() {
@@ -599,7 +613,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             location.setSpeed(locationUpdate.getSpeed());
             applyVerticalAccuracy(location, locationUpdate);
 
-            AppLog.i(TAG, "Received location update: " + location);
+            if (AppLog.isDebug()) {   // per fix: would fill the 1000-entry log ring in minutes
+                AppLog.d(TAG, "Received location update: " + location);
+            }
 
             // Update internal state
             lastReceivedLocation = location;
@@ -881,8 +897,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
     private void startMetricsSampler() {
         if (statsReader == null) statsReader = new AndroidSystemStatsReader(this);
-        if (csvWriter == null) {
-            csvWriter = new MetricsCsvWriter(new java.io.File(getCacheDir(), "logs"), "client", 5_000_000);
+        if (metricsLog == null) {
+            metricsLog = new CsvLog(new java.io.File(new java.io.File(getCacheDir(), "logs"), "metrics-client.csv"),
+                    MetricsSnapshot.csvHeader(), 5_000_000);
         }
         mainHandler.removeCallbacks(metricsTick);
         metricsPrimed = false;
@@ -901,12 +918,13 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     String ts = metricsTs.format(new java.util.Date());
                     long uptimeS = SystemClock.elapsedRealtime() / 1000;
                     if (Preferences.metricsEnabled(this)) {
-                        csvWriter.append(MetricsSnapshot.csvHeader(), s.toCsvRow(ts, uptimeS));
+                        metricsRow.setLength(0);
+                        metricsLog.writeLine(s.toCsvRow(metricsRow, ts, uptimeS));
+                        metricsLog.flush();   // export reads the file; flush also notices "Clear logs"
                         Log.i(METRICS_TAG, s.toLogLine());
                     }
                     sendBroadcast(new Intent("goodvin.locsync.METRICS")
                             .setPackage(getPackageName())
-                            .putExtra("text", s.toDisplayString())
                             .putExtra("pktSentPerSec", s.pktSentPerSec)
                             .putExtra("pktRecvPerSec", s.pktRecvPerSec)
                             .putExtra("bytesSentPerSec", s.bytesSentPerSec)

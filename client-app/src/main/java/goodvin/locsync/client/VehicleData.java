@@ -282,7 +282,9 @@ final class VehicleData {
             try {
                 return ((Number) getLatest.invoke(mgr, id)).floatValue();
             } catch (Exception e) {
-                AppLog.v(TAG, "read id=0x" + Integer.toHexString(id) + " failed: " + e);
+                if (AppLog.isDebug()) {   // up to 5 Hz per signal while reads fail
+                    AppLog.v(TAG, "read id=0x" + Integer.toHexString(id) + " failed: " + e);
+                }
                 return Float.intBitsToFloat(1);
             }
         }
@@ -292,7 +294,9 @@ final class VehicleData {
             try {
                 return ((Number) getEvent.invoke(mgr, id)).intValue();
             } catch (Exception e) {
-                AppLog.v(TAG, "read id=0x" + Integer.toHexString(id) + " failed: " + e);
+                if (AppLog.isDebug()) {   // up to 5 Hz per signal while reads fail
+                    AppLog.v(TAG, "read id=0x" + Integer.toHexString(id) + " failed: " + e);
+                }
                 return -1;
             }
         }

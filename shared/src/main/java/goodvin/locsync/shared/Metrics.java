@@ -95,13 +95,11 @@ public final class Metrics {
             double gcPauseDelta = (prev.gcPauseMs < 0 || now.gcPauseMs < 0) ? Double.NaN : now.gcPauseMs - prev.gcPauseMs;
             double allocKbPerSec = (prev.allocBytes < 0 || now.allocBytes < 0 || windowS <= 0) ? Double.NaN
                     : (now.allocBytes - prev.allocBytes) / 1024.0 / windowS;
-            double battPctPerHr = (prev.batteryPermil < 0 || now.batteryPermil < 0 || windowS <= 0) ? Double.NaN
-                    : (prev.batteryPermil - now.batteryPermil) / 10.0 / (windowS / 3600.0);
             double currentUa = now.currentUa == Integer.MIN_VALUE ? Double.NaN : now.currentUa;
             double denom = windowS <= 0 ? Double.NaN : windowS;
 
             MetricsSnapshot s = new MetricsSnapshot(
-                    windowMs, cpuPct, gcCountDelta, gcPauseDelta, allocKbPerSec, battPctPerHr, currentUa,
+                    windowMs, cpuPct, gcCountDelta, gcPauseDelta, allocKbPerSec, currentUa,
                     rate(fixes - pFixes, denom),
                     rate(packetsSent - pPacketsSent, denom), rate(bytesSent - pBytesSent, denom),
                     rate(packetsRecv - pPacketsRecv, denom), rate(bytesRecv - pBytesRecv, denom),
@@ -122,7 +120,7 @@ public final class Metrics {
     }
 
     private static MetricsSnapshot zero() {
-        return new MetricsSnapshot(0, 0, 0, 0, 0, Double.NaN, Double.NaN, 0, 0, 0, 0, 0,
+        return new MetricsSnapshot(0, 0, 0, 0, 0, Double.NaN, 0, 0, 0, 0, 0,
                 Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN);
     }
 

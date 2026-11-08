@@ -18,8 +18,6 @@
 package goodvin.locsync.shared;
 
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
 import android.os.BatteryManager;
 import android.os.Debug;
 import android.os.SystemClock;
@@ -28,12 +26,10 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 
 public final class AndroidSystemStatsReader implements SystemStatsReader {
-    private final Context ctx;
     private final BatteryManager batteryManager;
 
     public AndroidSystemStatsReader(Context ctx) {
-        this.ctx = ctx.getApplicationContext();
-        this.batteryManager = (BatteryManager) this.ctx.getSystemService(Context.BATTERY_SERVICE);
+        this.batteryManager = (BatteryManager) ctx.getApplicationContext().getSystemService(Context.BATTERY_SERVICE);
     }
 
     @Override
@@ -44,7 +40,6 @@ public final class AndroidSystemStatsReader implements SystemStatsReader {
                 runtimeStat("art.gc.gc-count"),
                 runtimeStat("art.gc.gc-time"),
                 runtimeStat("art.gc.bytes-allocated"),
-                batteryPermil(),
                 currentUa());
     }
 
@@ -75,19 +70,6 @@ public final class AndroidSystemStatsReader implements SystemStatsReader {
         try {
             String v = Debug.getRuntimeStat(key);
             return v == null ? -1 : Long.parseLong(v);
-        } catch (Exception e) {
-            return -1;
-        }
-    }
-
-    private int batteryPermil() {
-        try {
-            Intent i = ctx.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-            if (i == null) return -1;
-            int level = i.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-            int scale = i.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-            if (level < 0 || scale <= 0) return -1;
-            return (int) Math.round(level * 1000.0 / scale);
         } catch (Exception e) {
             return -1;
         }
