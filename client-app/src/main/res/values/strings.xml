@@ -131,6 +131,8 @@
 
     <string name="filter_adaptive_noise">Adaptive smoothing</string>
     <string name="filter_adaptive_noise_sub">Smooth harder on straights and follow faster in turns or when fixes keep disagreeing with the prediction.</string>
+    <string name="filter_car_speed">Use car speed</string>
+    <string name="filter_car_speed_sub">Take the speed from the car\'s wheels instead of the phone\'s GPS, calibrated to GPS automatically. Steadier in town. Falls back to GPS when the car can\'t be read.</string>
     <string name="filter_speed_ramp">Speed ramp between fixes</string>
     <string name="filter_speed_ramp_sub">Change the speed smoothly between fixes as the car speeds up or brakes. Off: hold each fix\'s speed until the next one.</string>
     <string name="filter_output_1hz">Output once per second</string>

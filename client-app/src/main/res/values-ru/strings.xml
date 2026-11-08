@@ -124,6 +124,8 @@
 
     <string name="filter_adaptive_noise">Адаптивное сглаживание</string>
     <string name="filter_adaptive_noise_sub">Сильнее сглаживать на прямой и быстрее реагировать в поворотах или когда фиксы расходятся с прогнозом.</string>
+    <string name="filter_car_speed">Скорость машины</string>
+    <string name="filter_car_speed_sub">Брать скорость с колёс машины вместо GPS телефона, с автоматической подстройкой под GPS. Стабильнее в городе. Если машина недоступна — GPS.</string>
     <string name="filter_speed_ramp">Плавная скорость между фиксами</string>
     <string name="filter_speed_ramp_sub">Плавно менять скорость между фиксами при разгоне и торможении. Выкл.: держать скорость фикса до следующего.</string>
     <string name="filter_output_1hz">Выдавать раз в секунду</string>

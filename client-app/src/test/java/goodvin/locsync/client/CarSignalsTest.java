@@ -83,6 +83,45 @@ public class CarSignalsTest {
     }
 
     @Test
+    public void speedHistoryInterpolatesAndExpires() {
+        CarSignals.SpeedHistory h = new CarSignals.SpeedHistory();
+        assertNull(h.at(1000));
+        h.add(1000, 50f);
+        h.add(1200, 52f);
+        assertEquals(51f, h.at(1100), 1e-4f);
+        assertEquals(52f, h.at(1500), 0f);         // newest held for 300 ms
+        assertNull(h.at(1501));
+        assertNull(h.at(999));                     // older than kept
+        h.add(2000, 60f);                          // 800 ms hole: not interpolated across
+        assertNull(h.at(1600));
+        assertEquals(60f, h.at(2000), 0f);
+        h.add(1900, 1f);                           // out of order: ignored
+        assertEquals(60f, h.at(2000), 0f);
+        h.add(2100, null);                         // unreadable: history cleared
+        assertNull(h.at(2000));
+        for (int i = 0; i < 100; i++) h.add(10_000 + i * 200L, (float) i);   // ring wraps
+        assertEquals(98.5f, h.at(10_000 + 98 * 200L + 100), 1e-4f);
+        assertNull(h.at(10_000 + 50 * 200L));      // overwritten
+    }
+
+    @Test
+    public void wheelCalibrationLearnsAndRejectsGlitches() {
+        CarSignals.WheelCalibration c = new CarSignals.WheelCalibration(null);
+        assertEquals(1.0, c.factor(), 0);
+        for (int i = 0; i < 200; i++) assertTrue(c.update(102.8, 0.1, 100, 100));
+        assertEquals(1.028, c.factor(), 1e-3);
+        assertFalse(c.update(90, 0.1, 100, 100));          // GPS glitch: outside ±0.04
+        assertFalse(c.update(102.8, 0.1, 100, 99));        // accelerating: lag would bias it
+        assertFalse(c.update(30.8, 0.1, 30, 30));          // too slow
+        assertFalse(c.update(102.8, 0.0, 100, 100));       // no speed accuracy
+        assertFalse(c.update(102.8, 0.8, 100, 100));       // inaccurate GPS speed
+        assertEquals(1.028, c.factor(), 1e-3);
+        CarSignals.WheelCalibration learned = new CarSignals.WheelCalibration(1.5f);
+        assertEquals(1.1, learned.factor(), 0);            // clamped
+        assertFalse(learned.update(150, 0.1, 100, 100));   // learned: tight window from the start
+    }
+
+    @Test
     public void missingSdkIsDetected() {
         assertTrue(CarSignals.isMissingSdk(new ClassNotFoundException("x")));
         assertTrue(CarSignals.isMissingSdk(new NoClassDefFoundError("x")));

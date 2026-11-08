@@ -321,7 +321,7 @@ public class MainActivity extends AppCompatActivity {
         refreshTrackRow();
         // Poll the head unit's own signals (speed, fuel, temps) only while on screen.
         if (vehicleData == null) {
-            vehicleData = new VehicleData(this, uiHandler, this::updateCarCard);
+            vehicleData = new VehicleData(this, uiHandler, this::updateCarCard, 1000);
         }
         vehicleData.start();
     }
@@ -559,6 +559,9 @@ public class MainActivity extends AppCompatActivity {
         bindNumberInput(R.id.rowProcessNoise, getString(R.string.filter_process_noise_base),
                 Preferences.filterProcessNoise(this), 0.2, 10,
                 v -> { Preferences.setFilterProcessNoise(this, (float) v); refreshFilterPresetSub(); });
+        bindToggle(R.id.rowCarSpeed, getString(R.string.filter_car_speed),
+                getString(R.string.filter_car_speed_sub), Preferences.filterCarSpeed(this),
+                checked -> Preferences.setFilterCarSpeed(this, checked));
         bindToggle(R.id.rowSpeedRamp, getString(R.string.filter_speed_ramp),
                 getString(R.string.filter_speed_ramp_sub), Preferences.filterSpeedRamp(this),
                 checked -> Preferences.setFilterSpeedRamp(this, checked));
