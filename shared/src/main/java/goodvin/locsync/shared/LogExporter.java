@@ -132,7 +132,7 @@ public class LogExporter {
 
     /**
      * Everything needed to analyse a drive, in one ZIP for sharing: a fresh log export (logcat +
-     * in-app log), every CSV in the logs directory (metrics, recorded track and its rotated part),
+     * in-app log), every CSV in the logs directory (metrics, recorded track, its rotated part and any file set aside after a column change),
      * and info.txt with app/device details and the given settings. The previous archive is deleted.
      *
      * @return the archive, or null if it could not be written
@@ -161,7 +161,8 @@ public class LogExporter {
             if (log != null) {
                 addFile(out, log);
             }
-            File[] data = dir.listFiles((d, name) -> name.endsWith(".csv") || name.endsWith(".csv.old"));
+            File[] data = dir.listFiles((d, name) -> name.endsWith(".csv") || name.endsWith(".csv.old")
+                    || name.endsWith(".csv.oldhdr"));
             if (data != null) {
                 Arrays.sort(data);
                 for (File f : data) {

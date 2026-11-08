@@ -883,7 +883,6 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
     }
 
-    /** Opens/closes the track file to follow the "Record track" setting (checked on every fix). */
     /** Closes the track log and its head-unit reader together. Safe to call when not recording. */
     private void closeTrackRecorder() {
         if (trackRecorder != null) {
@@ -896,6 +895,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
     }
 
+    /** Opens/closes the track file to follow the "Record track" setting (checked on every fix). */
     private void updateTrackRecorder() {
         boolean wanted = Preferences.trackRecording(this);
         if (wanted && trackRecorder == null) {

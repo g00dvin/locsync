@@ -52,7 +52,7 @@ final class TrackRecorder {
 
     /**
      * A raw fix as received, plus the filter state after it was applied, plus the head unit's speed
-     * ({@code car} may be null). {@code car_dt_ms} is when the car value was read relative to the fix's
+     * ({@code car} may be null). {@code car_dt_ms} (only when a car speed is present) is when the car value was read relative to the fix's
      * arrival ({@code elapsedMs}); signed, not clamped. The GPS value itself describes the moment
      * {@code arrival - latency_ms}.
      */
@@ -72,7 +72,7 @@ final class TrackRecorder {
         sb.append(f.isStationary() ? 1 : 0).append(',');
         num(f.getTurnRateDegPerSec(), 2);
         CsvLog.appendFixed(sb, f.getProcessNoise(), 3).append(',');
-        if (car != null && car.hasAny()) {
+        if (car != null && (car.speedKmh != null || car.speedIpkKmh != null)) {
             optional(car.speedKmh, 2); optional(car.speedIpkKmh, 2);
             sb.append(car.readElapsedMs - elapsedMs);
         } else {

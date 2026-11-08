@@ -55,8 +55,16 @@ public class CarSignalsTest {
         assertEquals(0.5f, s.outsideTempC, 0f);
         assertEquals(23275f, s.odometerKm, 0f);
         assertEquals(1234L, s.readElapsedMs);
-        assertNull(CarSignals.fromRaw(0f, 0f, -1, 0f, 0f, 0f, 0f, 1L).odometerKm);         // ignition-off zero
-        assertEquals(0f, CarSignals.fromRaw(0f, 0f, -1, 0f, 0f, 0f, 0f, 1L).rangeKm, 0f); // empty tank is real
+        CarSignals.Snapshot waking = CarSignals.fromRaw(0f, 0f, -1, 0f, 0f, 0f, 0f, 1L);   // odometer 0: placeholders
+        assertNull(waking.odometerKm);
+        assertNull(waking.fuelLitres);
+        assertNull(waking.rangeKm);
+        assertEquals(0f, waking.outsideTempC, 0f);                                          // 0 °C is real
+        assertEquals(5f, CarSignals.fromRaw(0f, 0f, -1, 5f, 0f, 0f, 0f, 1L).fuelLitres, 0f);
+        CarSignals.Snapshot empty = CarSignals.fromRaw(0f, 0f, -1, 0f, 0f, 0f, 23275f, 1L);
+        assertEquals(0f, empty.rangeKm, 0f);                                               // empty tank is real
+        assertEquals(0f, empty.fuelLitres, 0f);
+        assertEquals(0f, CarSignals.fromRaw(0f, 0f, -1, 0f, 0f, 0f, S, 1L).rangeKm, 0f);  // no odometer: keep zeros
         assertNull(CarSignals.fromRaw(S, S, -1, S, S, S, S, 1L).speedIpkKmh);
         assertFalse(CarSignals.fromRaw(S, S, -1, S, S, S, S, 1L).hasAny());
         assertTrue(CarSignals.fromRaw(0f, S, -1, S, S, S, S, 1L).hasAny());               // standing still is data
