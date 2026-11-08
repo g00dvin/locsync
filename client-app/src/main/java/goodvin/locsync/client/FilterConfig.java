@@ -54,4 +54,11 @@ public final class FilterConfig {
     public double processNoise = 2.0;
     /** Raise σa in turns and when fixes keep disagreeing with the prediction. */
     public boolean adaptiveNoise = true;
+    // Experiment switches (v3.9.2): which part of the output makes Yandex's speed twitch.
+    /** Ramp the output speed between fixes with the recent acceleration (off = hold the fix speed). */
+    public boolean speedRamp = true;
+    /** Inject once per second instead of 10 times. */
+    public boolean output1Hz = false;
+    /** Put the speed (and speed accuracy) in the injected location; off = position and bearing only. */
+    public boolean sendSpeed = true;
 }

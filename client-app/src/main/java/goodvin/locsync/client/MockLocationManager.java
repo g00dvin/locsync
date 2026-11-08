@@ -77,7 +77,8 @@ public class MockLocationManager {
     }
 
     private boolean isStatic(Location location) {
-        return !location.hasSpeed() || location.getSpeed() < STATIC_SPEED_THRESHOLD;
+        // A moving output always carries a bearing, even with "send speed" off.
+        return !location.hasBearing() && (!location.hasSpeed() || location.getSpeed() < STATIC_SPEED_THRESHOLD);
     }
 
     private void applyJitter(Location location) {

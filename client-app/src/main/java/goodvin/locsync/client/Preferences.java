@@ -269,6 +269,34 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_FILTER_ADAPTIVE_NOISE, true);
     }
 
+    private static final String PREF_FILTER_SPEED_RAMP = "filterSpeedRamp";
+    private static final String PREF_FILTER_OUTPUT_1HZ = "filterOutput1Hz";
+    private static final String PREF_FILTER_SEND_SPEED = "filterSendSpeed";
+
+    public static void setFilterSpeedRamp(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_SPEED_RAMP, enabled).apply();
+    }
+
+    public static boolean filterSpeedRamp(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_SPEED_RAMP, true);
+    }
+
+    public static void setFilterOutput1Hz(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_OUTPUT_1HZ, enabled).apply();
+    }
+
+    public static boolean filterOutput1Hz(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_OUTPUT_1HZ, false);
+    }
+
+    public static void setFilterSendSpeed(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_SEND_SPEED, enabled).apply();
+    }
+
+    public static boolean filterSendSpeed(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_SEND_SPEED, true);
+    }
+
     private static final String PREF_FILTER_NETWORK_DELAY = "filterNetworkDelayCompensation";
     private static final String PREF_WIFI_LOW_LATENCY = "wifiLowLatency";
 
@@ -346,6 +374,9 @@ public class Preferences {
         c.standstillSpeed = filterStandstillSpeed(context);
         c.processNoise = filterProcessNoise(context);
         c.adaptiveNoise = filterAdaptiveNoise(context);
+        c.speedRamp = filterSpeedRamp(context);
+        c.output1Hz = filterOutput1Hz(context);
+        c.sendSpeed = filterSendSpeed(context);
         return c;
     }
 
@@ -379,6 +410,9 @@ public class Preferences {
                 .remove(PREF_FILTER_STANDSTILL_SPEED)
                 .remove(PREF_FILTER_ADAPTIVE_NOISE)
                 .remove(PREF_FILTER_PROCESS_NOISE)
+                .remove(PREF_FILTER_SPEED_RAMP)
+                .remove(PREF_FILTER_OUTPUT_1HZ)
+                .remove(PREF_FILTER_SEND_SPEED)
                 .apply();
     }
 

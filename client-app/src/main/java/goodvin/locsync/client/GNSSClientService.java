@@ -85,7 +85,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private volatile long lastResponseTime = 0;     // elapsedRealtime of the last RESPONSE
 
     private final LocationKalmanFilter kalman = new LocationKalmanFilter(2.0, 1.0);
-    private static final long OUTPUT_INTERVAL_MS = 100;   // 10 Hz
+    private static final long OUTPUT_INTERVAL_MS = 100;   // 10 Hz; 1 s with the "once per second" switch
+    private static final long OUTPUT_INTERVAL_1HZ_MS = 1000;
     private static final long GPS_LOSS_CAP_MS = 2500;           // at the usual 1 fix/s
     // The server's update interval is configurable (up to 5 s), so "GPS lost" and the prediction
     // horizon scale with the observed fix interval; a fixed 2.5 s froze the icon between slow fixes.
@@ -112,7 +113,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private final FixClock fixClock = new FixClock();
     private static final double MOVING_SHOW_FACTOR = 1.6, MOVING_HIDE_FACTOR = 0.8; // × standstill speed
     private boolean outputMoving = false;
-    private long nextTickUptimeMs = 0;              // fixed 10 Hz grid for output ticks
+    private long nextTickUptimeMs = 0;              // fixed grid for output ticks (see outputIntervalMs)
+    private long lastOutputIntervalMs = OUTPUT_INTERVAL_MS;
+    private String lastExperiment;                  // experiment switches last logged
     private static final long NOTIFICATION_MIN_INTERVAL_MS = 5000;
     private long lastNotificationElapsedMs = 0;
     private android.net.wifi.WifiManager.WifiLock wifiLockLowLatency, wifiLockHighPerf;
@@ -639,6 +642,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     kalman.setGating(filterConfig.gating, filterConfig.gateThreshold);
                     kalman.setStandstill(filterConfig.standstillHold, filterConfig.standstillSpeed);
                     kalman.setProcessNoise(filterConfig.processNoise, filterConfig.adaptiveNoise);
+                    kalman.setAccelerationExtrapolation(filterConfig.speedRamp);
+                    logExperimentSwitches();
 
                     long nowElapsed = arrivalElapsed;
                     // When the fix was taken, on our clock: its age on arrival is the phone-side age
@@ -706,8 +711,13 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
     private void smoothingTick() {
         long tickWall = SystemClock.elapsedRealtime();
+        long intervalMs = filterConfig.output1Hz ? OUTPUT_INTERVAL_1HZ_MS : OUTPUT_INTERVAL_MS;
+        if (intervalMs != lastOutputIntervalMs) {
+            lastOutputIntervalMs = intervalMs;
+            lastTickWallMs = 0;   // the gap across a rate switch isn't jitter
+        }
         if (lastTickWallMs != 0) {
-            metrics.recordTickJitterMs(Math.abs((tickWall - lastTickWallMs) - OUTPUT_INTERVAL_MS));
+            metrics.recordTickJitterMs(Math.abs((tickWall - lastTickWallMs) - intervalMs));
         }
         lastTickWallMs = tickWall;
         if (!running.get()) {
@@ -729,11 +739,21 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
         // Schedule on a fixed grid: postDelayed after the work drifted the rate down to ~8.7 Hz.
         long nowUptime = SystemClock.uptimeMillis();
-        nextTickUptimeMs += OUTPUT_INTERVAL_MS;
-        if (nextTickUptimeMs <= nowUptime || nextTickUptimeMs > nowUptime + OUTPUT_INTERVAL_MS) {
-            nextTickUptimeMs = nowUptime + OUTPUT_INTERVAL_MS; // fell behind (or first tick): resync
+        nextTickUptimeMs += intervalMs;
+        if (nextTickUptimeMs <= nowUptime || nextTickUptimeMs > nowUptime + intervalMs) {
+            nextTickUptimeMs = nowUptime + intervalMs; // fell behind, first tick or rate switch: resync
         }
         mainHandler.postAtTime(smoothingTick, nextTickUptimeMs);
+    }
+
+    /** One log line per change of the experiment switches, to tell the test-drive runs apart in the data. */
+    private void logExperimentSwitches() {
+        String now = "speedRamp=" + filterConfig.speedRamp + " output1Hz=" + filterConfig.output1Hz
+                + " sendSpeed=" + filterConfig.sendSpeed;
+        if (!now.equals(lastExperiment)) {
+            lastExperiment = now;
+            AppLog.i(TAG, "Output switches: " + now);
+        }
     }
 
     /** How long without a new fix counts as GPS lost: 2.5 fix intervals, at least 2.5 s. */
@@ -769,10 +789,14 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
         loc.setAccuracy((float) outAccuracy);
         if (moving) {
-            loc.setSpeed((float) speed);
             loc.setBearing((float) est.bearingDeg);
+            if (filterConfig.sendSpeed) {
+                loc.setSpeed((float) speed);
+            }
             if (filterConfig.reportUncertainty) {
-                loc.setSpeedAccuracyMetersPerSecond((float) outSpeedAcc);
+                if (filterConfig.sendSpeed) {
+                    loc.setSpeedAccuracyMetersPerSecond((float) outSpeedAcc);
+                }
                 loc.setBearingAccuracyDegrees((float) outBearingAcc);
             }
         }
@@ -784,7 +808,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             mockLocationManager.setMockLocation(loc);
             if (trackRecorder != null) {
                 // after setMockLocation: records what was actually injected (incl. static jitter)
-                trackRecorder.out(SystemClock.elapsedRealtime(), loc.getLatitude(), loc.getLongitude(), moving, loc.getSpeed(), loc.getBearing(),
+                trackRecorder.out(SystemClock.elapsedRealtime(), loc.getLatitude(), loc.getLongitude(), moving,
+                        filterConfig.sendSpeed ? loc.getSpeed() : speed, loc.getBearing(),
                         outAccuracy, outSpeedAcc, outBearingAcc, lastHorizonMs);
             }
         } catch (SecurityException e) {
