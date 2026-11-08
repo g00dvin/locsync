@@ -25,14 +25,14 @@ import org.junit.Test;
 public class MetricsTest {
 
     private static SystemStats stats(long elapsed, long cpuJiffies, long gcCount,
-                                     long gcPauseMs, long allocBytes, int battPermil, int currentUa) {
-        return new SystemStats(elapsed, cpuJiffies, gcCount, gcPauseMs, allocBytes, battPermil, currentUa);
+                                     long gcPauseMs, long allocBytes, int currentUa) {
+        return new SystemStats(elapsed, cpuJiffies, gcCount, gcPauseMs, allocBytes, currentUa);
     }
 
     @Test
     public void firstSnapshotIsBaselineZeros() {
         Metrics m = new Metrics();
-        MetricsSnapshot s = m.snapshot(stats(1000, 100, 10, 5, 0, 900, -50000));
+        MetricsSnapshot s = m.snapshot(stats(1000, 100, 10, 5, 0, -50000));
         assertEquals(0.0, s.windowMs, 0.0001);
         assertEquals(0.0, s.pktSentPerSec, 0.0001);
     }
@@ -40,11 +40,11 @@ public class MetricsTest {
     @Test
     public void computesRatesOverWindow() {
         Metrics m = new Metrics();
-        m.snapshot(stats(1000, 100, 10, 5, 0, 900, -50000)); // prime prev
+        m.snapshot(stats(1000, 100, 10, 5, 0, -50000)); // prime prev
         m.recordPacketSent(200);
         m.recordPacketSent(200);
         m.recordFix();
-        MetricsSnapshot s = m.snapshot(stats(2000, 100, 10, 5, 0, 900, -50000)); // +1000ms
+        MetricsSnapshot s = m.snapshot(stats(2000, 100, 10, 5, 0, -50000)); // +1000ms
         assertEquals(1000.0, s.windowMs, 0.0001);
         assertEquals(2.0, s.pktSentPerSec, 0.0001);
         assertEquals(400.0, s.bytesSentPerSec, 0.0001);
@@ -54,32 +54,30 @@ public class MetricsTest {
     @Test
     public void computesCpuPercentFromJiffies() {
         Metrics m = new Metrics();
-        m.snapshot(stats(1000, 100, 10, 5, 0, 900, -50000));
+        m.snapshot(stats(1000, 100, 10, 5, 0, -50000));
         // +50 jiffies over 1s at 100 Hz = 0.5s CPU = 50%
-        MetricsSnapshot s = m.snapshot(stats(2000, 150, 10, 5, 0, 900, -50000));
+        MetricsSnapshot s = m.snapshot(stats(2000, 150, 10, 5, 0, -50000));
         assertEquals(50.0, s.cpuPct, 0.001);
     }
 
     @Test
-    public void computesGcDeltasAndBatteryPerHour() {
+    public void computesGcDeltasAndCurrent() {
         Metrics m = new Metrics();
-        m.snapshot(stats(1000, 100, 10, 5, 0, 900, -50000));
-        // battery drops 1 permil (0.1%) in 1s -> 360%/hr
-        MetricsSnapshot s = m.snapshot(stats(2000, 100, 13, 25, 1024 * 1024, 899, -50000));
+        m.snapshot(stats(1000, 100, 10, 5, 0, -50000));
+        MetricsSnapshot s = m.snapshot(stats(2000, 100, 13, 25, 1024 * 1024, -50000));
         assertEquals(3.0, s.gcCountDelta, 0.0001);
         assertEquals(20.0, s.gcPauseMsDelta, 0.0001);
         assertEquals(1024.0, s.allocKbPerSec, 0.001);
-        assertEquals(360.0, s.battPctPerHr, 0.01);
         assertEquals(-50000.0, s.currentUa, 0.0001);
     }
 
     @Test
     public void latencyAndJitterPercentiles() {
         Metrics m = new Metrics();
-        m.snapshot(stats(1000, 100, 10, 5, 0, 900, -50000));
+        m.snapshot(stats(1000, 100, 10, 5, 0, -50000));
         for (double v : new double[]{10, 20, 30, 40, 100}) m.recordFixAgeMs(v);
         for (double v : new double[]{1, 2, 3, 4, 50}) m.recordTickJitterMs(v);
-        MetricsSnapshot s = m.snapshot(stats(2000, 100, 10, 5, 0, 900, -50000));
+        MetricsSnapshot s = m.snapshot(stats(2000, 100, 10, 5, 0, -50000));
         assertEquals(40.0, s.ageMeanMs, 0.0001);   // (10+20+30+40+100)/5
         assertEquals(100.0, s.ageP95Ms, 0.0001);   // ceil(0.95*5)=5 -> index 4
         assertEquals(50.0, s.jitterMaxMs, 0.0001);
@@ -89,21 +87,21 @@ public class MetricsTest {
     @Test
     public void samplesClearAfterSnapshot() {
         Metrics m = new Metrics();
-        m.snapshot(stats(1000, 100, 10, 5, 0, 900, -50000));
+        m.snapshot(stats(1000, 100, 10, 5, 0, -50000));
         m.recordFixAgeMs(10);
-        m.snapshot(stats(2000, 100, 10, 5, 0, 900, -50000));
-        MetricsSnapshot s = m.snapshot(stats(3000, 100, 10, 5, 0, 900, -50000));
+        m.snapshot(stats(2000, 100, 10, 5, 0, -50000));
+        MetricsSnapshot s = m.snapshot(stats(3000, 100, 10, 5, 0, -50000));
         assertTrue(Double.isNaN(s.ageMeanMs)); // no samples in this window
     }
 
     @Test
     public void maxGapFromRecvTimestamps() {
         Metrics m = new Metrics();
-        m.snapshot(stats(1000, 100, 10, 5, 0, 900, -50000));
+        m.snapshot(stats(1000, 100, 10, 5, 0, -50000));
         m.recordPacketRecv(50, 1000);
         m.recordPacketRecv(50, 1200); // gap 200
         m.recordPacketRecv(50, 1900); // gap 700
-        MetricsSnapshot s = m.snapshot(stats(2000, 100, 10, 5, 0, 900, -50000));
+        MetricsSnapshot s = m.snapshot(stats(2000, 100, 10, 5, 0, -50000));
         assertEquals(700.0, s.maxGapMs, 0.0001);
         assertEquals(3.0, s.pktRecvPerSec, 0.0001);
     }
@@ -111,10 +109,10 @@ public class MetricsTest {
     @Test
     public void csvHeaderAndRowColumnCountMatch() {
         Metrics m = new Metrics();
-        m.snapshot(stats(1000, 100, 10, 5, 0, 900, -50000));
-        MetricsSnapshot s = m.snapshot(stats(2000, 100, 10, 5, 0, 900, -50000));
+        m.snapshot(stats(1000, 100, 10, 5, 0, -50000));
+        MetricsSnapshot s = m.snapshot(stats(2000, 100, 10, 5, 0, -50000));
         int headerCols = MetricsSnapshot.csvHeader().split(",", -1).length;
-        int rowCols = s.toCsvRow("2026-08-13T00:00:00", 1).split(",", -1).length;
+        int rowCols = s.toCsvRow(new StringBuilder(), "2026-08-13T00:00:00", 1).toString().split(",", -1).length;
         assertEquals(headerCols, rowCols);
     }
 
@@ -132,11 +130,11 @@ public class MetricsTest {
     @Test
     public void cappedListsStillProduceCorrectMeanAfterSnapshot() {
         Metrics m = new Metrics();
-        m.snapshot(stats(1000, 100, 10, 5, 0, 900, -50000)); // prime prev
+        m.snapshot(stats(1000, 100, 10, 5, 0, -50000)); // prime prev
         m.recordFixAgeMs(10.0);
         m.recordFixAgeMs(20.0);
         m.recordFixAgeMs(30.0);
-        MetricsSnapshot s = m.snapshot(stats(2000, 100, 10, 5, 0, 900, -50000));
+        MetricsSnapshot s = m.snapshot(stats(2000, 100, 10, 5, 0, -50000));
         assertEquals(20.0, s.ageMeanMs, 0.0001);
     }
 }

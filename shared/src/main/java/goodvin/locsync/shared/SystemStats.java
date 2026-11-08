@@ -24,17 +24,15 @@ public final class SystemStats {
     public final long gcCount;      // art.gc.gc-count, -1 unknown
     public final long gcPauseMs;    // art.gc.gc-time, -1 unknown
     public final long allocBytes;   // art.gc.bytes-allocated, -1 unknown
-    public final int batteryPermil; // 0..1000, -1 unknown
     public final int currentUa;     // BATTERY_PROPERTY_CURRENT_NOW, Integer.MIN_VALUE unknown
 
     public SystemStats(long elapsedRealtimeMs, long cpuJiffies, long gcCount, long gcPauseMs,
-                       long allocBytes, int batteryPermil, int currentUa) {
+                       long allocBytes, int currentUa) {
         this.elapsedRealtimeMs = elapsedRealtimeMs;
         this.cpuJiffies = cpuJiffies;
         this.gcCount = gcCount;
         this.gcPauseMs = gcPauseMs;
         this.allocBytes = allocBytes;
-        this.batteryPermil = batteryPermil;
         this.currentUa = currentUa;
     }
 }

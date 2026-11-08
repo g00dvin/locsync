@@ -22,18 +22,18 @@ import java.util.Locale;
 /** Immutable computed view over one sampling window. NaN = not applicable / no data. Android-free. */
 public final class MetricsSnapshot {
     public final double windowMs, cpuPct, gcCountDelta, gcPauseMsDelta, allocKbPerSec,
-            battPctPerHr, currentUa, fixesPerSec, pktSentPerSec, bytesSentPerSec,
+            currentUa, fixesPerSec, pktSentPerSec, bytesSentPerSec,
             pktRecvPerSec, bytesRecvPerSec, maxGapMs, ageMeanMs, ageP95Ms,
             jitterMeanMs, jitterMaxMs, jitterP95Ms;
 
     MetricsSnapshot(double windowMs, double cpuPct, double gcCountDelta, double gcPauseMsDelta,
-                    double allocKbPerSec, double battPctPerHr, double currentUa, double fixesPerSec,
+                    double allocKbPerSec, double currentUa, double fixesPerSec,
                     double pktSentPerSec, double bytesSentPerSec, double pktRecvPerSec,
                     double bytesRecvPerSec, double maxGapMs, double ageMeanMs, double ageP95Ms,
                     double jitterMeanMs, double jitterMaxMs, double jitterP95Ms) {
         this.windowMs = windowMs; this.cpuPct = cpuPct; this.gcCountDelta = gcCountDelta;
         this.gcPauseMsDelta = gcPauseMsDelta; this.allocKbPerSec = allocKbPerSec;
-        this.battPctPerHr = battPctPerHr; this.currentUa = currentUa; this.fixesPerSec = fixesPerSec;
+        this.currentUa = currentUa; this.fixesPerSec = fixesPerSec;
         this.pktSentPerSec = pktSentPerSec; this.bytesSentPerSec = bytesSentPerSec;
         this.pktRecvPerSec = pktRecvPerSec; this.bytesRecvPerSec = bytesRecvPerSec;
         this.maxGapMs = maxGapMs; this.ageMeanMs = ageMeanMs; this.ageP95Ms = ageP95Ms;
@@ -42,7 +42,7 @@ public final class MetricsSnapshot {
 
     private static final String[] COLUMNS = {
             "ts_iso", "uptime_s", "cpu_pct", "gc_count", "gc_pause_ms", "alloc_kb_s",
-            "batt_pct_hr", "current_ua", "fixes_s", "pkts_sent_s", "bytes_sent_s",
+            "current_ua", "fixes_s", "pkts_sent_s", "bytes_sent_s",
             "pkts_recv_s", "bytes_recv_s", "max_gap_ms", "age_mean_ms", "age_p95_ms",
             "tick_jit_mean_ms", "tick_jit_max_ms", "tick_jit_p95_ms"
     };
@@ -55,47 +55,22 @@ public final class MetricsSnapshot {
         return Double.isNaN(v) ? "" : String.format(Locale.US, "%.2f", v);
     }
 
-    public String toCsvRow(String tsIso, long uptimeS) {
-        return tsIso + "," + uptimeS + "," + c(cpuPct) + "," + c(gcCountDelta) + "," + c(gcPauseMsDelta)
-                + "," + c(allocKbPerSec) + "," + c(battPctPerHr) + "," + c(currentUa) + "," + c(fixesPerSec)
-                + "," + c(pktSentPerSec) + "," + c(bytesSentPerSec) + "," + c(pktRecvPerSec)
-                + "," + c(bytesRecvPerSec) + "," + c(maxGapMs) + "," + c(ageMeanMs) + "," + c(ageP95Ms)
-                + "," + c(jitterMeanMs) + "," + c(jitterMaxMs) + "," + c(jitterP95Ms);
+    /** Appends one CSV row (no newline) to {@code sb}; NaN cells are left empty. */
+    public StringBuilder toCsvRow(StringBuilder sb, String tsIso, long uptimeS) {
+        sb.append(tsIso).append(',').append(uptimeS);
+        for (double v : new double[]{cpuPct, gcCountDelta, gcPauseMsDelta, allocKbPerSec, currentUa,
+                fixesPerSec, pktSentPerSec, bytesSentPerSec, pktRecvPerSec, bytesRecvPerSec, maxGapMs,
+                ageMeanMs, ageP95Ms, jitterMeanMs, jitterMaxMs, jitterP95Ms}) {
+            CsvLog.appendFixed(sb.append(','), v, 2);
+        }
+        return sb;
     }
 
     public String toLogLine() {
         return String.format(Locale.US,
-                "cpu=%s%% gc=%s/%sms alloc=%sKB/s batt=%s%%/hr cur=%suA fix=%s/s sent=%s/s recv=%s/s "
+                "cpu=%s%% gc=%s/%sms alloc=%sKB/s cur=%suA fix=%s/s sent=%s/s recv=%s/s "
                         + "gap=%sms age=%s/%sms jit=%s/%s/%sms",
-                c(cpuPct), c(gcCountDelta), c(gcPauseMsDelta), c(allocKbPerSec), c(battPctPerHr),
-                c(currentUa), c(fixesPerSec), c(pktSentPerSec), c(pktRecvPerSec), c(maxGapMs),
+                c(cpuPct), c(gcCountDelta), c(gcPauseMsDelta), c(allocKbPerSec), c(currentUa), c(fixesPerSec), c(pktSentPerSec), c(pktRecvPerSec), c(maxGapMs),
                 c(ageMeanMs), c(ageP95Ms), c(jitterMeanMs), c(jitterMaxMs), c(jitterP95Ms));
-    }
-
-    private static void line(StringBuilder sb, String label, double v, String unit) {
-        if (!Double.isNaN(v)) sb.append(label).append(": ").append(c(v)).append(unit).append('\n');
-    }
-
-    public String toDisplayString() {
-        StringBuilder sb = new StringBuilder();
-        line(sb, "CPU", cpuPct, "%");
-        line(sb, "GC count", gcCountDelta, "");
-        line(sb, "GC pause", gcPauseMsDelta, " ms");
-        line(sb, "Alloc", allocKbPerSec, " KB/s");
-        line(sb, "Battery", battPctPerHr, " %/hr");
-        line(sb, "Current", currentUa, " uA");
-        line(sb, "Fixes", fixesPerSec, " /s");
-        line(sb, "Sent", pktSentPerSec, " pkt/s");
-        line(sb, "Sent bytes", bytesSentPerSec, " B/s");
-        line(sb, "Recv", pktRecvPerSec, " pkt/s");
-        line(sb, "Recv bytes", bytesRecvPerSec, " B/s");
-        line(sb, "Max gap", maxGapMs, " ms");
-        line(sb, "Fix age mean", ageMeanMs, " ms");
-        line(sb, "Fix age p95", ageP95Ms, " ms");
-        line(sb, "Tick jitter mean", jitterMeanMs, " ms");
-        line(sb, "Tick jitter max", jitterMaxMs, " ms");
-        line(sb, "Tick jitter p95", jitterP95Ms, " ms");
-        if (sb.length() > 0) sb.setLength(sb.length() - 1); // drop trailing newline
-        return sb.toString();
     }
 }
