@@ -23,7 +23,6 @@
     <string name="status_client_connecting">Подключение к серверу…</string>
     <string name="status_client_connected">Подключено</string>
     <string name="status_hint_start">Нажмите, чтобы запустить</string>
-    <string name="status_hint_stop">Нажмите ещё раз, чтобы остановить</string>
     <string name="uptime_label">Время</string>
     <string name="signal_title">Сигнал</string>
     <string name="link_health_title">Состояние канала</string>
@@ -35,7 +34,6 @@
     <string name="license_view">Открыть лицензию</string>
     <string name="warn_background_location">⚠ Не включён постоянный доступ к местоположению. Нажмите, чтобы открыть разрешения.</string>
 
-    <string name="nav_connect">Подключение</string>
     <string name="section_filter">Фильтр сглаживания</string>
     <string name="section_location">Информация о местоположении</string>
     <string name="lh_packets">Пакеты/с</string>
@@ -46,7 +44,6 @@
     <string name="lh_cpu">ЦП</string>
     <string name="stat_satellites">Спутники</string>
     <string name="stat_sent">Отпр.</string>
-    <string name="stat_recv">Приём</string>
     <string name="label_provider">Провайдер</string>
     <string name="label_speed">Скорость</string>
     <string name="label_bearing">Курс</string>
@@ -58,7 +55,6 @@
     <string name="export_logs_short">Логи</string>
     <string name="export_csv_short">Экспорт CSV</string>
     <string name="group_permissions">Разрешения</string>
-    <string name="group_server_address">Адрес сервера</string>
     <string name="group_location_provider">Провайдер местоположения</string>
     <string name="group_automation">Автоматизация</string>
     <string name="group_diagnostics">Диагностика</string>

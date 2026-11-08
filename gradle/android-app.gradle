@@ -1,0 +1,113 @@
+/*
+ * Copyright © 2025-2026 Dezz (https://github.com/DezzK)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+// Build config both apps share. Each app's build.gradle applies the plugins, sets its namespace,
+// applicationId and minSdk, and adds its own dependencies.
+
+android {
+    compileSdkVersion 36
+
+    defaultConfig {
+        targetSdkVersion 36
+        versionCode rootProject.ext.appVersionCode
+        versionName rootProject.ext.appVersionName
+        // Optional build label (branch-shortsha) for debug/CI builds; empty for tagged releases.
+        resValue "string", "build_label", (System.getenv("BUILD_LABEL") ?: "")
+        // Built by the release workflow (VERSION_NAME = tag): only these offer in-app updates.
+        resValue "bool", "release_build", (System.getenv("VERSION_NAME") && !System.getenv("BUILD_LABEL") ? "true" : "false")
+    }
+
+    buildFeatures {
+        resValues true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+
+    signingConfigs {
+        release {
+            storeFile rootProject.file('keystore.jks')
+            storePassword System.getenv("KEY_PASSWORD")
+            keyAlias "key0"
+            keyPassword System.getenv("KEY_PASSWORD")
+        }
+    }
+
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+            // README screenshots render the real screens with Robolectric; opt-in, not part of CI:
+            // ./gradlew :client-app:testDebugUnitTest -Pscreenshots --tests '*ScreenshotsTest' (or :server-app)
+            all {
+                if (!project.hasProperty('screenshots')) exclude '**/*ScreenshotsTest*'
+                systemProperty 'screenshots.dir', rootProject.file('docs/screenshots').path
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+        }
+    }
+
+    sourceSets {
+        main {
+            proto {
+                srcDir '../proto'
+            }
+        }
+    }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.forEach { output ->
+            def suffix = variant.buildType == "debug" ? "-debug" : ""
+            // client-app → locsync-client-v3.10.3.apk
+            output.outputFileName.set("locsync-${project.name - '-app'}-${android.defaultConfig.versionName}${suffix}.apk")
+        }
+    }
+}
+
+dependencies {
+    implementation libs.appcompat
+    implementation libs.core
+    implementation libs.protobuf.javalite
+
+    implementation project(':shared')
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.17'
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:${libs.versions.protoc.get()}"
+    }
+    generateProtoTasks {
+        all().configureEach { task ->
+            task.plugins {
+                java {
+                    option 'lite'
+                }
+            }
+        }
+    }
+}

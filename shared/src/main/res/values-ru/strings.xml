@@ -17,12 +17,6 @@
   -->
 
 <resources>
-    <string name="export_logs">Логи</string>
-    <string name="export_logs_success">Логи успешно экспортированы</string>
-    <string name="export_logs_error">Ошибка экспорта логов: %s</string>
-    <string name="export_logs_no_logs">Нет логов для экспорта</string>
-    <string name="share_logs">Поделиться логами</string>
-    <string name="export_logs_in_progress">Экспорт логов…</string>
     <string name="clear_logs">Очистить логи и метрики</string>
     <string name="clear_logs_sub">Удалить экспортированные логи, CSV метрик и трека; следующий экспорт логов начнётся с этого момента. Настройки сохраняются.</string>
     <string name="clear_logs_confirm">Удалить все логи, метрики и записанные треки? Нажмите «Очистить» для подтверждения.</string>
@@ -33,4 +27,7 @@
     <string name="export_all_short">Экспорт всех данных</string>
     <string name="export_all_in_progress">Собираю архив…</string>
     <string name="export_all_failed">Не удалось создать архив</string>
+    <string name="permission_fine_location">Точное местоположение</string>
+    <string name="permission_coarse_location">Приблизительное местоположение</string>
+    <string name="permission_background_location">Постоянный доступ к местоположению</string>
 </resources>

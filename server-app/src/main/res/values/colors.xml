@@ -17,14 +17,5 @@
   -->
 
 <resources>
-    <color name="primary">#2196F3</color>
-    <color name="primary_dark">#1976D2</color>
-    <color name="accent">#4CAF50</color>
-    <color name="background">#F5F5F5</color>
     <color name="ic_launcher_background">#1B4DD1</color>
-
-    <color name="header_background">#E0E0E0</color>
-    <color name="card_background">@android:color/white</color>
-    <color name="text_primary">@android:color/black</color>
-    <color name="text_secondary">#666666</color>
 </resources>

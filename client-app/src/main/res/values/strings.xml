@@ -20,21 +20,7 @@
     <string name="debug_logging">Debug logging (verbose)</string>
     <string name="version_label">Version %s</string>
     <string name="mock_app_not_selected">⚠ Not set as the mock location app. Tap here → Developer Options → Select mock location app → LocSync Client.</string>
-    <string name="connection_status_title">Connection Status</string>
-    <string name="connected">Connected</string>
-    <string name="connecting">Connecting…</string>
-    <string name="disconnected">Disconnected</string>
-    <string name="connection_status">%s</string>
-    <string name="connection_status_connected">✓ Connected to %s</string>
-    <string name="connection_status_connecting">Connecting to %s…</string>
-    <string name="connection_status_disconnected">✗ Disconnected</string>
-    <string name="data_age_status">Last location received: %s</string>
-    <string name="data_age_format_s">%ds ago</string>
-    <string name="data_age_format_ms">%1$dm %2$ds ago</string>
 
-    <string name="permission_title">Permissions</string>
-    <string name="checking_permissions">Checking permissions…</string>
-    <string name="request_permissions">Request All Permissions</string>
     <string name="all_permissions_granted">✓ All permissions granted</string>
     <string name="all_permissions_granted_toast">All permissions granted!</string>
     <string name="missing_permissions_toast">Some permissions were denied. The app may not work properly.</string>
@@ -42,41 +28,20 @@
     <string name="mock_location_enable_message">Please enable \"Allow mock locations\" in Developer Options and select this app</string>
     <string name="mock_location_permission_denied">Mock location permission denied - check Developer Options</string>
     <string name="mock_location_setup_failed">Mock location setup failed: %s</string>
-    <string name="mock_location_provider_ready">✓ Mock location provider ready</string>
     <string name="version_mismatch">Server version mismatch — update both apps</string>
 
-    <string name="permission_fine_location">Fine Location</string>
-    <string name="permission_coarse_location">Coarse Location</string>
 
-    <string name="location_information_title">Location Information</string>
-    <string name="location_status">Location: %s</string>
     <string name="location_format" translatable="false">%.6f, %.6f</string>
     <string name="altitude_format">" (%.1fm)"</string>
     <string name="location_accuracy_format">" ±%.1fm"</string>
-    <string name="provider_status">Provider: %s</string>
-    <string name="satellites_status">Satellites: %d</string>
-    <string name="age_status">Age: %s</string>
     <string name="age_format">%.1fs</string>
-    <string name="movement_speed">Speed: %s</string>
     <string name="speed_format">%.1f m/s</string>
-    <string name="movement_bearing">Bearing: %s</string>
     <string name="bearing_format" translatable="false">%.1f°</string>
 
     <string name="unknown">unknown</string>
 
-    <string name="select_server_address_title">Server Address</string>
-    <string name="auto_discover_server">Auto-discover server (broadcast)</string>
-    <string name="set_hostname_or_ip_address_manually">Set hostname or IP address manually</string>
-    <string name="editServerIp">Server hostname or IP address</string>
 
-    <string name="service_status_title">Background Service Status</string>
-    <string name="service_running">✓ Service is running</string>
-    <string name="service_stopped">✗ Service is stopped</string>
-    <string name="autostart_diag">Last autostart: %1$s → %2$s (%3$s)</string>
-    <string name="enable_service">Start</string>
     <string name="disable_service">Stop</string>
-    <string name="toast_service_enabled">GNSS Client Service enabled - will auto-start on boot</string>
-    <string name="toast_service_disabled">GNSS Client Service disabled - will not auto-start</string>
 
     <string name="static_jitter">Add jitter when static (hides ads in some navigation apps)</string>
 
@@ -85,13 +50,9 @@
     <string name="notification_text_disconnected">Attempting to connect to GNSS server</string>
     <string name="notification_text_connected">Receiving location data | Age: %.1fs</string>
     <string name="notification_text_connected_no_age">Receiving location data</string>
-    <string name="notification_text_location_format">Lat: %1$.6f, Lon: %2$.6f</string>
     <string name="notification_channel_description">%s Location Service</string>
 
     <string name="metrics_enabled">Performance metrics (measure &amp; log)</string>
-    <string name="metrics_panel_title">Performance Metrics</string>
-    <string name="export_metrics">Export Metrics CSV</string>
-    <string name="metrics_export_none">No metrics file yet — enable metrics and start the service</string>
 
     <string name="a11y_service_label">LocSync Client autostart</string>
     <string name="a11y_service_description">Starts LocSync Client automatically when the head unit boots and keeps it running. The service does not read screen content or track your actions.</string>

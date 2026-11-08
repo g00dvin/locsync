@@ -17,6 +17,9 @@
 
 package goodvin.locsync.client;
 
+import static goodvin.locsync.shared.Ui.fmt0;
+import static goodvin.locsync.shared.Ui.fmt1;
+
 import android.Manifest;
 import android.animation.ObjectAnimator;
 import android.annotation.SuppressLint;
@@ -33,9 +36,6 @@ import android.os.Handler;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.provider.Settings;
-import android.text.SpannableStringBuilder;
-import android.text.Spanned;
-import android.text.style.ForegroundColorSpan;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
@@ -49,11 +49,9 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.content.ContextCompat;
-import androidx.core.content.FileProvider;
 import androidx.core.content.IntentCompat;
 
 import java.io.File;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -61,11 +59,11 @@ import java.util.Locale;
 import goodvin.locsync.proto.LocationProto;
 import goodvin.locsync.shared.AppLog;
 import goodvin.locsync.shared.LinkState;
-import goodvin.locsync.shared.LogExporter;
 import goodvin.locsync.shared.PowerOrbView;
 import goodvin.locsync.shared.SettingsRows;
 import goodvin.locsync.shared.SetupChecklist;
 import goodvin.locsync.shared.SparklineView;
+import goodvin.locsync.shared.Ui;
 import goodvin.locsync.shared.UpdateChecker;
 import goodvin.locsync.shared.UpdateRow;
 import goodvin.locsync.shared.VersionGetter;
@@ -114,7 +112,6 @@ public class MainActivity extends AppCompatActivity {
 
     private final Handler uiHandler = new Handler();
     private VehicleData vehicleData;
-    private final SimpleDateFormat logTime = new SimpleDateFormat("HH:mm:ss", Locale.US);
     private String appVersion = "<unknown>";
     private String warningMessage = null;   // version mismatch / mock-provider error, shown in banner
     private boolean mockError = false;
@@ -335,7 +332,7 @@ public class MainActivity extends AppCompatActivity {
     private void redrawMonitor() {
         updateMonitorLocation();
         updateMonitorMetrics();
-        renderLog();
+        Ui.renderLog(logText);
     }
 
     @Override
@@ -487,7 +484,7 @@ public class MainActivity extends AppCompatActivity {
 
         findViewById(R.id.logClear).setOnClickListener(v -> {
             AppLog.clearRing();
-            renderLog();
+            Ui.renderLog(logText);
         });
         TextView exportBtn = findViewById(R.id.btnExportLogs);
         exportBtn.setText(R.string.export_all_short);
@@ -618,7 +615,7 @@ public class MainActivity extends AppCompatActivity {
         // About
         String buildLabel = getString(R.string.build_label);
         String shown = buildLabel.isEmpty() ? appVersion : buildLabel;
-        bindAction(R.id.rowVersion, String.format(getString(R.string.version_label), shown),
+        bindAction(R.id.rowVersion, getString(R.string.version_label, shown),
                 getString(R.string.about_protocol), false, null);
         // Local, branch and CI builds aren't releases (different signature, placeholder version):
         // only release-workflow builds look for updates.
@@ -839,7 +836,7 @@ public class MainActivity extends AppCompatActivity {
         List<String> missing = missingPermissionNames();
         if (!missing.isEmpty()) {
             // First launch / revoked: name the exact permissions and let a tap request them.
-            msg = String.format(getString(R.string.missing_permissions), String.join(", ", missing));
+            msg = getString(R.string.missing_permissions, String.join(", ", missing));
             action = this::requestPermissions;
         } else if (warningMessage != null && mockError) {
             // Version mismatch or a mock-provider failure reported by the service.
@@ -869,7 +866,7 @@ public class MainActivity extends AppCompatActivity {
         List<String> missing = new ArrayList<>();
         for (String p : REQUIRED_PERMISSIONS) {
             if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
-                missing.add(getPermissionName(p));
+                missing.add(Ui.permissionName(this, p));
             }
         }
         return missing;
@@ -885,11 +882,6 @@ public class MainActivity extends AppCompatActivity {
                 Log.w(TAG, "Cannot open settings", e);
             }
         }
-    }
-
-    private String uptime() {
-        long s = connectedSinceElapsed == 0 ? 0 : (SystemClock.elapsedRealtime() - connectedSinceElapsed) / 1000;
-        return String.format(getString(R.string.uptime_format), s / 60, s % 60);
     }
 
     // The mock-app check is an AppOps call into the system; the main screen refreshes every second,
@@ -911,7 +903,7 @@ public class MainActivity extends AppCompatActivity {
     private String connectedSub() {
         String addr = GNSSClientService.getServerAddress();
         return getString(R.string.sub_client_connected_fmt,
-                addr != null ? addr : getString(R.string.unknown), uptime());
+                addr != null ? addr : getString(R.string.unknown), Ui.uptime(this, connectedSinceElapsed));
     }
 
     // A fix older than this (phone-side age + time since it arrived) is no longer "live"; matches the
@@ -1110,17 +1102,17 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         Location loc = lastLocation;
-        monLocation.setText(String.format(getString(R.string.location_format), loc.getLatitude(), loc.getLongitude()));
+        monLocation.setText(getString(R.string.location_format, loc.getLatitude(), loc.getLongitude()));
         StringBuilder alt = new StringBuilder();
-        if (loc.hasAltitude()) alt.append(String.format(getString(R.string.altitude_format), loc.getAltitude()));
-        if (loc.hasAccuracy()) alt.append(String.format(getString(R.string.location_accuracy_format), loc.getAccuracy()));
+        if (loc.hasAltitude()) alt.append(getString(R.string.altitude_format, loc.getAltitude()));
+        if (loc.hasAccuracy()) alt.append(getString(R.string.location_accuracy_format, loc.getAccuracy()));
         monAltAcc.setText(alt.toString().trim());
         setText(R.id.kvProvider, R.id.kvValue, lastProvider != null ? lastProvider : getString(R.string.unknown));
         setText(R.id.kvSatellites, R.id.kvValue, String.valueOf(lastSatellites));
-        setText(R.id.kvSpeed, R.id.kvValue, loc.hasSpeed() ? String.format(getString(R.string.speed_format), loc.getSpeed()) : getString(R.string.value_none));
-        setText(R.id.kvBearing, R.id.kvValue, loc.hasBearing() ? String.format(getString(R.string.bearing_format), loc.getBearing()) : getString(R.string.value_none));
-        setText(R.id.kvAge, R.id.kvValue, String.format(getString(R.string.age_format), lastLocationAge));
-        setText(R.id.kvFixes, R.id.kvValue, Double.isNaN(mFixes) ? getString(R.string.value_none) : String.format(getString(R.string.fixes_format), mFixes));
+        setText(R.id.kvSpeed, R.id.kvValue, loc.hasSpeed() ? getString(R.string.speed_format, loc.getSpeed()) : getString(R.string.value_none));
+        setText(R.id.kvBearing, R.id.kvValue, loc.hasBearing() ? getString(R.string.bearing_format, loc.getBearing()) : getString(R.string.value_none));
+        setText(R.id.kvAge, R.id.kvValue, getString(R.string.age_format, lastLocationAge));
+        setText(R.id.kvFixes, R.id.kvValue, Double.isNaN(mFixes) ? getString(R.string.value_none) : getString(R.string.fixes_format, mFixes));
     }
 
     private void updateMonitorMetrics() {
@@ -1159,35 +1151,6 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.monFilterCard).setVisibility(View.VISIBLE);
     }
 
-    private void renderLog() {
-        List<AppLog.Entry> entries = AppLog.snapshot();
-        SpannableStringBuilder sb = new SpannableStringBuilder();
-        int max = Math.min(entries.size(), 120);
-        for (int i = 0; i < max; i++) {
-            AppLog.Entry e = entries.get(i);
-            int start = sb.length();
-            sb.append(logTime.format(e.timeMillis)).append(' ');
-            span(sb, start, sb.length(), getColor(R.color.ls_text_dim));
-            int ls = sb.length();
-            sb.append(e.level).append(' ');
-            span(sb, ls, sb.length(), levelColor(e.level));
-            sb.append(e.message).append('\n');
-        }
-        logText.setText(sb);
-    }
-
-    private int levelColor(char level) {
-        return switch (level) {
-            case 'I' -> getColor(R.color.ls_accent_400);
-            case 'W' -> getColor(R.color.ls_error);
-            default -> getColor(R.color.ls_log_debug);
-        };
-    }
-
-    private void span(SpannableStringBuilder sb, int start, int end, int color) {
-        sb.setSpan(new ForegroundColorSpan(color), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-    }
-
     // --- periodic tick ---
 
     /** Runs once a second between onStart and onStop. */
@@ -1201,7 +1164,7 @@ public class MainActivity extends AppCompatActivity {
             }
             blinkLogDot();
             if (viewFlipper.getDisplayedChild() == VIEW_MONITOR) {
-                renderLog();
+                Ui.renderLog(logText);
             }
             uiHandler.postDelayed(this, 1000);
         }
@@ -1231,7 +1194,7 @@ public class MainActivity extends AppCompatActivity {
         for (String p : REQUIRED_PERMISSIONS) {
             if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
                 allGranted = false;
-                missing.add(getPermissionName(p));
+                missing.add(Ui.permissionName(this, p));
             }
         }
         View row = findViewById(R.id.rowPermissions);
@@ -1241,18 +1204,10 @@ public class MainActivity extends AppCompatActivity {
             label.setText(R.string.all_permissions_granted);
             button.setVisibility(View.GONE);
         } else {
-            label.setText(String.format(getString(R.string.missing_permissions), String.join(", ", missing)));
+            label.setText(getString(R.string.missing_permissions, String.join(", ", missing)));
             button.setVisibility(View.VISIBLE);
         }
         updateBanner(currentState());
-    }
-
-    private String getPermissionName(String permission) {
-        return switch (permission) {
-            case Manifest.permission.ACCESS_FINE_LOCATION -> getString(R.string.permission_fine_location);
-            case Manifest.permission.ACCESS_COARSE_LOCATION -> getString(R.string.permission_coarse_location);
-            default -> permission.substring(permission.lastIndexOf('.') + 1);
-        };
     }
 
     private void requestPermissions() {
@@ -1316,57 +1271,20 @@ public class MainActivity extends AppCompatActivity {
 
     private final Runnable disarmClearLogs = this::disarmClearLogs;
 
-    /**
-     * First tap on "Clear logs" arms an inline confirmation (a "Clear" button in the row) instead of
-     * an AlertDialog: some head-unit ROMs restyle system dialogs so their buttons are invisible.
-     * Disarms by itself after a few seconds.
-     */
     private void confirmClearLogs() {
-        View row = findViewById(R.id.rowClearLogs);
-        setText(row, R.id.row_sub, getString(R.string.clear_logs_confirm));
-        TextView button = row.findViewById(R.id.row_button);
-        button.setText(R.string.clear_logs_action);
-        button.setVisibility(View.VISIBLE);
-        row.findViewById(R.id.row_chevron).setVisibility(View.GONE);
-        button.setOnClickListener(v -> {
-            disarmClearLogs();
-            long freed = LogExporter.clearAll(this);
-            renderLog();
+        Ui.armClearLogs(findViewById(R.id.rowClearLogs), uiHandler, disarmClearLogs, () -> {
+            Ui.renderLog(logText);
             refreshTrackRow();
-            Toast.makeText(this, getString(R.string.clear_logs_done,
-                    android.text.format.Formatter.formatShortFileSize(this, freed)), Toast.LENGTH_SHORT).show();
         });
-        uiHandler.removeCallbacks(disarmClearLogs);
-        uiHandler.postDelayed(disarmClearLogs, 5000);
     }
 
     private void disarmClearLogs() {
-        uiHandler.removeCallbacks(disarmClearLogs);
-        View row = findViewById(R.id.rowClearLogs);
-        setText(row, R.id.row_sub, getString(R.string.clear_logs_sub));
-        row.findViewById(R.id.row_button).setVisibility(View.GONE);
-        row.findViewById(R.id.row_chevron).setVisibility(View.VISIBLE);
+        Ui.disarmClearLogs(findViewById(R.id.rowClearLogs), uiHandler, disarmClearLogs);
     }
 
     /** Settings → Diagnostics / Monitor: one archive with logs, metrics, track and settings. */
     private void exportAllData() {
-        Toast.makeText(this, R.string.export_all_in_progress, Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
-            File zip = null;
-            try {
-                zip = LogExporter.exportAll(this, "locsync-client", appVersion, Preferences.dump(this));
-            } catch (Exception e) {
-                Log.e(TAG, "Error exporting data", e);
-            }
-            final File result = zip;
-            runOnUiThread(() -> {
-                if (result != null) {
-                    shareFile(result, "application/zip", getString(R.string.export_all));
-                } else {
-                    Toast.makeText(this, R.string.export_all_failed, Toast.LENGTH_LONG).show();
-                }
-            });
-        }).start();
+        Ui.exportAll(this, "locsync-client", appVersion, () -> Preferences.dump(this));
     }
 
     private File trackFile() {
@@ -1383,29 +1301,9 @@ public class MainActivity extends AppCompatActivity {
         sub.setVisibility(View.VISIBLE);
     }
 
-    private void shareFile(File file, String mime, String chooserTitle) {
-        try {
-            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
-            Intent share = new Intent(Intent.ACTION_SEND).setType(mime)
-                    .putExtra(Intent.EXTRA_STREAM, uri)
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            startActivity(Intent.createChooser(share, chooserTitle));
-        } catch (Exception e) {
-            Log.w(TAG, "Failed to share file", e);
-        }
-    }
-
     // --- small view helpers ---
 
     private String none() { return getString(R.string.value_none); }
-
-    private static String fmt0(double v) {
-        return Double.isNaN(v) ? "—" : String.format(Locale.US, "%.0f", v);
-    }
-
-    private static String fmt1(double v) {
-        return Double.isNaN(v) ? "—" : String.format(Locale.US, "%.1f", v);
-    }
 
     private void setText(int rootId, int childId, CharSequence text) {
         setText(findViewById(rootId), childId, text);

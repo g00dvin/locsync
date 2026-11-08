@@ -17,6 +17,9 @@
 
 package goodvin.locsync.server;
 
+import static goodvin.locsync.shared.Ui.fmt0;
+import static goodvin.locsync.shared.Ui.fmt1;
+
 import android.Manifest;
 import android.animation.ObjectAnimator;
 import android.annotation.SuppressLint;
@@ -36,9 +39,6 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.provider.Settings;
-import android.text.SpannableStringBuilder;
-import android.text.Spanned;
-import android.text.style.ForegroundColorSpan;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
@@ -53,12 +53,9 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.core.content.ContextCompat;
-import androidx.core.content.FileProvider;
 
-import java.io.File;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -70,12 +67,13 @@ import java.util.Set;
 import goodvin.locsync.proto.LocationProto;
 import goodvin.locsync.shared.AppLog;
 import goodvin.locsync.shared.LinkState;
-import goodvin.locsync.shared.LogExporter;
 import goodvin.locsync.shared.PowerOrbView;
+import goodvin.locsync.shared.Protocol;
 import goodvin.locsync.shared.SatelliteBarsView;
 import goodvin.locsync.shared.SettingsRows;
 import goodvin.locsync.shared.SetupChecklist;
 import goodvin.locsync.shared.SparklineView;
+import goodvin.locsync.shared.Ui;
 import goodvin.locsync.shared.UpdateChecker;
 import goodvin.locsync.shared.UpdateRow;
 import goodvin.locsync.shared.VersionGetter;
@@ -123,7 +121,6 @@ public class MainActivity extends AppCompatActivity {
     private CompoundButton fusedSwitch, bluetoothSwitch;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final SimpleDateFormat logTime = new SimpleDateFormat("HH:mm:ss", Locale.US);
     private String appVersion = "<unknown>";
     private long connectedSinceElapsed = 0;
 
@@ -135,7 +132,7 @@ public class MainActivity extends AppCompatActivity {
             refreshState();
             if (viewFlipper.getDisplayedChild() == VIEW_MONITOR) {
                 updateMonitorLocation();
-                renderLog();
+                Ui.renderLog(logText);
             }
             blinkLogDot();
             mainHandler.postDelayed(this, 1000);
@@ -311,7 +308,7 @@ public class MainActivity extends AppCompatActivity {
                 subtitleText.setVisibility(View.GONE);
                 updateMonitorLocation();   // only kept current while shown
                 updateMonitorMetrics();
-                renderLog();
+                Ui.renderLog(logText);
             }
             case VIEW_SETTINGS -> {
                 titleText.setText(R.string.nav_settings);
@@ -393,7 +390,7 @@ public class MainActivity extends AppCompatActivity {
 
         findViewById(R.id.logClear).setOnClickListener(v -> {
             AppLog.clearRing();
-            renderLog();
+            Ui.renderLog(logText);
         });
         TextView exportBtn = findViewById(R.id.btnExportLogs);
         exportBtn.setText(R.string.export_all_short);
@@ -512,7 +509,7 @@ public class MainActivity extends AppCompatActivity {
         // About
         String buildLabel = getString(R.string.build_label);
         String shown = buildLabel.isEmpty() ? appVersion : buildLabel;
-        bindAction(R.id.rowVersion, String.format(getString(R.string.version_label), shown),
+        bindAction(R.id.rowVersion, getString(R.string.version_label, shown),
                 getString(R.string.about_protocol), false, null);
         // Local, branch and CI builds aren't releases (different signature, placeholder version):
         // only release-workflow builds look for updates.
@@ -558,7 +555,7 @@ public class MainActivity extends AppCompatActivity {
             case WAITING -> {
                 statusLine.setText(R.string.status_server_waiting);
                 statusLine.setTextColor(getColor(R.color.ls_accent_300));
-                statusSub.setText(String.format(getString(R.string.sub_server_waiting), serverIp(), 8887));
+                statusSub.setText(getString(R.string.sub_server_waiting, serverIp(), Protocol.PORT));
             }
             default -> {
                 statusLine.setText(R.string.status_hint_start);
@@ -658,11 +655,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private String uptime() {
-        long s = connectedSinceElapsed == 0 ? 0 : (SystemClock.elapsedRealtime() - connectedSinceElapsed) / 1000;
-        return String.format(getString(R.string.uptime_format), s / 60, s % 60);
-    }
-
     private void updateConnectReadouts() {
         boolean connected = currentState() == LinkState.CONNECTED;
         int textColor = getColor(R.color.ls_text);
@@ -674,11 +666,11 @@ public class MainActivity extends AppCompatActivity {
         if (connected) {
             setStat(statCard1, String.valueOf(used), textColor);
             setStat(statCard2, fmt1(mPktSent), textColor);
-            setStat(statCard3, uptime(), textColor);
+            setStat(statCard3, Ui.uptime(this, connectedSinceElapsed), textColor);
             setText(statCard3, R.id.statUnit, Double.isNaN(mBytesSent) ? "" :
                     String.format(Locale.US, "%.1f %s", mBytesSent / 1024.0, getString(R.string.unit_kbs)));
             // used-in-fix / total tracked, so the bar scale (up to 14 strongest) is clear.
-            signalDetail.setText(String.format(getString(R.string.signal_used_total), used, Math.max(used, visible)));
+            signalDetail.setText(getString(R.string.signal_used_total, used, Math.max(used, visible)));
             satBars.setData(used, cn0);
         } else {
             String none = getString(R.string.value_none);
@@ -714,17 +706,17 @@ public class MainActivity extends AppCompatActivity {
             setText(R.id.kvFixes, R.id.kvValue, none);
             return;
         }
-        monLocation.setText(String.format(getString(R.string.location_format), loc.getLatitude(), loc.getLongitude()));
+        monLocation.setText(getString(R.string.location_format, loc.getLatitude(), loc.getLongitude()));
         StringBuilder alt = new StringBuilder();
-        alt.append(String.format(getString(R.string.altitude_format), loc.getAltitude()));
-        alt.append(String.format(getString(R.string.location_accuracy_format), loc.getAccuracy()));
+        alt.append(getString(R.string.altitude_format, loc.getAltitude()));
+        alt.append(getString(R.string.location_accuracy_format, loc.getAccuracy()));
         monAltAcc.setText(alt.toString().trim());
         setText(R.id.kvProvider, R.id.kvValue, loc.getProvider().isEmpty() ? getString(R.string.unknown) : loc.getProvider());
         setText(R.id.kvSatellites, R.id.kvValue, String.valueOf(GNSSServerService.currentSatelliteCount()));
-        setText(R.id.kvSpeed, R.id.kvValue, String.format(getString(R.string.speed_format), loc.getSpeed()));
-        setText(R.id.kvBearing, R.id.kvValue, String.format(getString(R.string.bearing_format), loc.getBearing()));
-        setText(R.id.kvAge, R.id.kvValue, String.format(getString(R.string.age_format), loc.getLocationAge()));
-        setText(R.id.kvFixes, R.id.kvValue, Double.isNaN(mFixes) ? none : String.format(getString(R.string.fixes_format), mFixes));
+        setText(R.id.kvSpeed, R.id.kvValue, getString(R.string.speed_format, loc.getSpeed()));
+        setText(R.id.kvBearing, R.id.kvValue, getString(R.string.bearing_format, loc.getBearing()));
+        setText(R.id.kvAge, R.id.kvValue, getString(R.string.age_format, loc.getLocationAge()));
+        setText(R.id.kvFixes, R.id.kvValue, Double.isNaN(mFixes) ? none : getString(R.string.fixes_format, mFixes));
     }
 
     private void updateMonitorMetrics() {
@@ -738,35 +730,6 @@ public class MainActivity extends AppCompatActivity {
         sparkAgeVal.setText(fmt0(mAgeMean));
         sparkPktVal.setText(fmt1(mPktSent));
         sparkSatVal.setText(String.valueOf(GNSSServerService.currentSatelliteCount()));
-    }
-
-    private void renderLog() {
-        List<AppLog.Entry> entries = AppLog.snapshot();
-        SpannableStringBuilder sb = new SpannableStringBuilder();
-        int max = Math.min(entries.size(), 120);
-        for (int i = 0; i < max; i++) {
-            AppLog.Entry e = entries.get(i);
-            int start = sb.length();
-            sb.append(logTime.format(e.timeMillis)).append(' ');
-            span(sb, start, sb.length(), getColor(R.color.ls_text_dim));
-            int ls = sb.length();
-            sb.append(e.level).append(' ');
-            span(sb, ls, sb.length(), levelColor(e.level));
-            sb.append(e.message).append('\n');
-        }
-        logText.setText(sb);
-    }
-
-    private int levelColor(char level) {
-        return switch (level) {
-            case 'I' -> getColor(R.color.ls_accent_400);
-            case 'W' -> getColor(R.color.ls_error);
-            default -> getColor(R.color.ls_log_debug);
-        };
-    }
-
-    private void span(SpannableStringBuilder sb, int start, int end, int color) {
-        sb.setSpan(new ForegroundColorSpan(color), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
     }
 
     private ObjectAnimator dotAnimator;
@@ -823,7 +786,7 @@ public class MainActivity extends AppCompatActivity {
         for (String p : REQUIRED_PERMISSIONS) {
             if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
                 allGranted = false;
-                missing.add(getPermissionName(p));
+                missing.add(Ui.permissionName(this, p));
             }
         }
         View row = findViewById(R.id.rowPermissions);
@@ -833,19 +796,10 @@ public class MainActivity extends AppCompatActivity {
             label.setText(R.string.all_permissions_granted);
             button.setVisibility(View.GONE);
         } else {
-            label.setText(String.format(getString(R.string.missing_permissions), String.join(", ", missing)));
+            label.setText(getString(R.string.missing_permissions, String.join(", ", missing)));
             button.setVisibility(View.VISIBLE);
         }
         updateBanner();
-    }
-
-    private String getPermissionName(String permission) {
-        return switch (permission) {
-            case Manifest.permission.ACCESS_FINE_LOCATION -> getString(R.string.permission_fine_location);
-            case Manifest.permission.ACCESS_COARSE_LOCATION -> getString(R.string.permission_coarse_location);
-            case Manifest.permission.ACCESS_BACKGROUND_LOCATION -> getString(R.string.permission_background_location);
-            default -> permission.substring(permission.lastIndexOf('.') + 1);
-        };
     }
 
     private void requestPermissions() {
@@ -1025,81 +979,22 @@ public class MainActivity extends AppCompatActivity {
 
     private final Runnable disarmClearLogs = this::disarmClearLogs;
 
-    /**
-     * First tap on "Clear logs" arms an inline confirmation (a "Clear" button in the row) instead of
-     * an AlertDialog: some head-unit ROMs restyle system dialogs so their buttons are invisible.
-     * Disarms by itself after a few seconds.
-     */
     private void confirmClearLogs() {
-        View row = findViewById(R.id.rowClearLogs);
-        setText(row, R.id.row_sub, getString(R.string.clear_logs_confirm));
-        TextView button = row.findViewById(R.id.row_button);
-        button.setText(R.string.clear_logs_action);
-        button.setVisibility(View.VISIBLE);
-        row.findViewById(R.id.row_chevron).setVisibility(View.GONE);
-        button.setOnClickListener(v -> {
-            disarmClearLogs();
-            long freed = LogExporter.clearAll(this);
-            renderLog();
-            Toast.makeText(this, getString(R.string.clear_logs_done,
-                    android.text.format.Formatter.formatShortFileSize(this, freed)), Toast.LENGTH_SHORT).show();
-        });
-        mainHandler.removeCallbacks(disarmClearLogs);
-        mainHandler.postDelayed(disarmClearLogs, 5000);
+        Ui.armClearLogs(findViewById(R.id.rowClearLogs), mainHandler, disarmClearLogs, () -> Ui.renderLog(logText));
     }
 
     private void disarmClearLogs() {
-        mainHandler.removeCallbacks(disarmClearLogs);
-        View row = findViewById(R.id.rowClearLogs);
-        setText(row, R.id.row_sub, getString(R.string.clear_logs_sub));
-        row.findViewById(R.id.row_button).setVisibility(View.GONE);
-        row.findViewById(R.id.row_chevron).setVisibility(View.VISIBLE);
+        Ui.disarmClearLogs(findViewById(R.id.rowClearLogs), mainHandler, disarmClearLogs);
     }
 
     /** Settings → Diagnostics / Monitor: one archive with logs, metrics, track and settings. */
     private void exportAllData() {
-        Toast.makeText(this, R.string.export_all_in_progress, Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
-            File zip = null;
-            try {
-                zip = LogExporter.exportAll(this, "locsync-server", appVersion, Preferences.dump(this));
-            } catch (Exception e) {
-                Log.e(TAG, "Error exporting data", e);
-            }
-            final File result = zip;
-            runOnUiThread(() -> {
-                if (result != null) {
-                    shareFile(result, "application/zip", getString(R.string.export_all));
-                } else {
-                    Toast.makeText(this, R.string.export_all_failed, Toast.LENGTH_LONG).show();
-                }
-            });
-        }).start();
-    }
-
-    private void shareFile(File file, String mime, String chooserTitle) {
-        try {
-            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", file);
-            Intent share = new Intent(Intent.ACTION_SEND).setType(mime)
-                    .putExtra(Intent.EXTRA_STREAM, uri)
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            startActivity(Intent.createChooser(share, chooserTitle));
-        } catch (Exception e) {
-            Log.w(TAG, "Failed to share file", e);
-        }
+        Ui.exportAll(this, "locsync-server", appVersion, () -> Preferences.dump(this));
     }
 
     // --- small view helpers ---
 
     private String none() { return getString(R.string.value_none); }
-
-    private static String fmt0(double v) {
-        return Double.isNaN(v) ? "—" : String.format(Locale.US, "%.0f", v);
-    }
-
-    private static String fmt1(double v) {
-        return Double.isNaN(v) ? "—" : String.format(Locale.US, "%.1f", v);
-    }
 
     private void setText(int rootId, int childId, CharSequence text) {
         setText(findViewById(rootId), childId, text);

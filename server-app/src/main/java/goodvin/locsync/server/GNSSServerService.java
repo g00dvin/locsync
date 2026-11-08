@@ -950,7 +950,7 @@ public class GNSSServerService extends Service {
                 this, 1, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle(String.format(getString(serverStartError == null ? R.string.notification_title : R.string.notification_failed_title), getString(R.string.app_name)))
+                .setContentTitle(getString(serverStartError == null ? R.string.notification_title : R.string.notification_failed_title, getString(R.string.app_name)))
                 .setContentText(content)
                 .setSmallIcon(android.R.drawable.ic_menu_mylocation)
                 .setContentIntent(pendingIntent)
