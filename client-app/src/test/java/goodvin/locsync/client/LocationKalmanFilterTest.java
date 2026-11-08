@@ -74,6 +74,19 @@ public class LocationKalmanFilterTest {
         assertEquals(0.0, f.getVn(), 0.5);
     }
 
+    // Trip 2: after a GPS gap the filter re-anchored on an acc-185 m fix 2 km off and the icon sat
+    // there for 25 s. A coarse fix must not start the filter; the next good one starts it in place.
+    @Test
+    public void doesNotStartFromCoarseFix() {
+        LocationKalmanFilter f = newFilter();
+        f.update(59.02, 30.0, 10.0, 90.0, 185.0, 1.0, 5.0);
+        assertTrue("coarse fix must not initialize", !f.isInitialized());
+        f.update(59.0, 30.0, 10.0, 90.0, 13.0, 1.0, 5.0);
+        assertTrue(f.isInitialized());
+        assertEquals(59.0, f.getLatitude(), 1e-6);
+        assertEquals(30.0, f.getLongitude(), 1e-6);
+    }
+
     @Test
     public void resetForgetsState() {
         LocationKalmanFilter f = newFilter();

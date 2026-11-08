@@ -139,7 +139,7 @@ public class TrackReplayTest {
             // output ticks until the next fix arrives (or the 2.5 s GPS-loss freeze)
             long next = i + 1 < fixes.size() ? fixes.get(i + 1).arrival : f.arrival + 1000;
             boolean first = true;
-            for (long t = f.arrival + 10; t < next && t - f.arrival <= 2500; t += 100) {
+            for (long t = f.arrival + 10; kf.isInitialized() && t < next && t - f.arrival <= 2500; t += 100) {
                 double h = Math.max(0, Math.min((t - stateTime) / 1000.0, 3.0));
                 LocationKalmanFilter.Estimate e = kf.extrapolate(h);
                 double[] o = {e.latitude, e.longitude, t, e.speed};
