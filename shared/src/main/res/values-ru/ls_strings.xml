@@ -53,7 +53,6 @@
     <string name="spark_packets">Пакеты</string>
     <string name="spark_satellites">Спутники</string>
     <string name="export_logs_short">Логи</string>
-    <string name="export_csv_short">Экспорт CSV</string>
     <string name="group_permissions">Разрешения</string>
     <string name="group_location_provider">Провайдер местоположения</string>
     <string name="group_automation">Автоматизация</string>

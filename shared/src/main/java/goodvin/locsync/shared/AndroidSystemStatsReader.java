@@ -25,14 +25,14 @@ import android.os.SystemClock;
 import java.io.BufferedReader;
 import java.io.FileReader;
 
-public final class AndroidSystemStatsReader implements SystemStatsReader {
+/** Reads a snapshot of system-level performance counters. */
+public final class AndroidSystemStatsReader {
     private final BatteryManager batteryManager;
 
     public AndroidSystemStatsReader(Context ctx) {
         this.batteryManager = (BatteryManager) ctx.getApplicationContext().getSystemService(Context.BATTERY_SERVICE);
     }
 
-    @Override
     public SystemStats read() {
         return new SystemStats(
                 SystemClock.elapsedRealtime(),

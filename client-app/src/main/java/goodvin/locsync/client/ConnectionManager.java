@@ -18,7 +18,6 @@
 package goodvin.locsync.client;
 
 import android.content.Context;
-import android.util.Log;
 import goodvin.locsync.shared.AppLog;
 
 import java.util.Objects;
@@ -58,20 +57,9 @@ public class ConnectionManager {
         return seedServerAddress;
     }
 
-    /** True when in Auto-discover mode (vs Fixed address). */
-    public boolean isAutoDiscover() {
-        return Preferences.autoDiscover(context);
-    }
-
-    /**
-     * Address to send HELLO to. In Fixed mode: the configured address. In Auto mode: the learned
-     * server address, or null when it hasn't been discovered yet (caller should broadcast).
-     */
+    /** Address to send HELLO to: the learned server, or null until discovered (caller broadcasts). */
     public String getSendTarget() {
-        if (isAutoDiscover()) {
-            return learnedServerAddress;
-        }
-        return Preferences.serverAddress(context);
+        return learnedServerAddress;
     }
 
     public void setLearnedServerAddress(String addr) {

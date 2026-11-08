@@ -35,10 +35,6 @@ public class Preferences {
     private static final String PREF_BLUETOOTH_TRIGGER_DEVICES = "bluetoothTriggerDevices";
     private static final String PREF_FUSED_LOCATION_ENABLED = "fusedLocationEnabled";
 
-    // Legacy keys for migration
-    private static final String PREF_BLUETOOTH_TRIGGER_DEVICE_MAC = "bluetoothTriggerDeviceMac";
-    private static final String PREF_BLUETOOTH_TRIGGER_DEVICE_NAME = "bluetoothTriggerDeviceName";
-
     private static final String DEVICE_SEPARATOR = "|";
 
     // Bluetooth Auto-Start Enabled
@@ -102,23 +98,7 @@ public class Preferences {
     }
 
     private static Set<String> getRawDeviceSet(Context context) {
-        migrateIfNeeded(context);
         return getPrefs(context).getStringSet(PREF_BLUETOOTH_TRIGGER_DEVICES, Collections.emptySet());
-    }
-
-    private static void migrateIfNeeded(Context context) {
-        SharedPreferences prefs = getPrefs(context);
-        String oldMac = prefs.getString(PREF_BLUETOOTH_TRIGGER_DEVICE_MAC, null);
-        if (oldMac != null && !oldMac.isEmpty()) {
-            String oldName = prefs.getString(PREF_BLUETOOTH_TRIGGER_DEVICE_NAME, oldMac);
-            Set<String> devices = new HashSet<>(prefs.getStringSet(PREF_BLUETOOTH_TRIGGER_DEVICES, Collections.emptySet()));
-            devices.add(oldMac + DEVICE_SEPARATOR + oldName);
-            prefs.edit()
-                    .putStringSet(PREF_BLUETOOTH_TRIGGER_DEVICES, devices)
-                    .remove(PREF_BLUETOOTH_TRIGGER_DEVICE_MAC)
-                    .remove(PREF_BLUETOOTH_TRIGGER_DEVICE_NAME)
-                    .apply();
-        }
     }
 
     // Fused Location Provider
@@ -126,22 +106,8 @@ public class Preferences {
         getPrefs(context).edit().putBoolean(PREF_FUSED_LOCATION_ENABLED, enabled).apply();
     }
 
-    // Bumped: an earlier migration flag was consumed while the pref could still be flipped off by the
-    // broken toggle rendering. A new key forces the intended default (on) once more.
-    private static final String PREF_FUSED_DEFAULT_ON_MIGRATED = "fusedDefaultOnMigrated2";
-
     public static boolean fusedLocationEnabled(Context context) {
-        SharedPreferences prefs = getPrefs(context);
-        // One-time reset to on: earlier builds drew the toggle with the wrong (always-off) state,
-        // so users could flip the pref off by accident. Force the intended default (on) once.
-        if (!prefs.getBoolean(PREF_FUSED_DEFAULT_ON_MIGRATED, false)) {
-            prefs.edit()
-                    .putBoolean(PREF_FUSED_LOCATION_ENABLED, true)
-                    .putBoolean(PREF_FUSED_DEFAULT_ON_MIGRATED, true)
-                    .apply();
-            return true;
-        }
-        return prefs.getBoolean(PREF_FUSED_LOCATION_ENABLED, true);
+        return getPrefs(context).getBoolean(PREF_FUSED_LOCATION_ENABLED, true);
     }
 
     private static final String PREF_DEBUG_LOGGING = "debugLoggingEnabled";
@@ -281,17 +247,6 @@ public class Preferences {
 
     public static boolean trackRecording(Context context) {
         return getPrefs(context).getBoolean(PREF_TRACK_RECORDING, false);
-    }
-
-    private static final String PREF_RECORD_GPS_REFERENCE = "recordGpsReference";
-
-    /** While recording on Fused, also record raw GPS fixes (source gps_ref, never sent). */
-    public static void setRecordGpsReference(Context context, boolean enabled) {
-        getPrefs(context).edit().putBoolean(PREF_RECORD_GPS_REFERENCE, enabled).apply();
-    }
-
-    public static boolean recordGpsReference(Context context) {
-        return getPrefs(context).getBoolean(PREF_RECORD_GPS_REFERENCE, false);
     }
 
     /** All stored settings, for the diagnostics export. */

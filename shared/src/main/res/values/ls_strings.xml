@@ -61,7 +61,6 @@
     <string name="spark_packets">Packets</string>
     <string name="spark_satellites">Satellites</string>
     <string name="export_logs_short">Logs</string>
-    <string name="export_csv_short">Export CSV</string>
     <string name="group_permissions">Permissions</string>
     <string name="group_location_provider">Location provider</string>
     <string name="group_automation">Automation</string>
