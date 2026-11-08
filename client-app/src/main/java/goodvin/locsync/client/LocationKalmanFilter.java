@@ -53,6 +53,8 @@ public class LocationKalmanFilter {
     private static final double REANCHOR_M = 10_000.0;
     private static final double MIN_POS_SIGMA = 1.0;
     private static final double UNKNOWN_VEL_SIGMA = 50.0; // wide prior when speed is unknown (m/s)
+    // Worst reported accuracy (m) the filter may start from. Trips re-anchored on acc 170/185 fixes.
+    private static final double MAX_START_ACCURACY = 50.0;
     // Android reports accuracy as the 68% radius; for a circular 2D Gaussian that is
     // sqrt(-2 ln 0.32) ≈ 1.51 sigma (a 1-sigma circle holds only ~39%).
     private static final double RADIUS68_PER_SIGMA = 1.5096;
@@ -299,6 +301,10 @@ public class LocationKalmanFilter {
                                 boolean hasSpeed, boolean hasBearing) {
         boolean applyVel = hasSpeed && hasBearing;
         if (!initialized) {
+            if (accuracy > MAX_START_ACCURACY) {
+                // A coarse fix (cell/Wi-Fi, often km off) is no place to start: wait for a good one.
+                return;
+            }
             setAnchor(lat, lon);
             x[0] = 0;
             x[1] = 0;
