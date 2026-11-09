@@ -124,7 +124,7 @@ public final class HuDiscovery {
             log.accept("ICMPv6 echo → ff02::1%" + iface);
             for (int i = 0; i < ECHO_COUNT; i++) {
                 byte[] echo = Icmpv6.buildEcho(0, i);
-                Os.sendto(fd, echo, 0, echo.length, dest, 0);
+                Os.sendto(fd, echo, 0, echo.length, 0, dest, 0);
                 Thread.sleep(ECHO_SPACING_MS);
             }
 

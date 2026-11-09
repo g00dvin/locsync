@@ -77,7 +77,8 @@ public final class HuAdb {
         try (Dadb dadb = Dadb.create(host, ADB_PORT, keyPair)) {
             String remote = "/data/local/tmp/ls_" + System.currentTimeMillis() + ".apk";
             log.accept("push " + apk.getName() + " → " + remote);
-            dadb.push(apk, remote);
+            // dadb's Kotlin default args aren't visible from Java: pass mode + mtime.
+            dadb.push(apk, remote, 0644, apk.lastModified());
 
             log.accept("pm install -r -g " + remote);
             AdbShellResponse res = dadb.shell("pm install -r -g " + remote);
