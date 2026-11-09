@@ -114,7 +114,10 @@ public class LocationKalmanFilter {
     private static final double ACCEL_ALPHA = 0.5;
     private static final double MAX_ACCEL = 4.0;          // m/s², hard braking / brisk acceleration
     private static final double MAX_ACCEL_DT = 2.0;       // s; older speed is too stale to difference
-    private static final double MAX_ACCEL_HORIZON = 1.5;  // s; ramp no further than this past a fix
+    // The output projection ramps speed and turns no further than this past a fix, then goes
+    // straight at constant speed: a late fix mid-turn (Wi-Fi burst, 2-3 s horizon) otherwise
+    // overshot the heading by ~56°. Above the 1 s fix spacing, so on-time fixes are unaffected.
+    private static final double MAX_RATE_HORIZON = 1.5;   // s
     private boolean accelExtrapolation = true;
     private double accel = 0;
     private double prevSpeed = Double.NaN;
@@ -483,7 +486,13 @@ public class LocationKalmanFilter {
             System.arraycopy(P[i], 0, pOut[i], 0, 4);
         }
         if (horizonS > 0) {
-            propagate(xOut, pOut, horizonS, omega);
+            // Two steps add slightly less process noise than one (the white-noise-acceleration Q
+            // isn't split-invariant): ~20% tighter sigma, only on late-fix frames. Accepted.
+            double turnS = Math.min(horizonS, MAX_RATE_HORIZON);
+            propagate(xOut, pOut, turnS, omega);
+            if (horizonS > turnS) {
+                propagate(xOut, pOut, horizonS - turnS, 0);
+            }
             applyAcceleration(xOut, horizonS);
         }
         Estimate est = estimate;
@@ -507,7 +516,7 @@ public class LocationKalmanFilter {
         if (accel == 0 || v < TURN_MIN_SPEED) {
             return;
         }
-        double t = Math.min(horizonS, MAX_ACCEL_HORIZON);
+        double t = Math.min(horizonS, MAX_RATE_HORIZON);
         double dv = Math.max(accel * t, -v);       // braking stops at zero, never reverses
         double dist = accel * t * t / 2 + dv * (horizonS - t);
         double ue = s[2] / v, un = s[3] / v;
