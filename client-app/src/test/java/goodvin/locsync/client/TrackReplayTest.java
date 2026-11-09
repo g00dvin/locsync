@@ -43,7 +43,7 @@ public class TrackReplayTest {
 
     /** One recorded fix as it arrived. */
     static final class Fix {
-        long arrival, ts, ageMs;
+        long arrival, ts, ageMs, measT;
         double lat, lon, speed, bearing, acc, spdAcc, brgAcc;
         boolean hasSpeed, hasBearing;
     }
@@ -53,6 +53,7 @@ public class TrackReplayTest {
         List<Double> predErr = new ArrayList<>(), predErrTurn = new ArrayList<>(), headingErrTurn = new ArrayList<>();
         List<Double> along = new ArrayList<>(), cross = new ArrayList<>();
         List<Double> snap = new ArrayList<>();   // icon shift beyond normal motion at each fix arrival
+        double gapErr = Double.NaN;              // gap run: last output vs the first fix after the gap
 
         String summary(String name) {
             return String.format(Locale.US,
@@ -61,6 +62,68 @@ public class TrackReplayTest {
                     name, pct(predErr, 50), pct(predErr, 90), pct(predErrTurn, 50), pct(headingErrTurn, 50),
                     pct(headingErrTurn, 90), pct(along, 50), pct(cross, 50), pct(snap, 50), pct(snap, 90), jumps, outputs);
         }
+    }
+
+    /** Head-unit motion samples from a track: gyro heading (fix + out rows) and wheel speed. */
+    static final class Motion {
+        long[] yawT; double[] yaw;
+        long[] wheelT; double[] wheelMps; String[] gear;
+        long maxGapMs;   // wheel interpolation bracket: 600 with 5 Hz car rows, 1500 with 1 Hz fix snapshots
+    }
+
+    static final double WHEEL_FACTOR = 1.0249;   // the 2026-11-09 calibrated factor
+
+    /** Null when the track has neither gyro nor wheel values. "No gyro" = an empty {@code yaw}. */
+    static Motion loadMotion(Path p) throws Exception {
+        List<String> lines = Files.readAllLines(p);
+        String[] h = lines.get(0).split(",", -1);
+        Map<String, Integer> ix = new HashMap<>();
+        for (int i = 0; i < h.length; i++) ix.put(h[i], i);
+        Integer yawCol = ix.get("gyro_yaw_deg"), gearCol = ix.get("car_gear");
+        java.util.TreeMap<Long, Double> yaw = new java.util.TreeMap<>();
+        java.util.TreeMap<Long, Object[]> carRows = new java.util.TreeMap<>(), fixCar = new java.util.TreeMap<>();
+        for (String l : lines.subList(1, lines.size())) {
+            String[] c = l.split(",", -1);
+            String type = c[ix.get("type")];
+            long el = Long.parseLong(c[ix.get("elapsed_ms")]);
+            if (yawCol != null && c.length > yawCol && !c[yawCol].isEmpty() && !c[ix.get("gyro_dt_ms")].isEmpty()) {
+                yaw.putIfAbsent(el + Long.parseLong(c[ix.get("gyro_dt_ms")]), Double.parseDouble(c[yawCol]));
+            }
+            String gear = gearCol != null && c.length > gearCol && !c[gearCol].isEmpty() ? c[gearCol] : null;
+            if ("car".equals(type) && !c[ix.get("car_speed")].isEmpty()) {
+                carRows.put(el, new Object[]{Double.parseDouble(c[ix.get("car_speed")]), gear});
+            } else if ("fix".equals(type) && !c[ix.get("car_speed")].isEmpty() && !c[ix.get("car_dt_ms")].isEmpty()) {
+                fixCar.put(el + Long.parseLong(c[ix.get("car_dt_ms")]), new Object[]{Double.parseDouble(c[ix.get("car_speed")]), gear});
+            }
+        }
+        if (yaw.isEmpty() && carRows.isEmpty() && fixCar.isEmpty()) return null;
+        Motion m = new Motion();
+        m.yawT = new long[yaw.size()]; m.yaw = new double[yaw.size()];
+        int i = 0;
+        for (Map.Entry<Long, Double> e : yaw.entrySet()) { m.yawT[i] = e.getKey(); m.yaw[i++] = e.getValue(); }
+        java.util.TreeMap<Long, Object[]> car = carRows.isEmpty() ? fixCar : carRows;
+        m.maxGapMs = carRows.isEmpty() ? 1500 : 600;
+        m.wheelT = new long[car.size()]; m.wheelMps = new double[car.size()]; m.gear = new String[car.size()];
+        i = 0;
+        for (Map.Entry<Long, Object[]> e : car.entrySet()) {
+            m.wheelT[i] = e.getKey();
+            m.wheelMps[i] = (Double) e.getValue()[0] * WHEEL_FACTOR / 3.6;
+            m.gear[i++] = (String) e.getValue()[1];
+        }
+        return m;
+    }
+
+    /** Like CarSignals.SpeedHistory: linear inside a bracket, the newest held 300 ms, else NaN. */
+    static double wheelAt(Motion m, long t) {
+        if (m == null || m.wheelT.length == 0) return Double.NaN;
+        int i = java.util.Arrays.binarySearch(m.wheelT, t);
+        if (i >= 0) return m.wheelMps[i];
+        i = -i - 1;   // first sample after t
+        if (i == 0) return Double.NaN;
+        if (i == m.wheelT.length) return t - m.wheelT[i - 1] <= 300 ? m.wheelMps[i - 1] : Double.NaN;
+        long t0 = m.wheelT[i - 1], t1 = m.wheelT[i];
+        if (t1 - t0 > m.maxGapMs) return Double.NaN;
+        return m.wheelMps[i - 1] + (m.wheelMps[i] - m.wheelMps[i - 1]) * (t - t0) / (double) (t1 - t0);
     }
 
     static List<Fix> load(Path p) throws Exception {
@@ -92,6 +155,16 @@ public class TrackReplayTest {
 
     /** Mirrors GNSSClientService: ordering, gap reset, latency, predict/update, 100 ms output ticks. */
     static Result replay(List<Fix> fixes, boolean networkSync, Consumer<LocationKalmanFilter> setup) {
+        return replay(fixes, null, networkSync, false, 0, -1, Long.MIN_VALUE, Long.MAX_VALUE, setup);
+    }
+
+    /**
+     * As above, plus: wheel speed as the speed measurement ({@code useWheels}, like the service's "Use car
+     * speed"); scoring only for fixes arriving in [fromT, toT]; and an artificial GPS gap of {@code gapS}
+     * seconds after the fix arriving at {@code gapStart} (-1 = none), ending the run at the first fix after it.
+     */
+    static Result replay(List<Fix> fixes, Motion motion, boolean networkSync, boolean useWheels, int gapS,
+                         long gapStart, long fromT, long toT, Consumer<LocationKalmanFilter> setup) {
         LocationKalmanFilter kf = new LocationKalmanFilter(2.0, 1.0);
         setup.accept(kf);
         FixClock clock = new FixClock();
@@ -99,12 +172,20 @@ public class TrackReplayTest {
         long lastTs = Long.MIN_VALUE, lastArrival = 0, stateTime = 0;
         double prevBearing = Double.NaN;
         double[] lastOut = null;
+        long gapEnd = gapStart < 0 ? -1 : gapStart + gapS * 1000L;
         for (int i = 0; i < fixes.size(); i++) {
             Fix f = fixes.get(i);
             if (f.ts <= lastTs) continue;
+            if (gapStart >= 0 && f.arrival > gapStart && f.arrival <= gapEnd) continue;
             long latency = networkSync ? clock.latencyMs(f.arrival, f.ts, f.ageMs) : f.ageMs;
             latency = Math.min(latency, 3000);
             long meas = f.arrival - latency;
+            f.measT = meas;
+            if (gapStart >= 0 && f.arrival > gapEnd) {
+                r.gapErr = lastOut == null ? Double.NaN : dist(lastOut[0], lastOut[1], f.lat, f.lon);
+                return r;
+            }
+            boolean scored = f.arrival >= fromT && f.arrival <= toT;
             boolean gap = lastArrival == 0 || f.arrival - lastArrival > 2500;
             if (gap) {
                 kf.reset();
@@ -115,7 +196,7 @@ public class TrackReplayTest {
                 dt = Math.max(0, Math.min(dt, 5));
                 // prediction quality: where the filter expected this fix to be
                 LocationKalmanFilter.Estimate e = kf.extrapolate(dt);
-                if (f.hasSpeed && f.speed > 5 && f.hasBearing) {
+                if (scored && f.hasSpeed && f.speed > 5 && f.hasBearing) {
                     double[] ac = alongCross(e.latitude, e.longitude, f);
                     double err = Math.hypot(ac[0], ac[1]);
                     double turn = Double.isNaN(prevBearing) ? 0 : Math.abs(wrap(f.bearing - prevBearing)) / dt;
@@ -130,14 +211,19 @@ public class TrackReplayTest {
                 }
                 kf.predict(dt);
             }
-            kf.update(f.lat, f.lon, f.speed, f.bearing, f.acc, f.spdAcc, f.brgAcc, f.hasSpeed, f.hasBearing);
+            double wheel = useWheels ? wheelAt(motion, meas) : Double.NaN;
+            if (!Double.isNaN(wheel)) {
+                kf.update(f.lat, f.lon, wheel, f.bearing, f.acc, CAR_SPEED_ACC, f.brgAcc, true, f.hasBearing);
+            } else {
+                kf.update(f.lat, f.lon, f.speed, f.bearing, f.acc, f.spdAcc, f.brgAcc, f.hasSpeed, f.hasBearing);
+            }
             r.fixes++;
             lastTs = f.ts;
             lastArrival = f.arrival;
             stateTime = meas;
             prevBearing = f.hasBearing ? f.bearing : Double.NaN;
             // output ticks until the next fix arrives (or the 2.5 s GPS-loss freeze)
-            long next = i + 1 < fixes.size() ? fixes.get(i + 1).arrival : f.arrival + 1000;
+            long next = nextArrival(fixes, i, gapStart, gapEnd);
             boolean first = true;
             for (long t = f.arrival + 10; kf.isInitialized() && t < next && t - f.arrival <= 2500; t += 100) {
                 double h = Math.max(0, Math.min((t - stateTime) / 1000.0, 3.0));
@@ -146,15 +232,46 @@ public class TrackReplayTest {
                 if (lastOut != null) {
                     double dts = (t - lastOut[2]) / 1000.0;
                     double d = dist(lastOut[0], lastOut[1], o[0], o[1]);
-                    if (dts > 0 && dts <= 0.5 && d / dts - e.speed > 8) r.jumps++;
-                    if (first && dts > 0 && dts <= 0.5 && e.speed > 5) r.snap.add(Math.abs(d - e.speed * dts));
+                    if (scored && dts > 0 && dts <= 0.5 && d / dts - e.speed > 8) r.jumps++;
+                    if (scored && first && dts > 0 && dts <= 0.5 && e.speed > 5) r.snap.add(Math.abs(d - e.speed * dts));
                 }
                 lastOut = o;
                 first = false;
-                r.outputs++;
+                if (scored) r.outputs++;
             }
         }
         return r;
+    }
+
+    static final double CAR_SPEED_ACC = 0.15;   // GNSSClientService.CAR_SPEED_ACC_MPS
+
+    /** Arrival of the next fix the run will see (skipping the artificial gap), or +1 s at the end. */
+    static long nextArrival(List<Fix> fixes, int i, long gapStart, long gapEnd) {
+        for (int j = i + 1; j < fixes.size(); j++) {
+            long a = fixes.get(j).arrival;
+            if (gapStart >= 0 && a > gapStart && a <= gapEnd) continue;
+            return a;
+        }
+        return fixes.get(i).arrival + 1000;
+    }
+
+    /** One run per gap start: every 60 s, the first fix at ≥ 4 m/s and acc ≤ 10 m arriving in [fromT, toT]. */
+    static List<Double> gapErrors(List<Fix> fixes, long fromT, long toT, java.util.function.LongFunction<Result> run) {
+        List<Double> out = new ArrayList<>();
+        long nextStart = Long.MIN_VALUE;
+        for (Fix f : fixes) {
+            if (f.arrival < fromT || f.arrival > toT || f.arrival < nextStart) continue;
+            if (!f.hasSpeed || f.speed < 4 || f.acc > 10) continue;
+            Result r = run.apply(f.arrival);
+            if (!Double.isNaN(r.gapErr)) out.add(r.gapErr);
+            nextStart = f.arrival + 60_000;
+        }
+        return out;
+    }
+
+    static String gapSummary(String name, List<Double> g30, List<Double> g60) {
+        return String.format(Locale.US, "%-28s gap30 p50=%.1f max=%.1f m (n=%d) | gap60 p50=%.1f max=%.1f m (n=%d)",
+                name, pct(g30, 50), pct(g30, 100), g30.size(), pct(g60, 50), pct(g60, 100), g60.size());
     }
 
     @Test
@@ -183,6 +300,19 @@ public class TrackReplayTest {
         for (double a : new double[]{0.7, 0.85, 1.0}) {
             System.out.println(replay(fixes, true, kf -> kf.setTurnResponsiveness(a))
                     .summary(String.format(Locale.US, "+ turn responsiveness %.2f", a)));
+        }
+        Motion motion = loadMotion(Path.of(path));
+        long mid = (fixes.get(0).arrival + fixes.get(fixes.size() - 1).arrival) / 2;
+        long[][] spans = {{Long.MIN_VALUE, Long.MAX_VALUE}, {Long.MIN_VALUE, mid}, {mid + 1, Long.MAX_VALUE}};
+        String[] spanNames = {"", " [1st half]", " [2nd half]"};
+        for (int s = 0; s < spans.length; s++) {
+            long from = spans[s][0], to = spans[s][1];
+            Motion m = motion;
+            String name = "+ wheel speed (as shipped)" + spanNames[s];
+            System.out.println(replay(fixes, m, true, true, 0, -1, from, to, kf -> { }).summary(name));
+            List<Double> g30 = gapErrors(fixes, from, to, g -> replay(fixes, m, true, true, 30, g, from, to, kf -> { }));
+            List<Double> g60 = gapErrors(fixes, from, to, g -> replay(fixes, m, true, true, 60, g, from, to, kf -> { }));
+            System.out.println(gapSummary(name, g30, g60));
         }
     }
 
