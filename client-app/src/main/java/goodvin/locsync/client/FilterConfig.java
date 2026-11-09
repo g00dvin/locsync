@@ -63,4 +63,6 @@ public final class FilterConfig {
     public boolean sendSpeed = true;
     /** Use the car's wheel speed (eCarX units) for the filter and the output instead of GPS speed. */
     public boolean carSpeed = true;
+    /** Move the output between fixes and through GPS loss by the head unit's gyro heading and the wheels. */
+    public boolean carMotion = false;
 }

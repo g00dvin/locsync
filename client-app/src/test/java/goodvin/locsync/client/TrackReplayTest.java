@@ -538,6 +538,24 @@ public class TrackReplayTest {
         }
     }
 
+    // The recorder's 5 Hz car rows are what the replay reads for wheel speed and gear when present.
+    @Test
+    public void loadMotionReadsCarRows() throws Exception {
+        Path dir = Files.createTempDirectory("track");
+        TrackRecorder r = new TrackRecorder(dir.toFile(), new GyroYaw());
+        r.car(1000, 36f, "D");
+        r.car(1200, 36f, "R");
+        r.car(1400, 18f, "R");
+        r.close();
+        Motion m = loadMotion(TrackRecorder.fileFor(dir.toFile()).toPath());
+        org.junit.Assert.assertEquals(600, m.maxGapMs);
+        org.junit.Assert.assertEquals(0, m.yawT.length);
+        org.junit.Assert.assertEquals(36 * WHEEL_FACTOR / 3.6, wheelAt(m, 1100), 1e-9);
+        org.junit.Assert.assertEquals(27 * WHEEL_FACTOR / 3.6, wheelAt(m, 1300), 1e-9);
+        org.junit.Assert.assertEquals("D", gearAt(m, 1100));
+        org.junit.Assert.assertEquals("R", gearAt(m, 1250));
+    }
+
     /** Filter settings as shipped in v3.4.x, for comparison. */
     static void v34(LocationKalmanFilter kf) {
         kf.setBearingHandling(false, 0);

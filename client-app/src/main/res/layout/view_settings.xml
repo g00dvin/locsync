@@ -80,6 +80,7 @@
             <include layout="@layout/row_setting_input" android:id="@+id/rowProcessNoise" />
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowCarSpeed" />
+            <include layout="@layout/row_setting_toggle" android:id="@+id/rowCarMotion" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowSpeedRamp" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowOutput1Hz" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowSendSpeed" />

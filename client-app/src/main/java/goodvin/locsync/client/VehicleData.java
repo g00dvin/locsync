@@ -55,6 +55,17 @@ final class VehicleData {
     private final CarSignals.SpeedHistory speeds = new CarSignals.SpeedHistory();
     private volatile CarSignals.Snapshot latest = CarSignals.Snapshot.EMPTY;
     private volatile Poller poller;
+    private volatile SpeedListener speedListener;
+
+    /** Every wheel-speed poll (km/h, null = not readable), called on the poll thread. */
+    interface SpeedListener {
+        void onSpeed(long elapsedMs, Float kmh);
+    }
+
+    /** For the track log's 5 Hz car rows; null to stop. The listener must hop to its own thread. */
+    void setSpeedListener(SpeedListener l) {
+        speedListener = l;
+    }
 
     /** @param pollMs how often the speed is read; all signals are read about once a second */
     VehicleData(Context context, Handler uiHandler, Runnable onUpdate, long pollMs) {
@@ -97,9 +108,14 @@ final class VehicleData {
     /** Speed-only poll between full reads; same current-poller rule as {@link #publish}. */
     private void addSpeed(Poller from, long elapsedMs, Float kmh) {
         synchronized (this) {
-            if (poller == from) {
-                speeds.add(elapsedMs, kmh);
+            if (poller != from) {
+                return;
             }
+            speeds.add(elapsedMs, kmh);
+        }
+        SpeedListener l = speedListener;
+        if (l != null) {
+            l.onSpeed(elapsedMs, kmh);
         }
     }
 
@@ -111,6 +127,10 @@ final class VehicleData {
             }
             latest = snap;
             speeds.add(snap.readElapsedMs, snap.speedKmh);
+        }
+        SpeedListener l = speedListener;
+        if (l != null) {
+            l.onSpeed(snap.readElapsedMs, snap.speedKmh);
         }
         if (onUpdate != null) {
             uiHandler.post(onUpdate);

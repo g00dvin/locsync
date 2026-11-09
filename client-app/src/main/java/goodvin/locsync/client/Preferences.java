@@ -237,6 +237,26 @@ public class Preferences {
     private static final String PREF_FILTER_SEND_SPEED = "filterSendSpeed";
     private static final String PREF_FILTER_CAR_SPEED = "filterCarSpeed";
     private static final String PREF_CAR_SPEED_FACTOR = "carSpeedFactor";
+    private static final String PREF_FILTER_CAR_MOTION = "filterCarMotion";
+    private static final String PREF_GYRO_BIAS_DPS = "gyroBiasDps";
+
+    public static void setFilterCarMotion(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_FILTER_CAR_MOTION, enabled).apply();
+    }
+
+    /** Off by default until a second gyro drive confirms the 2026-11-09 tuning. */
+    public static boolean filterCarMotion(Context context) {
+        return getPrefs(context).getBoolean(PREF_FILTER_CAR_MOTION, false);
+    }
+
+    /** The head-unit gyro's learned bias (°/s); 0.15 measured on the G426. Not a smoothing setting. */
+    public static double gyroBiasDps(Context context) {
+        return getPrefs(context).getFloat(PREF_GYRO_BIAS_DPS, 0.15f);
+    }
+
+    public static void setGyroBiasDps(Context context, float dps) {
+        getPrefs(context).edit().putFloat(PREF_GYRO_BIAS_DPS, dps).apply();
+    }
 
     public static void setFilterCarSpeed(Context context, boolean enabled) {
         getPrefs(context).edit().putBoolean(PREF_FILTER_CAR_SPEED, enabled).apply();
@@ -361,6 +381,7 @@ public class Preferences {
         c.output1Hz = filterOutput1Hz(context);
         c.sendSpeed = filterSendSpeed(context);
         c.carSpeed = filterCarSpeed(context);
+        c.carMotion = filterCarMotion(context);
         return c;
     }
 
@@ -393,6 +414,7 @@ public class Preferences {
                 .remove(PREF_FILTER_STANDSTILL_HOLD)
                 .remove(PREF_FILTER_STANDSTILL_SPEED)
                 .remove(PREF_FILTER_ADAPTIVE_NOISE)
+                .remove(PREF_FILTER_CAR_MOTION)
                 .remove(PREF_FILTER_PROCESS_NOISE)
                 .remove(PREF_FILTER_SPEED_RAMP)
                 .remove(PREF_FILTER_OUTPUT_1HZ)

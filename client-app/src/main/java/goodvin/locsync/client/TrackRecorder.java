@@ -27,7 +27,9 @@ import goodvin.locsync.shared.CsvLog;
  * the filter to tune it. Buffered and flushed ~1/s by the caller; rotated to {@code .old} above
  * {@link #MAX_BYTES} (~4 MB per hour of driving, so that is many hours).
  *
- * <p>One CSV for both row kinds ({@code type} = fix | out); columns that don't apply are empty.
+ * <p>One CSV for all row kinds ({@code type} = fix | out | car); columns that don't apply are empty.
+ * {@code car} rows are the 5 Hz wheel-speed polls with the gear ({@code car_gear}), so a drive replays
+ * the way the service saw it; out rows say whether dead reckoning or the filter made them ({@code out_src}).
  * Fix rows also carry the head unit's wheel and cluster speed and raw steering ({@code car_*}, empty
  * off eCarX units) so GPS speed can be compared with the car's. Both row kinds carry the gyro heading
  * ({@code gyro_*}) to compare with the GPS turn rate.
@@ -38,13 +40,14 @@ final class TrackRecorder {
     static final String HEADER = "wall_ms,elapsed_ms,type,fix_ts,provider,sats,lat,lon,alt,acc,"
             + "speed,bearing,spd_acc,brg_acc,age_s,latency_ms,horizon_ms,"
             + "f_lat,f_lon,f_speed,f_bearing,nis,stationary,turn_dps,sigma_a,"
-            + "car_speed,car_speed_ipk,car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms";
+            + "car_speed,car_speed_ipk,car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms,car_gear,out_src";
 
-    final GyroYaw gyro = new GyroYaw();   // fed by the service's sensor listener while recording
+    final GyroYaw gyro;   // the service's, fed by its sensor listener
     private final CsvLog log;
     private final StringBuilder sb = new StringBuilder(256);   // reused: one row at a time
 
-    TrackRecorder(File dir) {
+    TrackRecorder(File dir, GyroYaw gyro) {
+        this.gyro = gyro;
         log = new CsvLog(fileFor(dir), HEADER, MAX_BYTES);
     }
 
@@ -81,12 +84,22 @@ final class TrackRecorder {
             sb.append(",,");
         }
         tail(elapsedMs, car == null ? null : car.steerBits);
-        log.writeLine(sb);
+        end(car == null ? null : car.gear, null);
+    }
+
+    /** One wheel-speed poll (km/h, null = not readable) and the newest gear. */
+    void car(long elapsedMs, Float speedKmh, String gear) {
+        start(elapsedMs, "car");
+        sb.append(",,,,,,,,,,,,,,,,,,,,,,");   // fix_ts .. sigma_a
+        optional(speedKmh, 2);
+        sb.append(",");                           // car_speed_ipk; car_dt_ms empty (tail adds its comma)
+        tail(elapsedMs, null);
+        end(gear, null);
     }
 
     /** A location handed to the mock provider. NaN accuracies are written as empty cells. */
     void out(long elapsedMs, double lat, double lon, boolean moving, double speed, double bearing,
-             double acc, double spdAcc, double brgAcc, double horizonMs) {
+             double acc, double spdAcc, double brgAcc, double horizonMs, String src) {
         start(elapsedMs, "out");
         sb.append(",,,");                 // fix_ts, provider, sats
         num(lat, 7); num(lon, 7); sb.append(',');  // alt
@@ -96,6 +109,14 @@ final class TrackRecorder {
         sb.append(",,");                  // age_s, latency_ms
         CsvLog.appendFixed(sb, horizonMs, 0).append(",,,,,,,,,,,");   // filter + car columns
         tail(elapsedMs, null);
+        end(null, src);
+    }
+
+    private void end(String gear, String src) {
+        sb.append(',');
+        if (gear != null) sb.append(gear);
+        sb.append(',');
+        if (src != null) sb.append(src);
         log.writeLine(sb);
     }
 

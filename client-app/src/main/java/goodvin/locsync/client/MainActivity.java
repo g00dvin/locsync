@@ -581,6 +581,9 @@ public class MainActivity extends AppCompatActivity {
         bindToggle(R.id.rowCarSpeed, getString(R.string.filter_car_speed),
                 getString(R.string.filter_car_speed_sub), Preferences.filterCarSpeed(this),
                 checked -> Preferences.setFilterCarSpeed(this, checked));
+        bindToggle(R.id.rowCarMotion, getString(R.string.filter_car_motion),
+                getString(R.string.filter_car_motion_sub), Preferences.filterCarMotion(this),
+                checked -> Preferences.setFilterCarMotion(this, checked));
         bindToggle(R.id.rowSpeedRamp, getString(R.string.filter_speed_ramp),
                 getString(R.string.filter_speed_ramp_sub), Preferences.filterSpeedRamp(this),
                 checked -> Preferences.setFilterSpeedRamp(this, checked));

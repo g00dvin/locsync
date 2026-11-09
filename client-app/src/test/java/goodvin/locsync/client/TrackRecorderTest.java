@@ -38,7 +38,7 @@ public class TrackRecorderTest {
     @Test
     public void rowsMatchHeaderColumns() throws Exception {
         File dir = tmp.newFolder();
-        TrackRecorder r = new TrackRecorder(dir);
+        TrackRecorder r = new TrackRecorder(dir, new GyroYaw());
         LocationKalmanFilter f = new LocationKalmanFilter(2.0, 1.0);
         f.update(55.75, 37.6, 10.0, 90.0, 4.0, 0.3, 5.0);
         r.fix(1000, 1_700_000_000_000L, "fused", 17, 55.75, 37.6, 150.0, 4.0f,
@@ -55,8 +55,8 @@ public class TrackRecorderTest {
         r.fix(2060, 1_700_000_001_060L, "gps", 0, 55.75, 37.6, 150.0, 4.0f,
                 false, 0f, false, 0f, 0f, 0f, 0.05f, 50, f,
                 CarSignals.fromRaw(S, 10.5f, 0x200220, 38f, 408f, 0.5f, 23275f, S, 1560L));  // cluster speed only
-        r.out(2100, 55.75, 37.6, true, 10.0, 90.0, 6.0, 0.3, Double.NaN, 100);
-        r.out(2200, 55.75, 37.6, false, 0.1, 0, 6.0, Double.NaN, Double.NaN, 200);
+        r.out(2100, 55.75, 37.6, true, 10.0, 90.0, 6.0, 0.3, Double.NaN, 100, "dr");
+        r.out(2200, 55.75, 37.6, false, 0.1, 0, 6.0, Double.NaN, Double.NaN, 200, "kf");
         r.close();
 
         List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
@@ -72,14 +72,15 @@ public class TrackRecorderTest {
         for (String c : new String[]{"car_speed", "car_speed_ipk", "car_dt_ms", "car_steer_bits", "gyro_yaw_deg", "gyro_dt_ms"}) {
             assertEquals(c, "", noCar[header.indexOf(c)]);
         }
-        assertTrue(TrackRecorder.HEADER.endsWith(",car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms"));
+        assertTrue(TrackRecorder.HEADER.endsWith(",car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms,car_gear,out_src"));
         // Car read at 1500, fix arrived at 2000: the car value is 500 ms older than the fix.
-        assertTrue(lines.get(2), lines.get(2).endsWith(",36.00,37.80,-500,95,,"));
-        assertTrue(lines.get(3), lines.get(3).endsWith(",,,,,,"));             // no speed: no car_dt_ms
+        assertTrue(lines.get(2), lines.get(2).endsWith(",36.00,37.80,-500,95,,,D,"));
+        assertTrue(lines.get(3), lines.get(3).endsWith(",,,,,,,D,"));             // no speed: no car_dt_ms
         // Newest gyro sample at 2040, fix at 2060.
-        assertTrue(lines.get(4), lines.get(4).endsWith(",,37.80,-500,,2.292,-20"));
+        assertTrue(lines.get(4), lines.get(4).endsWith(",,37.80,-500,,2.292,-20,D,"));
         assertTrue(lines.get(5).contains(",out,"));
-        assertTrue(lines.get(5), lines.get(5).endsWith(",,,2.292,-60"));
+        assertTrue(lines.get(5), lines.get(5).endsWith(",,,2.292,-60,,dr"));
+        assertTrue(lines.get(6), lines.get(6).endsWith(",kf"));
     }
 
     // Recording is appended across service restarts; the header is written only once.
@@ -89,11 +90,32 @@ public class TrackRecorderTest {
         LocationKalmanFilter f = new LocationKalmanFilter(2.0, 1.0);
         f.update(55.75, 37.6, 0, 0, 4.0, 0.3, 5.0);
         for (int i = 0; i < 2; i++) {
-            TrackRecorder r = new TrackRecorder(dir);
-            r.out(i, 55.75, 37.6, false, 0, 0, 5, Double.NaN, Double.NaN, 0);
+            TrackRecorder r = new TrackRecorder(dir, new GyroYaw());
+            r.out(i, 55.75, 37.6, false, 0, 0, 5, Double.NaN, Double.NaN, 0, "kf");
             r.close();
         }
         List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
         assertEquals(3, lines.size());
+    }
+
+    // 5 Hz wheel-speed rows (with the gear) make a drive replayable the way the service sees it.
+    @Test
+    public void carRowWritesSpeedAndGear() throws Exception {
+        File dir = tmp.newFolder();
+        TrackRecorder r = new TrackRecorder(dir, new GyroYaw());
+        r.car(3000, 12.5f, "R");
+        r.car(3200, null, null);
+        r.close();
+        List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
+        List<String> header = java.util.Arrays.asList(TrackRecorder.HEADER.split(","));
+        String[] c = lines.get(1).split(",", -1);
+        assertEquals(header.size(), c.length);
+        assertEquals("car", c[header.indexOf("type")]);
+        assertEquals("3000", c[header.indexOf("elapsed_ms")]);
+        assertEquals("12.50", c[header.indexOf("car_speed")]);
+        assertEquals("R", c[header.indexOf("car_gear")]);
+        String[] none = lines.get(2).split(",", -1);
+        assertEquals(header.size(), none.length);
+        assertEquals("", none[header.indexOf("car_speed")]);
     }
 }
