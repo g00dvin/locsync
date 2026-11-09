@@ -249,6 +249,34 @@ public class LocationKalmanFilterTest {
                 errTurn < errStraight * 0.6);
     }
 
+    // A late fix mid-turn stretches the output horizon to 2-3 s. Turning at the last rate for all of
+    // it overshot the heading by 56° (and the position by 7 m) before the fix snapped it back, so
+    // the projection turns only up to MAX_RATE_HORIZON (1.5 s) past the fix and goes straight after.
+    @Test
+    public void extrapolationStopsTurningPastTurnHorizon() {
+        for (int dir : new int[]{1, -1}) {   // right and left (the field case turned left at -32°/s)
+            double speed = 10.0, rateDeg = 18.0 * dir;
+            LocationKalmanFilter f = newFilter();
+            double r = speed / Math.toRadians(rateDeg);
+            for (int i = 0; i <= 10; i++) {
+                double th = Math.toRadians(rateDeg * i);
+                double e = r - r * Math.cos(th), n = r * Math.sin(th);
+                if (i > 0) f.predict(1.0);
+                f.update(59.0 + n / M_PER_DEG_LAT, 30.0 + e / (M_PER_DEG_LAT * Math.cos(Math.toRadians(59.0))),
+                        speed, ((rateDeg * i) % 360 + 360) % 360, 3.0, 0.3, 2.0);
+            }
+            double b0 = f.extrapolate(0).bearingDeg;
+            double bCap = f.extrapolate(1.5).bearingDeg;
+            double bLate = f.extrapolate(3.0).bearingDeg;
+            assertTrue("still turns within the horizon: " + b0 + " -> " + bCap, dir * angleDiff(bCap, b0) > 20.0);
+            assertTrue("no turning past the horizon: " + bCap + " -> " + bLate, Math.abs(angleDiff(bLate, bCap)) < 0.5);
+        }
+    }
+
+    private static double angleDiff(double a, double b) {
+        return ((a - b) % 360 + 540) % 360 - 180;
+    }
+
     @Test
     public void turnRateDecaysWhenStopped() {
         LocationKalmanFilter f = newFilter();
