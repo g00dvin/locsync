@@ -28,8 +28,9 @@ import goodvin.locsync.shared.CsvLog;
  * {@link #MAX_BYTES} (~4 MB per hour of driving, so that is many hours).
  *
  * <p>One CSV for both row kinds ({@code type} = fix | out); columns that don't apply are empty.
- * Fix rows also carry the head unit's wheel and cluster speed ({@code car_*}, empty off eCarX units)
- * so GPS speed can be compared with the car's.
+ * Fix rows also carry the head unit's wheel and cluster speed and raw steering ({@code car_*}, empty
+ * off eCarX units) so GPS speed can be compared with the car's. Both row kinds carry the gyro heading
+ * ({@code gyro_*}) to compare with the GPS turn rate.
  * Called from the service thread only.
  */
 final class TrackRecorder {
@@ -37,8 +38,9 @@ final class TrackRecorder {
     static final String HEADER = "wall_ms,elapsed_ms,type,fix_ts,provider,sats,lat,lon,alt,acc,"
             + "speed,bearing,spd_acc,brg_acc,age_s,latency_ms,horizon_ms,"
             + "f_lat,f_lon,f_speed,f_bearing,nis,stationary,turn_dps,sigma_a,"
-            + "car_speed,car_speed_ipk,car_dt_ms";
+            + "car_speed,car_speed_ipk,car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms";
 
+    final GyroYaw gyro = new GyroYaw();   // fed by the service's sensor listener while recording
     private final CsvLog log;
     private final StringBuilder sb = new StringBuilder(256);   // reused: one row at a time
 
@@ -78,6 +80,7 @@ final class TrackRecorder {
         } else {
             sb.append(",,");
         }
+        tail(elapsedMs, car == null ? null : car.steerBits);
         log.writeLine(sb);
     }
 
@@ -92,6 +95,7 @@ final class TrackRecorder {
         num(spdAcc, 2); num(brgAcc, 1);
         sb.append(",,");                  // age_s, latency_ms
         CsvLog.appendFixed(sb, horizonMs, 0).append(",,,,,,,,,,,");   // filter + car columns
+        tail(elapsedMs, null);
         log.writeLine(sb);
     }
 
@@ -106,6 +110,21 @@ final class TrackRecorder {
     private void start(long elapsedMs, String type) {
         sb.setLength(0);
         sb.append(System.currentTimeMillis()).append(',').append(elapsedMs).append(',').append(type).append(',');
+    }
+
+    /**
+     * The cells after car_dt_ms: steering bits, then the gyro heading (integrated, raw: see
+     * {@link GyroYaw}) and when its newest sample was taken relative to the row, like car_dt_ms.
+     */
+    private void tail(long elapsedMs, Integer steerBits) {
+        sb.append(',');
+        if (steerBits != null) sb.append(steerBits);
+        sb.append(',');
+        if (gyro.ready()) {
+            CsvLog.appendFixed(sb, gyro.yawDeg(), 3).append(',').append(gyro.lastNs() / 1_000_000 - elapsedMs);
+        } else {
+            sb.append(',');
+        }
     }
 
     /** Like {@link #num} for a value that may be absent. */

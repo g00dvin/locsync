@@ -265,9 +265,9 @@ final class VehicleData {
             float range = rawLatest(mgr, CarSignals.RANGE);
             float temp = rawLatest(mgr, CarSignals.OUTSIDE_TEMP);
             float odo = rawLatest(mgr, CarSignals.ODOMETER);
+            float steer = rawLatest(mgr, CarSignals.STEERING_ANGLE);
             if (!loggedRaw) {
                 // The calibration knob for units and encodings (fuel turned out to be mL in raw bits).
-                float steer = rawLatest(mgr, CarSignals.STEERING_ANGLE);
                 log(String.format(Locale.US,
                         "raw speed=%s(0x%x) ipk=%s(0x%x) gear=0x%x fuel=%s(0x%x) range=%s(0x%x) temp=%s(0x%x) odo=%s(0x%x) steer=%s(0x%x)",
                         speed, bits(speed), ipk, bits(ipk), gear, fuel, bits(fuel), range, bits(range),
@@ -275,7 +275,7 @@ final class VehicleData {
                 loggedRaw = true;
                 reconnecting = true;
             }
-            return CarSignals.fromRaw(speed, ipk, gear, fuel, range, temp, odo, SystemClock.elapsedRealtime());
+            return CarSignals.fromRaw(speed, ipk, gear, fuel, range, temp, odo, steer, SystemClock.elapsedRealtime());
         }
 
         /** getSensorLatestValue, or the "unsupported" sentinel if the call fails. */

@@ -25,6 +25,10 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.location.Location;
 import android.location.LocationManager;
 import android.net.ConnectivityManager;
@@ -125,6 +129,24 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private double filtSpeedAcc = Double.NaN, filtBearingAcc = Double.NaN;
     private double inSpeedAcc = Double.NaN, inBearingAcc = Double.NaN;
     private TrackRecorder trackRecorder;    // non-null while "Record track" is on
+    // Head-unit gyro + accelerometer into the track log's gyro columns, only while recording.
+    // Delivered on the service thread; events queued after unregistering find no recorder.
+    private final SensorEventListener imuListener = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent e) {
+            TrackRecorder r = trackRecorder;
+            if (r == null) return;
+            if (e.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
+                r.gyro.gyro(e.timestamp, e.values[0], e.values[1], e.values[2]);
+            } else {
+                r.gyro.accel(e.timestamp, e.values[0], e.values[1], e.values[2]);
+            }
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        }
+    };
     // The car's own signals while the transport runs (MainActivity's reader stops in onPause): wheel
     // speed for the filter and the output, and the track log's car columns. No-op off eCarX units.
     // ponytail: separate AdaptAPI connection from MainActivity's; share one if the head unit objects to two
@@ -997,6 +1019,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     /** Closes the track log. Safe to call when not recording. */
     private void closeTrackRecorder() {
         if (trackRecorder != null) {
+            SensorManager sm = getSystemService(SensorManager.class);
+            if (sm != null) sm.unregisterListener(imuListener);
             trackRecorder.close();
             trackRecorder = null;
         }
@@ -1017,6 +1041,15 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         if (wanted && trackRecorder == null) {
             trackRecorder = new TrackRecorder(new java.io.File(getCacheDir(), "logs"));
             AppLog.i(TAG, "Track recording started");
+            SensorManager sm = getSystemService(SensorManager.class);
+            for (int type : new int[]{Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_GYROSCOPE}) {
+                Sensor s = sm == null ? null : sm.getDefaultSensor(type);
+                if (s == null) {
+                    AppLog.i(TAG, "No sensor of type " + type + ": gyro columns stay empty");
+                } else {
+                    sm.registerListener(imuListener, s, SensorManager.SENSOR_DELAY_GAME, handler);   // ~50 Hz
+                }
+            }
         } else if (!wanted && trackRecorder != null) {
             closeTrackRecorder();
             AppLog.i(TAG, "Track recording stopped");
