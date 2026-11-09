@@ -62,6 +62,12 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".bootstrap.BootstrapActivity"
+            android:exported="false"
+            android:label="@string/bootstrap_title"
+            android:launchMode="singleTask" />
+
         <service
             android:name=".GNSSServerService"
             android:enabled="true"

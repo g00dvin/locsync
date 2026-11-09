@@ -94,4 +94,28 @@
     <string name="setup_hotspot_sub">Включите точку доступа Wi-Fi на телефоне, подключите к ней магнитолу и запустите на ней LocSync Client</string>
     <string name="boot_autostart">Запуск при загрузке телефона</string>
     <string name="boot_autostart_sub">Запускать сервер после перезагрузки телефона, если его не остановили из уведомления. Обычно не нужно: его запускают Bluetooth или Wi-Fi машины.</string>
+
+    <!-- Скрытый экран настройки магнитолы -->
+    <string name="bootstrap_title">Настройка магнитолы</string>
+    <string name="bootstrap_hint">Нажатий до разблокировки: %d</string>
+    <string name="bootstrap_intro">Включает ADB на подключённой магнитоле по её Wi-Fi, затем ставит и запускает на ней приложения. Сначала подключите телефон к Wi-Fi магнитолы.</string>
+    <string name="bootstrap_addr_label">Адрес магнитолы</string>
+    <string name="bootstrap_addr_hint">fe80::…%%wlan0 или 192.168.x.x</string>
+    <string name="bootstrap_scan">Найти магнитолу</string>
+    <string name="bootstrap_enable_adb">Включить ADB на магнитоле</string>
+    <string name="bootstrap_install_client">Установить LocSync client</string>
+    <string name="bootstrap_install_apk">Установить APK…</string>
+    <string name="bootstrap_working">Выполняется…</string>
+    <string name="bootstrap_need_addr">Сначала укажите или найдите адрес магнитолы</string>
+    <string name="bootstrap_adb_ok">ADB включён. adbd поднят на порту 5555, этот телефон авторизован.</string>
+    <string name="bootstrap_adb_fail">Не удалось включить ADB: %s</string>
+    <string name="bootstrap_install_ok">Установлено %1$s и запущено</string>
+    <string name="bootstrap_install_fail">Ошибка установки: %s</string>
+    <string name="bootstrap_no_client">Встроенный APK клиента не найден в приложении</string>
+    <string name="bootstrap_same_version">%1$s %2$s уже установлено — запускаю</string>
+    <string name="bootstrap_grants_label">Выдать установленному приложению (через ADB):</string>
+    <string name="bootstrap_grant_mock">Фиктивное местоположение (mock location)</string>
+    <string name="bootstrap_grant_install">Установка неизвестных приложений (ставить другие APK)</string>
+    <string name="bootstrap_grant_vpn">VPN (без диалога подтверждения)</string>
+    <string name="bootstrap_grant_settings">Изменение системных настроек</string>
 </resources>
