@@ -128,6 +128,7 @@ public class LocationKalmanFilter {
     private boolean standstillHold = true;
     private double standstillSpeed = 0.5;   // m/s
     private boolean stationary = false;
+    private boolean skipGateOnce = false;   // set by setState: the first fix after re-anchoring isn't gated
 
     // Innovation diagnostics (counters survive reset(): they describe the whole session).
     private double lastNis = Double.NaN;
@@ -269,6 +270,7 @@ public class LocationKalmanFilter {
         sigmaAEff = sigmaA;
         stationary = false;
         consecutiveOutliers = 0;
+        skipGateOnce = false;
         omega = 0;
         prevHeading = Double.NaN;
         sincePrevHeading = 0;
@@ -352,7 +354,9 @@ public class LocationKalmanFilter {
         double s00 = P[0][0] + r, s11 = P[1][1] + r, s01 = P[0][1];
         double det = s00 * s11 - s01 * s01;
         lastNis = det > 0 ? (ne * ne * s11 - 2 * ne * nn * s01 + nn * nn * s00) / det : 0;
-        if (gating && lastNis > gateThreshold) {
+        boolean gate = gating && !skipGateOnce;
+        skipGateOnce = false;
+        if (gate && lastNis > gateThreshold) {
             outlierCount++;
             if (++consecutiveOutliers >= REINIT_AFTER_OUTLIERS) {
                 // The fixes agree with each other but not with us: we diverged (or the car really
@@ -468,12 +472,43 @@ public class LocationKalmanFilter {
 
     /** Advances the filter state by dt seconds (motion model + process noise). */
     public void predict(double dt) {
+        predict(dt, Double.NaN);
+    }
+
+    /**
+     * Like {@link #predict(double)}, but turning by the measured heading change {@code dThetaRadCcw} (the
+     * head unit's gyro over exactly this step) instead of the estimated turn rate; NaN = estimate.
+     * {@link #extrapolate} never uses it: its fallback path stays the GPS-only model.
+     */
+    public void predict(double dt, double dThetaRadCcw) {
         if (!initialized || dt <= 0) {
             return;
         }
-        propagate(x, P, dt, omega);
+        propagate(x, P, dt, Double.isNaN(dThetaRadCcw) ? omega : dThetaRadCcw / dt);
         sincePrevHeading += dt;
         sincePrevSpeed += dt;
+    }
+
+    /**
+     * Re-anchors the filter at a dead-reckoned state (after a GPS gap bridged by the gyro and wheels). The
+     * next fix may be far off; it is not gated, so it pulls the estimate over instead of counting as an outlier.
+     */
+    public void setState(double lat, double lon, double speed, double bearingDeg, double posSigmaM, double velSigmaMps) {
+        reset();
+        setAnchor(lat, lon);
+        zero(P);
+        x[0] = 0;
+        x[1] = 0;
+        double br = Math.toRadians(bearingDeg);
+        x[2] = speed * Math.sin(br);
+        x[3] = speed * Math.cos(br);
+        double sp = Math.max(MIN_POS_SIGMA, posSigmaM);
+        P[0][0] = sp * sp;
+        P[1][1] = sp * sp;
+        P[2][2] = velSigmaMps * velSigmaMps;
+        P[3][3] = velSigmaMps * velSigmaMps;
+        initialized = true;
+        skipGateOnce = true;
     }
 
     /**

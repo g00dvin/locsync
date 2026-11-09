@@ -129,17 +129,41 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private double filtSpeedAcc = Double.NaN, filtBearingAcc = Double.NaN;
     private double inSpeedAcc = Double.NaN, inBearingAcc = Double.NaN;
     private TrackRecorder trackRecorder;    // non-null while "Record track" is on
-    // Head-unit gyro + accelerometer into the track log's gyro columns, only while recording.
-    // Delivered on the service thread; events queued after unregistering find no recorder.
+    // Head-unit gyro + accelerometer: the heading for "Use car motion" and the track log's gyro columns.
+    // Registered while the transport runs and either needs it; delivered on the service thread.
+    private final GyroYaw gyro = new GyroYaw();
+    private boolean imuRegistered;
+    private boolean gyroClockChecked, gyroClockBad;
+    // Motion fusion (service thread only): gyro heading + wheel distance between fixes and through GPS loss.
+    private HeadingTracker tracker;          // created in startTransport
+    private DeadReckoner deadReckoner;
+    private final DeadReckoner.Slide slide = new DeadReckoner.Slide();
+    private final LocationKalmanFilter.Estimate drOut = new LocationKalmanFilter.Estimate();
+    private boolean lastOutDr;               // the last injected location came from dead reckoning
+    private long lastOutElapsedMs;
+    private int biasSavedAt;
+    private static final long DR_MAX_MS = 120_000;      // dead reckoning through GPS loss at most this long
+    private static final double DR_MAX_ACC_M = 60;      // ... or until it's this unsure: then freeze as before
+    private static final int BIAS_SAVE_EVERY = 60;      // standstill bias updates between saves
     private final SensorEventListener imuListener = new SensorEventListener() {
         @Override
         public void onSensorChanged(SensorEvent e) {
-            TrackRecorder r = trackRecorder;
-            if (r == null) return;
-            if (e.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
-                r.gyro.gyro(e.timestamp, e.values[0], e.values[1], e.values[2]);
-            } else {
-                r.gyro.accel(e.timestamp, e.values[0], e.values[1], e.values[2]);
+            if (e.sensor.getType() != Sensor.TYPE_GYROSCOPE) {
+                gyro.accel(e.timestamp, e.values[0], e.values[1], e.values[2]);
+                return;
+            }
+            gyro.gyro(e.timestamp, e.values[0], e.values[1], e.values[2]);
+            if (!gyroClockChecked) {
+                // The tracker assumes sensor timestamps are elapsedRealtime nanos (they are on the G426).
+                gyroClockChecked = true;
+                long d = SystemClock.elapsedRealtimeNanos() - e.timestamp;
+                gyroClockBad = Math.abs(d) > 1_000_000_000L;
+                AppLog.i(TAG, String.format(java.util.Locale.US, "Gyro clock offset %.1f ms%s", d / 1e6,
+                        gyroClockBad ? ": not elapsedRealtime, car motion off for this session" : ""));
+            }
+            HeadingTracker t = tracker;
+            if (t != null && !gyroClockBad && gyro.ready()) {
+                t.onYaw(e.timestamp / 1_000_000, gyro.yawDeg());
             }
         }
 
@@ -387,8 +411,21 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             }
             wheelCalibration = new CarSignals.WheelCalibration(Preferences.carSpeedFactor(this));
             VehicleData v = new VehicleData(this, handler, null, VEHICLE_POLL_MS);
+            v.setSpeedListener((t, kmh) -> handler.post(() -> {
+                TrackRecorder r = trackRecorder;
+                VehicleData car = vehicle;
+                if (r != null && car != null) {
+                    r.car(t, kmh, car.snapshot().gear);
+                }
+            }));
             v.start();
             vehicle = v;
+            tracker = new HeadingTracker(Preferences.gyroBiasDps(this));
+            deadReckoner = new DeadReckoner(tracker, this::wheelMps);
+            biasSavedAt = 0;
+            lastOutDr = false;
+            gyroClockChecked = gyroClockBad = false;
+            updateImu();
         });
         handler.post(smoothingTick);
 
@@ -422,9 +459,13 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             VehicleData v = vehicle;
             vehicle = null;
             if (v != null) {
+                v.setSpeedListener(null);
                 v.stop();
             }
             saveWheelCalibration();
+            saveGyroBias();
+            lastOutDr = false;
+            updateImu();
         });
         lastLatencyMs = lastHorizonMs = Double.NaN;
         connectionManager.clearLearnedServerAddress();
@@ -736,7 +777,18 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     if (!resumingAfterGap && prevFixTs != Long.MIN_VALUE && fixDt > 0 && fixDt <= MAX_GPS_LOSS_CAP_MS) {
                         fixIntervalEmaMs += 0.2 * (fixDt - fixIntervalEmaMs);   // gaps don't count
                     }
-                    if (resumingAfterGap) {
+                    boolean drBridged = resumingAfterGap && lastFixElapsedMs != 0 && lastOutDr
+                            && deadReckoner != null && deadReckoner.active();
+                    if (drBridged) {
+                        // GPS is back after a gap the dead reckoning bridged (e.g. a tunnel): re-anchor the filter
+                        // there, backed off to this fix's measurement time, instead of snapping from scratch.
+                        deadReckoner.fill(drOut, lastOutElapsedMs);
+                        double back = drOut.speed * Math.max(0, lastOutElapsedMs - measElapsed) / 1000.0;
+                        double br = Math.toRadians(drOut.bearingDeg);
+                        double lat = drOut.latitude - back * Math.cos(br) / 111320.0;
+                        double lon = drOut.longitude - back * Math.sin(br) / (111320.0 * Math.cos(Math.toRadians(lat)));
+                        kalman.setState(lat, lon, drOut.speed, drOut.bearingDeg, drOut.accuracy, 0.5);
+                    } else if (resumingAfterGap) {
                         // Fresh start, or the first real fix after a GPS gap (e.g. tunnel exit): re-anchor so
                         // the estimate snaps to the new position instead of lurching from stale state.
                         kalman.reset();
@@ -748,7 +800,19 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                         if (!(dt > 0 && dt <= 5.0)) {
                             dt = (measElapsed - stateElapsedMs) / 1000.0;
                         }
-                        kalman.predict(Math.max(0, Math.min(dt, 5.0)));
+                        dt = Math.max(0, Math.min(dt, 5.0));
+                        // With car motion on, the gyro says exactly how far the car turned over this step.
+                        double dTheta = motionOn() && tracker != null && tracker.valid(measElapsed)
+                                && !Double.isNaN(wheelMps(measElapsed))   // no wheels: today's filter, unchanged
+                                ? tracker.deltaRadCcw(stateElapsedMs, stateElapsedMs + Math.round(dt * 1000))
+                                : Double.NaN;
+                        kalman.predict(dt, dTheta);
+                    }
+                    if (tracker != null && u.hasBearing()) {
+                        VehicleData gearCar = vehicle;
+                        boolean reverse = gearCar != null && "R".equals(gearCar.snapshot().gear);
+                        tracker.onGpsBearing(measElapsed - HeadingTracker.GPS_LAG_MS, u.getSpeed(),
+                                u.getBearing() + (kalman.isBearingQuantized() ? 0.5 : 0), reverse);
                     }
                     // The car's wheel speed at the fix's measurement time replaces the GPS speed when
                     // readable: phone Doppler glitches by up to 10 km/h in town, the wheels don't.
@@ -778,6 +842,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     lastMslAltitudeAcc = u.hasMslAltitudeAccuracy() ? u.getMslAltitudeAccuracy() : Float.NaN;
                     lastFixElapsedMs = nowElapsed;
                     stateElapsedMs = measElapsed;
+                    reanchorDeadReckoning(measElapsed, SystemClock.elapsedRealtime());   // ticks may have run since arrival
 
                     updateTrackRecorder();
                     if (trackRecorder != null) {
@@ -818,16 +883,41 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         long lossCapMs = gpsLossCapMs();
         boolean gpsLost = lastFixElapsedMs == 0 || (nowElapsed - lastFixElapsedMs) > lossCapMs;
 
+        HeadingTracker t = tracker;
+        if (t != null) {
+            t.onWheel(nowElapsed, wheelMps(nowElapsed));
+            if (t.biasUpdates() - biasSavedAt >= BIAS_SAVE_EVERY) {
+                saveGyroBias();
+            }
+        }
+        if (motionOn() && kalman.isInitialized() && deadReckoner != null && lastFixElapsedMs != 0
+                && nowElapsed - lastFixElapsedMs <= DR_MAX_MS && deadReckoner.step(nowElapsed)) {
+            deadReckoner.fill(drOut, nowElapsed);
+            if (drOut.accuracy <= DR_MAX_ACC_M) {
+                slide.apply(drOut, nowElapsed);
+                lastHorizonMs = nowElapsed - stateElapsedMs;
+                lastOutDr = true;
+                lastOutElapsedMs = nowElapsed;
+                injectSmoothed(drOut);
+                scheduleNextTick(intervalMs);
+                return;
+            }
+        }
+        lastOutDr = false;
         if (kalman.isInitialized() && !gpsLost) {
             // Project the fix-time state to now (covers both the time since the last fix and, with
             // latency compensation, the fix's own age) without disturbing the filter.
             double maxHorizonS = Math.max(MAX_HORIZON_S, lossCapMs / 1000.0 + 0.5);
             double horizonS = Math.max(0, Math.min((nowElapsed - stateElapsedMs) / 1000.0, maxHorizonS));
             lastHorizonMs = horizonS * 1000.0;
+            lastOutElapsedMs = nowElapsed;
             injectSmoothed(kalman.extrapolate(horizonS));
         }
         // When GPS is lost, we simply stop advancing/injecting (freeze) until fixes resume.
+        scheduleNextTick(intervalMs);
+    }
 
+    private void scheduleNextTick(long intervalMs) {
         // Schedule on a fixed grid: postDelayed after the work drifted the rate down to ~8.7 Hz.
         long nowUptime = SystemClock.uptimeMillis();
         nextTickUptimeMs += intervalMs;
@@ -837,10 +927,90 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         handler.postAtTime(smoothingTick, nextTickUptimeMs);
     }
 
+    /** "Use car motion" applies: it needs the wheels ("Use car speed") and a gyro on the elapsedRealtime clock. */
+    private boolean motionOn() {
+        return filterConfig.carMotion && filterConfig.carSpeed && !gyroClockBad;
+    }
+
+    /** Calibrated wheel speed (m/s) at t, negative in reverse; NaN when the car can't be read. */
+    private double wheelMps(long t) {
+        VehicleData car = vehicle;
+        CarSignals.WheelCalibration c = wheelCalibration;
+        Float kmh = car == null || c == null ? null : car.speedKmhAt(t);
+        if (kmh == null) {
+            return Double.NaN;
+        }
+        double v = kmh * c.factor() / 3.6;
+        return "R".equals(car.snapshot().gear) ? -v : v;
+    }
+
+    /**
+     * After each fix: restart the dead reckoning from the filter's state at the fix's measurement time, walked
+     * to now. If the icon was dead-reckoned, the jump to the new track slides away over a second.
+     */
+    private void reanchorDeadReckoning(long measElapsed, long nowElapsed) {
+        DeadReckoner dr = deadReckoner;
+        if (dr == null || !motionOn() || !kalman.isInitialized()) {
+            return;
+        }
+        boolean slideFrom = lastOutDr && dr.active() && dr.step(nowElapsed);
+        double oldLat = 0, oldLon = 0;
+        if (slideFrom) {
+            dr.fill(drOut, nowElapsed);
+            slide.apply(drOut, nowElapsed);
+            oldLat = drOut.latitude;
+            oldLon = drOut.longitude;
+        }
+        LocationKalmanFilter.Estimate e0 = kalman.extrapolate(0);
+        if (dr.anchor(e0.latitude, e0.longitude, e0.accuracy, measElapsed, nowElapsed) && slideFrom) {
+            dr.fill(drOut, nowElapsed);
+            double mPerDegLon = 111320.0 * Math.cos(Math.toRadians(drOut.latitude));
+            slide.start((oldLon - drOut.longitude) * mPerDegLon, (oldLat - drOut.latitude) * 111320.0, nowElapsed);
+        } else {
+            slide.start(0, 0, nowElapsed);
+        }
+    }
+
+    private void saveGyroBias() {
+        HeadingTracker t = tracker;
+        if (t != null && t.biasUpdates() > biasSavedAt) {
+            biasSavedAt = t.biasUpdates();
+            Preferences.setGyroBiasDps(this, (float) t.biasDps());
+            AppLog.i(TAG, String.format(java.util.Locale.US, "Gyro bias %.4f °/s saved", t.biasDps()));
+        }
+    }
+
+    /** Gyro + accelerometer on while the transport runs and "Use car motion" or "Record track" needs them. */
+    private void updateImu() {
+        boolean wanted = running.get() && (filterConfig.carMotion || trackRecorder != null);
+        if (wanted == imuRegistered) {
+            return;
+        }
+        SensorManager sm = getSystemService(SensorManager.class);
+        if (sm == null) {
+            return;
+        }
+        if (!wanted) {
+            sm.unregisterListener(imuListener);
+            imuRegistered = false;
+            return;
+        }
+        for (int type : new int[]{Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_GYROSCOPE}) {
+            Sensor s = sm.getDefaultSensor(type);
+            if (s == null) {
+                AppLog.i(TAG, "No sensor of type " + type + ": no gyro heading");
+            } else {
+                sm.registerListener(imuListener, s, SensorManager.SENSOR_DELAY_GAME, handler);   // ~50 Hz
+            }
+        }
+        imuRegistered = true;
+    }
+
     /** One log line per change of the experiment switches, to tell the test-drive runs apart in the data. */
     private void logExperimentSwitches() {
         String now = "speedRamp=" + filterConfig.speedRamp + " output1Hz=" + filterConfig.output1Hz
-                + " sendSpeed=" + filterConfig.sendSpeed + " carSpeed=" + filterConfig.carSpeed;
+                + " sendSpeed=" + filterConfig.sendSpeed + " carSpeed=" + filterConfig.carSpeed
+                + " carMotion=" + filterConfig.carMotion;
         if (!now.equals(lastExperiment)) {
             lastExperiment = now;
             AppLog.i(TAG, "Output switches: " + now);
@@ -913,7 +1083,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                 // after setMockLocation: records what was actually injected (incl. static jitter)
                 trackRecorder.out(SystemClock.elapsedRealtime(), loc.getLatitude(), loc.getLongitude(), moving,
                         filterConfig.sendSpeed ? loc.getSpeed() : speed, loc.getBearing(),
-                        outAccuracy, outSpeedAcc, outBearingAcc, lastHorizonMs);
+                        outAccuracy, outSpeedAcc, outBearingAcc, lastHorizonMs, lastOutDr ? "dr" : "kf");
             }
         } catch (SecurityException e) {
             Log.e(TAG, "Security exception - mock location permission denied", e);
@@ -1019,10 +1189,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     /** Closes the track log. Safe to call when not recording. */
     private void closeTrackRecorder() {
         if (trackRecorder != null) {
-            SensorManager sm = getSystemService(SensorManager.class);
-            if (sm != null) sm.unregisterListener(imuListener);
             trackRecorder.close();
             trackRecorder = null;
+            updateImu();
         }
     }
 
@@ -1039,21 +1208,13 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private void updateTrackRecorder() {
         boolean wanted = Preferences.trackRecording(this);
         if (wanted && trackRecorder == null) {
-            trackRecorder = new TrackRecorder(new java.io.File(getCacheDir(), "logs"));
+            trackRecorder = new TrackRecorder(new java.io.File(getCacheDir(), "logs"), gyro);
             AppLog.i(TAG, "Track recording started");
-            SensorManager sm = getSystemService(SensorManager.class);
-            for (int type : new int[]{Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_GYROSCOPE}) {
-                Sensor s = sm == null ? null : sm.getDefaultSensor(type);
-                if (s == null) {
-                    AppLog.i(TAG, "No sensor of type " + type + ": gyro columns stay empty");
-                } else {
-                    sm.registerListener(imuListener, s, SensorManager.SENSOR_DELAY_GAME, handler);   // ~50 Hz
-                }
-            }
         } else if (!wanted && trackRecorder != null) {
             closeTrackRecorder();
             AppLog.i(TAG, "Track recording stopped");
         }
+        updateImu();   // also follows the "Use car motion" switch, re-read on every fix
     }
 
     /**

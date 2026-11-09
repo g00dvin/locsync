@@ -556,4 +556,46 @@ public class LocationKalmanFilterTest {
         double s = f.extrapolate(3.0).speed;
         assertTrue("braking must not reverse or overshoot zero: " + s, s >= 0 && s < 0.5);
     }
+
+    // Motion fusion: the gyro's heading change over the predict step bends the velocity (right turn = bearing up).
+    @Test
+    public void predictWithHeadingChange() {
+        LocationKalmanFilter f = newFilter();
+        f.update(55.6, 37.6, 10, 0, 3, 0.1, 1);
+        f.predict(1, -0.5);
+        assertEquals(Math.toDegrees(0.5), f.getBearingDeg(), 0.5);
+    }
+
+    @Test
+    public void predictNaNIsTodaysBehaviour() {
+        LocationKalmanFilter a = newFilter(), b = newFilter();
+        for (LocationKalmanFilter f : new LocationKalmanFilter[]{a, b}) {
+            f.update(55.6, 37.6, 10, 30, 3, 0.1, 1);
+            f.predict(1);
+            f.update(55.6 + 8 / M_PER_DEG_LAT, 37.6001, 10, 40, 3, 0.1, 1);
+        }
+        a.predict(1);
+        b.predict(1, Double.NaN);
+        assertEquals(a.getLatitude(), b.getLatitude(), 1e-12);
+        assertEquals(a.getVe(), b.getVe(), 1e-12);
+        assertEquals(a.extrapolate(1).longitude, b.extrapolate(1).longitude, 1e-12);
+    }
+
+    // After a GPS gap bridged by dead reckoning, the first fix may be far from the re-anchored state: it must
+    // pull the estimate over, not be gated as an outlier.
+    @Test
+    public void setStateThenFarFixIsAccepted() {
+        LocationKalmanFilter f = newFilter();
+        f.update(55.6, 37.6, 10, 0, 3, 0.1, 1);
+        long outliers = f.getOutlierCount();
+        f.setState(55.6, 37.6, 10, 0, 40, 0.5);
+        double lat = 55.6;
+        for (int k = 0; k < 3; k++) {
+            f.predict(1);
+            lat = 55.6 + (150 + 10 * k) / M_PER_DEG_LAT;
+            f.update(lat, 37.6, 10, 0, 3, 0.1, 1);
+        }
+        assertEquals(outliers, f.getOutlierCount());
+        assertEquals(0, (f.getLatitude() - lat) * M_PER_DEG_LAT, 5);
+    }
 }
