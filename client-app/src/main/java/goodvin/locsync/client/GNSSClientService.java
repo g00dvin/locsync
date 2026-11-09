@@ -153,6 +153,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private boolean accSeen;
     private float ambTempC = Float.NaN;     // TYPE_AMBIENT_TEMPERATURE: which chip it reads is for the drive to show
     private GnssRecorder gnssRecorder;      // the head unit's own GNSS while "Record track" is on; service thread only
+    private boolean destroyed;              // service thread: no GNSS restart after onDestroy's stop
     private final SensorEventListener imuListener = new SensorEventListener() {
         @Override
         public void onSensorChanged(SensorEvent e) {
@@ -338,6 +339,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         // onAvailable can't restart the transport after this stop.
         handler.post(() -> {
             stopTransport("Service destroyed");
+            destroyed = true;
             stopGnssRecording();
             mockLocationManager.shutdown();   // now, not in 5 s; also cancels a disable still pending
             executor.shutdown();
@@ -436,6 +438,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     r.car(t, kmh, car.snapshot().gear, w4m, accSeen ? lastAcc : null, ambTempC, probe);
                 }
             }));
+            v.setRecordAll(trackRecorder != null);
             v.start();
             vehicle = v;
             tracker = new HeadingTracker(Preferences.gyroBiasDps(this));
@@ -1312,7 +1315,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     }
 
     private void startGnssRecording() {
-        if (gnssRecorder != null) {
+        if (gnssRecorder != null || destroyed) {
             return;
         }
         LocationManager lm = getSystemService(LocationManager.class);
