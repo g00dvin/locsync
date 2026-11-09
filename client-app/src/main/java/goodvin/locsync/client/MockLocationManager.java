@@ -26,7 +26,6 @@ import android.location.Location;
 import android.location.LocationManager;
 import android.location.provider.ProviderProperties;
 import android.os.Handler;
-import android.os.Looper;
 import android.util.Log;
 import goodvin.locsync.shared.AppLog;
 
@@ -41,7 +40,7 @@ public class MockLocationManager {
 
     private final LocationManager locationManager;
     private final Context context;
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Handler handler;   // the caller's thread: the delayed disable is ordered with its calls
     private final Random random = new Random();
 
     // We need to use such runnable to make scheduled disabling cancelable
@@ -49,15 +48,16 @@ public class MockLocationManager {
 
     private boolean isMockLocationProviderSetup = false;
 
-    public MockLocationManager(Context context) {
+    public MockLocationManager(Context context, Handler handler) {
         this.context = context.getApplicationContext();
+        this.handler = handler;
         locationManager = context.getSystemService(LocationManager.class);
     }
 
     public void startMockLocationProvider() {
         AppLog.d(TAG, "Starting mock location provider");
 
-        mainHandler.removeCallbacks(this.disableMockLocationProvider);
+        handler.removeCallbacks(this.disableMockLocationProvider);
         setupMockLocationProvider();
         enableMockLocationProvider();
     }
@@ -65,8 +65,8 @@ public class MockLocationManager {
     public void stopMockLocationProvider(long delayMillis) {
         AppLog.d(TAG, "Scheduling stopping of mock location provider in " + delayMillis + " ms");
 
-        mainHandler.removeCallbacks(this.disableMockLocationProvider);
-        mainHandler.postDelayed(this.disableMockLocationProvider, delayMillis);
+        handler.removeCallbacks(this.disableMockLocationProvider);
+        handler.postDelayed(this.disableMockLocationProvider, delayMillis);
     }
 
     public void setMockLocation(@NonNull Location location) {
@@ -131,7 +131,7 @@ public class MockLocationManager {
             return;
         }
 
-        mainHandler.removeCallbacks(this.disableMockLocationProvider);
+        handler.removeCallbacks(this.disableMockLocationProvider);
         disableMockLocationProvider();
         try {
             locationManager.removeTestProvider(LocationManager.GPS_PROVIDER);

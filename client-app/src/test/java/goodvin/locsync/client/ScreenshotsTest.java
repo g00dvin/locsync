@@ -65,6 +65,9 @@ public class ScreenshotsTest {
         ConnectionManager cm = new ConnectionManager(app, (s, m, a) -> { });
         cm.setState(ConnectionManager.ConnectionState.CONNECTED, "", "192.168.43.1");
         setField(service, "connectionManager", cm);
+        // Its posts (e.g. the Monitor's filter rows) run on the paused main looper, not the real
+        // service thread, so they land at a deterministic point.
+        setField(service, "handler", new android.os.Handler(android.os.Looper.getMainLooper()));
         setStatic(GNSSClientService.class, "instance", service);
         setPhoneState(LocationProto.PhoneState.newBuilder().setBatteryPercent(78).setCharging(true)
                 .setBatteryTempC(36.4f).build());
