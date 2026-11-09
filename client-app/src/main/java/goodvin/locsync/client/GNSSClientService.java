@@ -29,8 +29,11 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.location.GnssStatus;
 import android.location.Location;
+import android.location.LocationListener;
 import android.location.LocationManager;
+import android.location.OnNmeaMessageListener;
 import android.net.ConnectivityManager;
 import android.net.DhcpInfo;
 import android.net.Network;
@@ -145,11 +148,23 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private static final long DR_MAX_MS = 120_000;      // dead reckoning through GPS loss at most this long
     private static final double DR_MAX_ACC_M = 60;      // ... or until it's this unsure: then freeze as before
     private static final int BIAS_SAVE_EVERY = 60;      // standstill bias updates between saves
+    // Record-everything: the newest raw accelerometer sample and the gyro chip's temperature, for the car rows.
+    private final float[] lastAcc = new float[3];
+    private boolean accSeen;
+    private float gyroTempC = Float.NaN;
+    private GnssRecorder gnssRecorder;      // the head unit's own GNSS, while "Record track" is on
     private final SensorEventListener imuListener = new SensorEventListener() {
         @Override
         public void onSensorChanged(SensorEvent e) {
-            if (e.sensor.getType() != Sensor.TYPE_GYROSCOPE) {
+            int type = e.sensor.getType();
+            if (type == Sensor.TYPE_AMBIENT_TEMPERATURE) {
+                gyroTempC = e.values[0];
+                return;
+            }
+            if (type != Sensor.TYPE_GYROSCOPE) {
                 gyro.accel(e.timestamp, e.values[0], e.values[1], e.values[2]);
+                System.arraycopy(e.values, 0, lastAcc, 0, 3);
+                accSeen = true;
                 return;
             }
             gyro.gyro(e.timestamp, e.values[0], e.values[1], e.values[2]);
@@ -411,11 +426,11 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             }
             wheelCalibration = new CarSignals.WheelCalibration(Preferences.carSpeedFactor(this));
             VehicleData v = new VehicleData(this, handler, null, VEHICLE_POLL_MS);
-            v.setSpeedListener((t, kmh) -> handler.post(() -> {
+            v.setSpeedListener((t, kmh, w4m, probe) -> handler.post(() -> {
                 TrackRecorder r = trackRecorder;
                 VehicleData car = vehicle;
                 if (r != null && car != null) {
-                    r.car(t, kmh, car.snapshot().gear);
+                    r.car(t, kmh, car.snapshot().gear, w4m, accSeen ? lastAcc : null, gyroTempC, probe);
                 }
             }));
             v.start();
@@ -995,7 +1010,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             imuRegistered = false;
             return;
         }
-        for (int type : new int[]{Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_GYROSCOPE}) {
+        for (int type : new int[]{Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_GYROSCOPE, Sensor.TYPE_AMBIENT_TEMPERATURE}) {
             Sensor s = sm.getDefaultSensor(type);
             if (s == null) {
                 AppLog.i(TAG, "No sensor of type " + type + ": no gyro heading");
@@ -1144,6 +1159,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         if (trackRecorder != null) {
             trackRecorder.flush();
         }
+        if (gnssRecorder != null) {
+            gnssRecorder.flush();
+        }
         if (filterStatsWanted) broadcastFilterStats();
         handler.postDelayed(metricsTick, METRICS_INTERVAL_MS);
     }
@@ -1191,8 +1209,123 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         if (trackRecorder != null) {
             trackRecorder.close();
             trackRecorder = null;
+            stopGnssRecording();
             updateImu();
         }
+    }
+
+    // The head unit's own GNSS receiver: its non-mock fixes, satellite status and NMEA, to see whether it could be
+    // a second position source. Our own mock fixes are skipped. Service thread (handler) callbacks.
+    private final LocationListener nativeGpsListener = new LocationListener() {
+        @Override
+        @SuppressWarnings("deprecation")   // isMock() is API 31; the head unit is API 30
+        public void onLocationChanged(@NonNull Location l) {
+            GnssRecorder g = gnssRecorder;
+            if (g == null || l.isFromMockProvider()) {
+                return;
+            }
+            g.fix(SystemClock.elapsedRealtime(), l.getLatitude(), l.getLongitude(),
+                    l.hasAltitude() ? l.getAltitude() : Double.NaN, l.hasAccuracy() ? l.getAccuracy() : Float.NaN,
+                    l.hasSpeed() ? l.getSpeed() : Float.NaN, l.hasBearing() ? l.getBearing() : Float.NaN,
+                    l.hasSpeedAccuracy() ? l.getSpeedAccuracyMetersPerSecond() : Float.NaN,
+                    l.hasBearingAccuracy() ? l.getBearingAccuracyDegrees() : Float.NaN,
+                    l.getElapsedRealtimeNanos() / 1_000_000, false, l.getProvider());
+        }
+
+        @Override
+        public void onProviderEnabled(@NonNull String provider) {
+        }
+
+        @Override
+        public void onProviderDisabled(@NonNull String provider) {
+        }
+
+        @Override
+        @SuppressWarnings("deprecation")
+        public void onStatusChanged(String provider, int status, android.os.Bundle extras) {
+        }
+    };
+
+    private final OnNmeaMessageListener nmeaListener = (message, timestamp) -> {
+        GnssRecorder g = gnssRecorder;
+        if (g != null && message != null) {
+            g.nmea(SystemClock.elapsedRealtime(), message);
+        }
+    };
+
+    private final GnssStatus.Callback gnssStatusCallback = new GnssStatus.Callback() {
+        @Override
+        public void onSatelliteStatusChanged(@NonNull GnssStatus st) {
+            GnssRecorder g = gnssRecorder;
+            if (g == null) {
+                return;
+            }
+            int n = st.getSatelliteCount(), used = 0;
+            float[] cn0 = new float[n];
+            java.util.TreeMap<String, Integer> byType = new java.util.TreeMap<>();
+            for (int i = 0; i < n; i++) {
+                if (st.usedInFix(i)) {
+                    cn0[used++] = st.getCn0DbHz(i);
+                    byType.merge(constellation(st.getConstellationType(i)), 1, Integer::sum);
+                }
+            }
+            java.util.Arrays.sort(cn0, 0, used);
+            double top = 0;
+            int k = Math.min(4, used);
+            for (int i = used - k; i < used; i++) top += cn0[i];
+            StringBuilder types = new StringBuilder();
+            for (java.util.Map.Entry<String, Integer> en : byType.entrySet()) {
+                if (types.length() > 0) types.append(';');
+                types.append(en.getKey()).append(':').append(en.getValue());
+            }
+            g.status(SystemClock.elapsedRealtime(), n, used, k == 0 ? Double.NaN : top / k, types.toString());
+        }
+    };
+
+    private static String constellation(int type) {
+        switch (type) {
+            case GnssStatus.CONSTELLATION_GPS: return "GPS";
+            case GnssStatus.CONSTELLATION_GLONASS: return "GLO";
+            case GnssStatus.CONSTELLATION_BEIDOU: return "BDS";
+            case GnssStatus.CONSTELLATION_GALILEO: return "GAL";
+            case GnssStatus.CONSTELLATION_QZSS: return "QZS";
+            case GnssStatus.CONSTELLATION_SBAS: return "SBAS";
+            default: return "T" + type;
+        }
+    }
+
+    private void startGnssRecording() {
+        if (gnssRecorder != null) {
+            return;
+        }
+        LocationManager lm = getSystemService(LocationManager.class);
+        if (lm == null) {
+            return;
+        }
+        gnssRecorder = new GnssRecorder(new java.io.File(getCacheDir(), "logs"));
+        AppLog.i(TAG, "Head-unit GNSS recording started; providers " + lm.getAllProviders());
+        try {
+            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, nativeGpsListener, handler.getLooper());
+            lm.addNmeaListener(nmeaListener, handler);
+            lm.registerGnssStatusCallback(gnssStatusCallback, handler);
+        } catch (SecurityException | IllegalArgumentException e) {
+            AppLog.i(TAG, "Head-unit GNSS listeners not registered: " + e);
+        }
+    }
+
+    private void stopGnssRecording() {
+        GnssRecorder g = gnssRecorder;
+        if (g == null) {
+            return;
+        }
+        gnssRecorder = null;
+        LocationManager lm = getSystemService(LocationManager.class);
+        if (lm != null) {
+            lm.removeUpdates(nativeGpsListener);
+            lm.removeNmeaListener(nmeaListener);
+            lm.unregisterGnssStatusCallback(gnssStatusCallback);
+        }
+        g.close();
     }
 
     private void saveWheelCalibration() {
@@ -1210,6 +1343,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         if (wanted && trackRecorder == null) {
             trackRecorder = new TrackRecorder(new java.io.File(getCacheDir(), "logs"), gyro);
             AppLog.i(TAG, "Track recording started");
+            startGnssRecording();
         } else if (!wanted && trackRecorder != null) {
             closeTrackRecorder();
             AppLog.i(TAG, "Track recording stopped");

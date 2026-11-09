@@ -239,6 +239,79 @@ final class CarSignals {
         }
     }
 
+    /**
+     * One AdaptAPI W4m group value ({@code ISensor.getSensorGroupLatestValue(0x800400)}): the car's yaw rate,
+     * lateral/longitudinal acceleration and the four wheel speeds, as the ESC sees them. Recorded raw: units
+     * and whether the G426 fills it at all are what the next drive is for.
+     */
+    static final class W4m {
+        static final int GROUP = 0x800400;
+        final float yawRate, latAcc, lonAcc, vFL, vFR, vRL, vRR, steer;
+        final int gear, interval;
+        final long tick;
+
+        private W4m(float yawRate, float latAcc, float lonAcc, float vFL, float vFR, float vRL, float vRR,
+                    float steer, int gear, long tick, int interval) {
+            this.yawRate = yawRate; this.latAcc = latAcc; this.lonAcc = lonAcc;
+            this.vFL = vFL; this.vFR = vFR; this.vRL = vRL; this.vRR = vRR; this.steer = steer;
+            this.gear = gear; this.tick = tick; this.interval = interval;
+        }
+
+        /** Null when every float is NaN (the getters failed): nothing worth a row. */
+        static W4m of(float yawRate, float latAcc, float lonAcc, float vFL, float vFR, float vRL, float vRR,
+                      float steer, int gear, long tick, int interval) {
+            float[] all = {yawRate, latAcc, lonAcc, vFL, vFR, vRL, vRR, steer};
+            for (float v : all) {
+                if (!Float.isNaN(v)) {
+                    return new W4m(yawRate, latAcc, lonAcc, vFL, vFR, vRL, vRR, steer, gear, tick, interval);
+                }
+            }
+            return null;
+        }
+    }
+
+    /**
+     * The census probe's CSV cell: {@code hexid=value} pairs joined by ';' (never a comma) for the values that
+     * changed since the last row, and every value once a minute so a drive can be reconstructed from any point.
+     */
+    static final class ProbeDiff {
+        static final long FULL_EVERY_MS = 60_000;
+        private final int[] ids;
+        private final double[] last;
+        private long lastFullMs = Long.MIN_VALUE;
+
+        ProbeDiff(int[] ids) {
+            this.ids = ids.clone();
+            last = new double[ids.length];
+        }
+
+        String row(long nowMs, double[] values) {
+            boolean full = lastFullMs == Long.MIN_VALUE || nowMs - lastFullMs >= FULL_EVERY_MS;
+            if (full) {
+                lastFullMs = nowMs;
+            }
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < ids.length; i++) {
+                double v = values[i];
+                boolean same = Double.compare(v, last[i]) == 0;
+                last[i] = v;
+                if (!full && same) {
+                    continue;
+                }
+                if (sb.length() > 0) sb.append(';');
+                sb.append(Integer.toHexString(ids[i])).append('=');
+                if (Double.isNaN(v)) {
+                    sb.append("nan");
+                } else if (v == Math.rint(v) && Math.abs(v) < 1e15) {
+                    sb.append((long) v);
+                } else {
+                    sb.append((float) v);
+                }
+            }
+            return sb.toString();
+        }
+    }
+
     /** True when a failure means the vendor SDK isn't on this unit at all (stop trying), not a transient error. */
     static boolean isMissingSdk(Throwable t) {
         for (Throwable c = t; c != null; c = c.getCause()) {

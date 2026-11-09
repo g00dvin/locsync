@@ -145,4 +145,27 @@ public class CarSignalsTest {
         assertFalse(CarSignals.isMissingSdk(new NoSuchMethodException("x")));   // hidden API: retry, not give up
         assertFalse(CarSignals.isMissingSdk(new IllegalStateException("x")));
     }
+
+    // The census probe: only what changed goes in a row, plus everything once a minute, so a drive's
+    // worth of ~100 AdaptAPI sensors stays small but every value can still be reconstructed.
+    @Test
+    public void probeDiffWritesChangesAndFullEveryMinute() {
+        CarSignals.ProbeDiff d = new CarSignals.ProbeDiff(new int[]{0x100100, 0x200200});
+        assertEquals("100100=1.5;200200=3", d.row(0, new double[]{1.5, 3}));
+        assertEquals("", d.row(1000, new double[]{1.5, 3}));
+        assertEquals("200200=4", d.row(2000, new double[]{1.5, 4}));
+        assertEquals("100100=nan", d.row(3000, new double[]{Double.NaN, 4}));
+        assertEquals("", d.row(4000, new double[]{Double.NaN, 4}));
+        assertEquals("100100=nan;200200=4", d.row(60_000, new double[]{Double.NaN, 4}));
+    }
+
+    @Test
+    public void w4mNullWhenAllNaN() {
+        float n = Float.NaN;
+        assertEquals(null, CarSignals.W4m.of(n, n, n, n, n, n, n, n, 0, 0, 0));
+        CarSignals.W4m w = CarSignals.W4m.of(0.1f, n, n, n, n, n, n, n, 3, 5, 20);
+        assertEquals(0.1f, w.yawRate, 0);
+        assertEquals(3, w.gear);
+        assertEquals(5, w.tick);
+    }
 }

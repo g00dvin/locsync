@@ -72,15 +72,15 @@ public class TrackRecorderTest {
         for (String c : new String[]{"car_speed", "car_speed_ipk", "car_dt_ms", "car_steer_bits", "gyro_yaw_deg", "gyro_dt_ms"}) {
             assertEquals(c, "", noCar[header.indexOf(c)]);
         }
-        assertTrue(TrackRecorder.HEADER.endsWith(",car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms,car_gear,out_src"));
+        assertTrue(TrackRecorder.HEADER.contains(",car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms,car_gear,out_src,"));
         // Car read at 1500, fix arrived at 2000: the car value is 500 ms older than the fix.
-        assertTrue(lines.get(2), lines.get(2).endsWith(",36.00,37.80,-500,95,,,D,"));
-        assertTrue(lines.get(3), lines.get(3).endsWith(",,,,,,,D,"));             // no speed: no car_dt_ms
+        assertTrue(lines.get(2), lines.get(2).endsWith(",36.00,37.80,-500,95,,,D,,,,,,,,,,,,,,,,"));
+        assertTrue(lines.get(3), lines.get(3).endsWith(",,,,,,,D,,,,,,,,,,,,,,,,"));             // no speed: no car_dt_ms
         // Newest gyro sample at 2040, fix at 2060.
-        assertTrue(lines.get(4), lines.get(4).endsWith(",,37.80,-500,,2.292,-20,D,"));
+        assertTrue(lines.get(4), lines.get(4).endsWith(",,37.80,-500,,2.292,-20,D,,,,,,,,,,,,,,,,"));
         assertTrue(lines.get(5).contains(",out,"));
-        assertTrue(lines.get(5), lines.get(5).endsWith(",,,2.292,-60,,dr"));
-        assertTrue(lines.get(6), lines.get(6).endsWith(",kf"));
+        assertTrue(lines.get(5), lines.get(5).endsWith(",,,2.292,-60,,dr,,,,,,,,,,,,,,,"));
+        assertTrue(lines.get(6), lines.get(6).endsWith(",kf,,,,,,,,,,,,,,,"));
     }
 
     // Recording is appended across service restarts; the header is written only once.
@@ -103,8 +103,8 @@ public class TrackRecorderTest {
     public void carRowWritesSpeedAndGear() throws Exception {
         File dir = tmp.newFolder();
         TrackRecorder r = new TrackRecorder(dir, new GyroYaw());
-        r.car(3000, 12.5f, "R");
-        r.car(3200, null, null);
+        r.car(3000, 12.5f, "R", null, null, Float.NaN, null);
+        r.car(3200, null, null, null, null, Float.NaN, null);
         r.close();
         List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
         List<String> header = java.util.Arrays.asList(TrackRecorder.HEADER.split(","));
@@ -117,5 +117,30 @@ public class TrackRecorderTest {
         String[] none = lines.get(2).split(",", -1);
         assertEquals(header.size(), none.length);
         assertEquals("", none[header.indexOf("car_speed")]);
+    }
+
+    // The record-everything build: the car's W4m group, the raw accelerometer, the gyro temperature and the
+    // AdaptAPI census probe ride on the 5 Hz car rows.
+    @Test
+    public void carRowWritesW4mImuAndProbe() throws Exception {
+        File dir = tmp.newFolder();
+        TrackRecorder r = new TrackRecorder(dir, new GyroYaw());
+        CarSignals.W4m w = CarSignals.W4m.of(0.05f, -1.25f, 0.5f, 10f, 10.1f, 9.9f, 10f, 12f, 3, 123456L, 20);
+        r.car(3000, 36f, "D", w, new float[]{0.1f, -9.6f, 2.2f}, 31.5f, "100100=10;200200=3");
+        r.close();
+        List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
+        List<String> header = java.util.Arrays.asList(TrackRecorder.HEADER.split(","));
+        assertTrue(TrackRecorder.HEADER.endsWith(
+                ",w4m_tick,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,gyro_temp,probe"));
+        String[] c = lines.get(1).split(",", -1);
+        assertEquals(header.size(), c.length);
+        assertEquals("123456", c[header.indexOf("w4m_tick")]);
+        assertEquals("0.0500", c[header.indexOf("yaw_rate")]);
+        assertEquals("-1.250", c[header.indexOf("lat_acc")]);
+        assertEquals("10.100", c[header.indexOf("v_fr")]);
+        assertEquals("3", c[header.indexOf("w4m_gear")]);
+        assertEquals("-9.600", c[header.indexOf("acc_y")]);
+        assertEquals("31.5", c[header.indexOf("gyro_temp")]);
+        assertEquals("100100=10;200200=3", c[header.indexOf("probe")]);
     }
 }
