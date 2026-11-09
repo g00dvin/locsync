@@ -35,7 +35,7 @@ final class CarSignals {
     static final int RANGE = 0x100800;          // ENDURANCE_MILEAGE, km
     static final int OUTSIDE_TEMP = 0x100b00;   // TEMPERATURE_AMBIENT, °C (unverified)
     static final int ODOMETER = 0x100700;       // ODOMETER, km
-    static final int STEERING_ANGLE = 0x101000; // STEERING_WHEEL_ANGLE: logged raw only, readability unknown
+    static final int STEERING_ANGLE = 0x101000; // STEERING_WHEEL_ANGLE: raw bits to the track log, readability unknown
     // event (getSensorEvent)
     static final int GEAR = 0x200200;
 
@@ -53,10 +53,13 @@ final class CarSignals {
     static final class Snapshot {
         final Float speedKmh, speedIpkKmh, fuelLitres, rangeKm, outsideTempC, odometerKm;
         final String gear;
+        // Steering angle as the float's raw bits: the encoding is unknown (fuel turned out to be an
+        // integer in the bits), so it is only recorded. Not counted by hasAny(): it reads 0 parked.
+        final Integer steerBits;
         final long readElapsedMs;   // SystemClock.elapsedRealtime() of the read; 0 for EMPTY
 
         Snapshot(Float speedKmh, Float speedIpkKmh, String gear, Float fuelLitres, Float rangeKm,
-                 Float outsideTempC, Float odometerKm, long readElapsedMs) {
+                 Float outsideTempC, Float odometerKm, Integer steerBits, long readElapsedMs) {
             this.speedKmh = speedKmh;
             this.speedIpkKmh = speedIpkKmh;
             this.gear = gear;
@@ -64,6 +67,7 @@ final class CarSignals {
             this.rangeKm = rangeKm;
             this.outsideTempC = outsideTempC;
             this.odometerKm = odometerKm;
+            this.steerBits = steerBits;
             this.readElapsedMs = readElapsedMs;
         }
 
@@ -72,19 +76,20 @@ final class CarSignals {
                     || rangeKm != null || outsideTempC != null || odometerKm != null;
         }
 
-        static final Snapshot EMPTY = new Snapshot(null, null, null, null, null, null, null, 0);
+        static final Snapshot EMPTY = new Snapshot(null, null, null, null, null, null, null, null, 0);
     }
 
     /** Raw AdaptAPI readings → a Snapshot in display units. */
     static Snapshot fromRaw(float speedMps, float speedIpkMps, int gearCode, float fuel, float range,
-                            float temp, float odo, long readElapsedMs) {
+                            float temp, float odo, float steer, long readElapsedMs) {
         Float odometer = latest(odo);
         // A real car never reads 0 km: that's the wake-up placeholder, and while it shows, fuel and
         // range zeros are placeholders too. With a real odometer a zero range (empty tank) is kept.
         boolean waking = odometer != null && odometer <= 0;
         return new Snapshot(speedKmh(latest(speedMps)), speedKmh(latest(speedIpkMps)), gearLabel(gearCode),
                 waking ? positive(fuelLitres(fuel)) : fuelLitres(fuel), waking ? positive(latest(range)) : latest(range),
-                latest(temp), waking ? null : odometer, readElapsedMs);
+                latest(temp), waking ? null : odometer,
+                Float.floatToRawIntBits(steer) == 1 ? null : Float.floatToRawIntBits(steer), readElapsedMs);
     }
 
     /**

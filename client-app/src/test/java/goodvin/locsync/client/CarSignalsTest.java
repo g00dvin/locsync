@@ -46,7 +46,7 @@ public class CarSignalsTest {
 
     @Test
     public void snapshotFromRaw() {
-        CarSignals.Snapshot s = CarSignals.fromRaw(10f, 10.5f, 0x200220, 38f, 408f, 0.5f, 23275f, 1234L);
+        CarSignals.Snapshot s = CarSignals.fromRaw(10f, 10.5f, 0x200220, 38f, 408f, 0.5f, 23275f, S, 1234L);
         assertEquals(36f, s.speedKmh, 1e-4f);
         assertEquals(37.8f, s.speedIpkKmh, 1e-4f);
         assertEquals("D", s.gear);
@@ -55,19 +55,31 @@ public class CarSignalsTest {
         assertEquals(0.5f, s.outsideTempC, 0f);
         assertEquals(23275f, s.odometerKm, 0f);
         assertEquals(1234L, s.readElapsedMs);
-        CarSignals.Snapshot waking = CarSignals.fromRaw(0f, 0f, -1, 0f, 0f, 0f, 0f, 1L);   // odometer 0: placeholders
+        CarSignals.Snapshot waking = CarSignals.fromRaw(0f, 0f, -1, 0f, 0f, 0f, 0f, S, 1L);   // odometer 0: placeholders
         assertNull(waking.odometerKm);
         assertNull(waking.fuelLitres);
         assertNull(waking.rangeKm);
         assertEquals(0f, waking.outsideTempC, 0f);                                          // 0 °C is real
-        assertEquals(5f, CarSignals.fromRaw(0f, 0f, -1, 5f, 0f, 0f, 0f, 1L).fuelLitres, 0f);
-        CarSignals.Snapshot empty = CarSignals.fromRaw(0f, 0f, -1, 0f, 0f, 0f, 23275f, 1L);
+        assertEquals(5f, CarSignals.fromRaw(0f, 0f, -1, 5f, 0f, 0f, 0f, S, 1L).fuelLitres, 0f);
+        CarSignals.Snapshot empty = CarSignals.fromRaw(0f, 0f, -1, 0f, 0f, 0f, 23275f, S, 1L);
         assertEquals(0f, empty.rangeKm, 0f);                                               // empty tank is real
         assertEquals(0f, empty.fuelLitres, 0f);
-        assertEquals(0f, CarSignals.fromRaw(0f, 0f, -1, 0f, 0f, 0f, S, 1L).rangeKm, 0f);  // no odometer: keep zeros
-        assertNull(CarSignals.fromRaw(S, S, -1, S, S, S, S, 1L).speedIpkKmh);
-        assertFalse(CarSignals.fromRaw(S, S, -1, S, S, S, S, 1L).hasAny());
-        assertTrue(CarSignals.fromRaw(0f, S, -1, S, S, S, S, 1L).hasAny());               // standing still is data
+        assertEquals(0f, CarSignals.fromRaw(0f, 0f, -1, 0f, 0f, 0f, S, S, 1L).rangeKm, 0f);  // no odometer: keep zeros
+        assertNull(CarSignals.fromRaw(S, S, -1, S, S, S, S, S, 1L).speedIpkKmh);
+        assertFalse(CarSignals.fromRaw(S, S, -1, S, S, S, S, S, 1L).hasAny());
+        assertTrue(CarSignals.fromRaw(0f, S, -1, S, S, S, S, S, 1L).hasAny());               // standing still is data
+    }
+
+    // Steering is kept as the raw float bits: its encoding is unknown (fuel turned out to be an
+    // integer in the bits). It reads 0 parked, like the dead odometer, so alone it isn't data.
+    @Test
+    public void steeringKeptRaw() {
+        assertEquals(Integer.valueOf(95), CarSignals.fromRaw(S, S, -1, S, S, S, S, Float.intBitsToFloat(95), 1L).steerBits);
+        assertEquals(Integer.valueOf(Float.floatToRawIntBits(-12.5f)),
+                CarSignals.fromRaw(S, S, -1, S, S, S, S, -12.5f, 1L).steerBits);
+        assertNull(CarSignals.fromRaw(S, S, -1, S, S, S, S, S, 1L).steerBits);
+        assertNull(CarSignals.Snapshot.EMPTY.steerBits);
+        assertFalse(CarSignals.fromRaw(S, S, -1, S, S, S, S, 0f, 1L).hasAny());
     }
 
     // G426 packs integer millilitres into the float's bits; a normal float is litres already.
@@ -78,7 +90,7 @@ public class CarSignalsTest {
         assertEquals(0f, CarSignals.fuelLitres(0f), 0f);
         assertNull(CarSignals.fuelLitres(S));                       // unsupported sentinel (bits 0x1)
         assertEquals(-1f, CarSignals.fuelLitres(-1f), 0f);           // negatives aren't subnormal-decoded
-        assertEquals(29.799f, CarSignals.fromRaw(0f, 0f, -1, Float.intBitsToFloat(29799), 364f, 2.6f, 0f, 1L)
+        assertEquals(29.799f, CarSignals.fromRaw(0f, 0f, -1, Float.intBitsToFloat(29799), 364f, 2.6f, 0f, S, 1L)
                 .fuelLitres, 1e-4f);                                 // the logged case, odometer 0
     }
 

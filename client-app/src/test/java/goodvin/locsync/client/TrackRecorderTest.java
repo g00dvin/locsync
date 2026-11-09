@@ -45,13 +45,16 @@ public class TrackRecorderTest {
                 true, 10.0f, true, 90.0f, 0.3f, 5.0f, 0.04f, 40, f, null);
         r.fix(2000, 1_700_000_001_000L, "gps", 0, 55.75, 37.6, 150.0, 4.0f,
                 false, 0f, false, 0f, 0f, 0f, 0.05f, 50, f,
-                CarSignals.fromRaw(10f, 10.5f, 0x200220, 38f, 408f, 0.5f, 23275f, 1500L));
+                CarSignals.fromRaw(10f, 10.5f, 0x200220, 38f, 408f, 0.5f, 23275f, Float.intBitsToFloat(95), 1500L));
         r.fix(2050, 1_700_000_001_050L, "gps", 0, 55.75, 37.6, 150.0, 4.0f,
                 false, 0f, false, 0f, 0f, 0f, 0.05f, 50, f,
-                CarSignals.fromRaw(S, S, 0x200220, 38f, 408f, 0.5f, 23275f, 1500L));   // car data, no speed
+                CarSignals.fromRaw(S, S, 0x200220, 38f, 408f, 0.5f, 23275f, S, 1500L));   // car data, no speed
+        r.gyro.accel(2_000_000_000L, 0, -9.8f, 0);
+        r.gyro.gyro(2_000_000_000L, 0, 1, 0);
+        r.gyro.gyro(2_040_000_000L, 0, 1, 0);   // 1 rad/s clockwise for 40 ms = 2.292°
         r.fix(2060, 1_700_000_001_060L, "gps", 0, 55.75, 37.6, 150.0, 4.0f,
                 false, 0f, false, 0f, 0f, 0f, 0.05f, 50, f,
-                CarSignals.fromRaw(S, 10.5f, 0x200220, 38f, 408f, 0.5f, 23275f, 1560L));  // cluster speed only
+                CarSignals.fromRaw(S, 10.5f, 0x200220, 38f, 408f, 0.5f, 23275f, S, 1560L));  // cluster speed only
         r.out(2100, 55.75, 37.6, true, 10.0, 90.0, 6.0, 0.3, Double.NaN, 100);
         r.out(2200, 55.75, 37.6, false, 0.1, 0, 6.0, Double.NaN, Double.NaN, 200);
         r.close();
@@ -65,14 +68,18 @@ public class TrackRecorderTest {
         }
         assertTrue(lines.get(1).contains(",fix,"));
         String[] noCar = lines.get(1).split(",", -1);
-        assertEquals("", noCar[cols - 3]);   // car_speed
-        assertEquals("", noCar[cols - 2]);   // car_speed_ipk
-        assertEquals("", noCar[cols - 1]);   // car_dt_ms
+        List<String> header = java.util.Arrays.asList(TrackRecorder.HEADER.split(","));
+        for (String c : new String[]{"car_speed", "car_speed_ipk", "car_dt_ms", "car_steer_bits", "gyro_yaw_deg", "gyro_dt_ms"}) {
+            assertEquals(c, "", noCar[header.indexOf(c)]);
+        }
+        assertTrue(TrackRecorder.HEADER.endsWith(",car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms"));
         // Car read at 1500, fix arrived at 2000: the car value is 500 ms older than the fix.
-        assertTrue(lines.get(2), lines.get(2).endsWith(",36.00,37.80,-500"));
-        assertTrue(lines.get(3), lines.get(3).endsWith(",,,"));                // no speed: no car_dt_ms
-        assertTrue(lines.get(4), lines.get(4).endsWith(",,37.80,-500"));
+        assertTrue(lines.get(2), lines.get(2).endsWith(",36.00,37.80,-500,95,,"));
+        assertTrue(lines.get(3), lines.get(3).endsWith(",,,,,,"));             // no speed: no car_dt_ms
+        // Newest gyro sample at 2040, fix at 2060.
+        assertTrue(lines.get(4), lines.get(4).endsWith(",,37.80,-500,,2.292,-20"));
         assertTrue(lines.get(5).contains(",out,"));
+        assertTrue(lines.get(5), lines.get(5).endsWith(",,,2.292,-60"));
     }
 
     // Recording is appended across service restarts; the header is written only once.
