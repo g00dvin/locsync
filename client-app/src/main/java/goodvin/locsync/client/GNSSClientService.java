@@ -34,8 +34,8 @@ import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
 import android.os.Build;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
-import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
 import goodvin.locsync.shared.AppLog;
@@ -67,7 +67,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private static final String CHANNEL_ID = "GNSSClientChannel";
     private static final int NOTIFICATION_ID = 1;
 
-    private static GNSSClientService instance = null;
+    private static volatile GNSSClientService instance = null;
 
     private ConnectionManager connectionManager;
     private MockLocationManager mockLocationManager;
@@ -128,7 +128,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     // The car's own signals while the transport runs (MainActivity's reader stops in onPause): wheel
     // speed for the filter and the output, and the track log's car columns. No-op off eCarX units.
     // ponytail: separate AdaptAPI connection from MainActivity's; share one if the head unit objects to two
-    // Created and nulled on the main thread (see startTransport/stopTransport); volatile for other readers.
+    // Created and nulled on the service thread (see startTransport/stopTransport); volatile for other readers.
     private volatile VehicleData vehicle;
     private static final long VEHICLE_POLL_MS = 200;
     // Wheel speed as a velocity measurement: far steadier than Doppler in town (no multipath). This is
@@ -136,14 +136,26 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private static final double CAR_SPEED_ACC_MPS = 0.15;
     private static final long CAR_SPEED_MAX_AGE_MS = 300;  // newest wheel sample still "live" for output
     private static final int CALIBRATION_SAVE_EVERY = 60;  // accepted fixes between saves
-    private CarSignals.WheelCalibration wheelCalibration;  // main thread; created in startTransport
+    private CarSignals.WheelCalibration wheelCalibration;  // service thread; created in startTransport
     private final Runnable smoothingTick = this::smoothingTick;
 
     private volatile DatagramSocket udpSocket;
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    // One thread for all of the service's work (fix handling, the 10 Hz output, discovery, metrics,
+    // network callbacks), off the main looper: the service blocked the UI for 17 ms median every
+    // 100 ms, and UI work delayed the output ticks (up to 434 ms). Static, so it outlives a service
+    // instance: work queued by an old instance runs before a new one's (FIFO).
+    private static final HandlerThread WORKER = startWorker();
+    private final Handler handler = new Handler(WORKER.getLooper());
+
+    private static HandlerThread startWorker() {
+        // Display priority: a navigator draws this output.
+        HandlerThread t = new HandlerThread("locsync-client", android.os.Process.THREAD_PRIORITY_DISPLAY);
+        t.start();
+        return t;
+    }
     private final Metrics metrics = new Metrics();
     private AndroidSystemStatsReader statsReader;
-    private CsvLog metricsLog;                       // metrics-<app>.csv; main thread only
+    private CsvLog metricsLog;                       // metrics-<app>.csv; service thread only
     private final StringBuilder metricsRow = new StringBuilder(160);
     private volatile boolean metricsPrimed = false;
     private long lastTickWallMs = 0;
@@ -182,7 +194,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         boolean was = filterStatsWanted;
         filterStatsWanted = wanted;
         GNSSClientService s = instance;
-        if (wanted && !was && s != null) s.mainHandler.post(s::broadcastFilterStats);
+        if (wanted && !was && s != null) s.handler.post(s::broadcastFilterStats);
     }
 
     public static boolean isServiceRunning() {
@@ -215,10 +227,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
         AppLog.setDebug(Preferences.debugLoggingEnabled(this));
         notificationManager = getSystemService(NotificationManager.class);
-        mockLocationManager = new MockLocationManager(this);
+        mockLocationManager = new MockLocationManager(this, handler);
         connectionManager = new ConnectionManager(this, this);
 
-        registerWiFiStateReceiver();
         createNotificationChannel();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -229,6 +240,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
 
         instance = this;
+        // Last: its callbacks start the transport on the service thread, which needs all of the above.
+        registerWiFiStateReceiver();
     }
 
     private void registerWiFiStateReceiver() {
@@ -237,7 +250,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                 .build();
 
         ConnectivityManager connectivityManager = getSystemService(ConnectivityManager.class);
-        connectivityManager.registerNetworkCallback(networkRequest, networkCallback);
+        connectivityManager.registerNetworkCallback(networkRequest, networkCallback, handler);
     }
 
     @Override
@@ -258,11 +271,16 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         } catch (IllegalArgumentException e) {
             // never registered (onCreate failed before it)
         }
-        stopTransport("Service destroyed");
-        executor.shutdown();
-        if (metricsLog != null) {
-            metricsLog.close();
-        }
+        // On the service thread, behind any network callback already queued there, so a late
+        // onAvailable can't restart the transport after this stop.
+        handler.post(() -> {
+            stopTransport("Service destroyed");
+            mockLocationManager.shutdown();   // now, not in 5 s; also cancels a disable still pending
+            executor.shutdown();
+            if (metricsLog != null) {
+                metricsLog.close();
+            }
+        });
     }
 
     public IBinder onBind(Intent intent) {
@@ -331,7 +349,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             udpSocket = null;
             return;
         }
-        mainHandler.post(helloTick);
+        handler.post(helloTick);
 
         stateElapsedMs = 0;
         filterConfig = Preferences.filterConfig(this);
@@ -340,20 +358,20 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
         nextTickUptimeMs = 0;
         outputMoving = false;
-        // Created and stopped on the main thread, so a quick stop/start can't leak or reorder them.
-        mainHandler.post(() -> {
+        // Created and stopped on the service thread, so a quick stop/start can't leak or reorder them.
+        handler.post(() -> {
             if (!running.get() || vehicle != null) {
                 return;
             }
             wheelCalibration = new CarSignals.WheelCalibration(Preferences.carSpeedFactor(this));
-            VehicleData v = new VehicleData(this, mainHandler, null, VEHICLE_POLL_MS);
+            VehicleData v = new VehicleData(this, handler, null, VEHICLE_POLL_MS);
             v.start();
             vehicle = v;
         });
-        mainHandler.post(smoothingTick);
+        handler.post(smoothingTick);
 
         lastTickWallMs = 0;
-        mainHandler.post(this::startMetricsSampler);
+        handler.post(this::startMetricsSampler);
     }
 
     private void stopTransport(String reason) {
@@ -361,9 +379,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             return;
         }
         AppLog.i(TAG, "Stopping transport: " + reason);
-        mainHandler.removeCallbacks(helloTick);
-        mainHandler.removeCallbacks(smoothingTick);
-        mainHandler.removeCallbacks(metricsTick);
+        handler.removeCallbacks(helloTick);
+        handler.removeCallbacks(smoothingTick);
+        handler.removeCallbacks(metricsTick);
         metricsPrimed = false;
         if (udpSocket != null) {
             udpSocket.close();
@@ -378,7 +396,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         outAccuracy = outSpeedAcc = outBearingAcc = Double.NaN;
         filtSpeedAcc = filtBearingAcc = inSpeedAcc = inBearingAcc = Double.NaN;
         closeTrackRecorder();
-        mainHandler.post(() -> {
+        handler.post(() -> {
             VehicleData v = vehicle;
             vehicle = null;
             if (v != null) {
@@ -391,11 +409,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         lastBroadcastSatelliteCount = -1;
         broadcastSatelliteStatusToWidget(0);
 
-        if (instance == null) {
-            mockLocationManager.shutdown();
-        } else {
-            mockLocationManager.stopMockLocationProvider(5000);
-        }
+        mockLocationManager.stopMockLocationProvider(5000);
 
         connectionManager.setState(ConnectionManager.ConnectionState.DISCONNECTED, reason, null);
     }
@@ -433,7 +447,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     "Waiting for server...", connectionManager.getServerAddress());
             connectionManager.clearLearnedServerAddress();
         }
-        mainHandler.postDelayed(helloTick, HELLO_INTERVAL_MS);
+        handler.postDelayed(helloTick, HELLO_INTERVAL_MS);
     }
 
     /**
@@ -641,14 +655,17 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             intent.setPackage(getPackageName());
             sendBroadcast(intent);
 
-            // Feed the fix into the Kalman filter on the main thread; the smoothing loop
-            // (also main-thread) reads/predicts the same filter, so all access is confined
+            // Feed the fix into the Kalman filter on the service thread; the smoothing loop
+            // (same thread) reads/predicts the same filter, so all access is confined
             // to one thread and no synchronization is needed.
-            final LocationProto.LocationUpdate u = locationUpdate;   // immutable: read on the main thread below
-            // Taken on the receive thread, before the hop to the main thread, so queueing there
+            final LocationProto.LocationUpdate u = locationUpdate;   // immutable: read on the service thread below
+            // Taken on the receive thread, before the hop to the service thread, so queueing there
             // doesn't count as network delay.
             final long arrivalElapsed = SystemClock.elapsedRealtime();
-            mainHandler.post(() -> {
+            handler.post(() -> {
+                if (!running.get()) {
+                    return;   // queued before stopTransport: would reopen the track log after it
+                }
                 try {
                     final long fixTs = u.getTimestamp();
                     // Skip keepalive resends of a fix already fed to the filter. The server re-sends the
@@ -795,7 +812,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         if (nextTickUptimeMs <= nowUptime || nextTickUptimeMs > nowUptime + intervalMs) {
             nextTickUptimeMs = nowUptime + intervalMs; // fell behind, first tick or rate switch: resync
         }
-        mainHandler.postAtTime(smoothingTick, nextTickUptimeMs);
+        handler.postAtTime(smoothingTick, nextTickUptimeMs);
     }
 
     /** One log line per change of the experiment switches, to tell the test-drive runs apart in the data. */
@@ -886,14 +903,17 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     }
 
     private void startMetricsSampler() {
+        if (!running.get()) {
+            return;   // stopped before this posted start ran: don't leave a tick loop behind
+        }
         if (statsReader == null) statsReader = new AndroidSystemStatsReader(this);
         if (metricsLog == null) {
             metricsLog = new CsvLog(new java.io.File(new java.io.File(getCacheDir(), "logs"), "metrics-client.csv"),
                     MetricsSnapshot.csvHeader(), 5_000_000);
         }
-        mainHandler.removeCallbacks(metricsTick);
+        handler.removeCallbacks(metricsTick);
         metricsPrimed = false;
-        mainHandler.postDelayed(metricsTick, METRICS_INTERVAL_MS);
+        handler.postDelayed(metricsTick, METRICS_INTERVAL_MS);
     }
 
     private void sampleMetrics() {
@@ -933,7 +953,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             trackRecorder.flush();
         }
         if (filterStatsWanted) broadcastFilterStats();
-        mainHandler.postDelayed(metricsTick, METRICS_INTERVAL_MS);
+        handler.postDelayed(metricsTick, METRICS_INTERVAL_MS);
     }
 
     /**
@@ -1133,6 +1153,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     }
 
     private void updateNotification() {
+        if (instance != this) {
+            return;   // destroyed: the posted stop runs after the system removed the notification
+        }
         lastNotificationElapsedMs = SystemClock.elapsedRealtime();
         boolean isConnected = connectionManager != null && connectionManager.isConnected();
 

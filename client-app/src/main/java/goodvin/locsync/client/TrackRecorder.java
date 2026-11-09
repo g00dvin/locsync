@@ -30,7 +30,7 @@ import goodvin.locsync.shared.CsvLog;
  * <p>One CSV for both row kinds ({@code type} = fix | out); columns that don't apply are empty.
  * Fix rows also carry the head unit's wheel and cluster speed ({@code car_*}, empty off eCarX units)
  * so GPS speed can be compared with the car's.
- * Called from the service's main thread only.
+ * Called from the service thread only.
  */
 final class TrackRecorder {
     private static final long MAX_BYTES = 30L * 1024 * 1024;

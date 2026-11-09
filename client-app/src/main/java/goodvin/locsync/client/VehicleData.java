@@ -32,7 +32,8 @@ import java.util.Locale;
  * builds and runs without the vendor SDK and degrades to "no data" on any other unit. App-level,
  * vendor-supported path: no root, no telnet. IDs and decoding live in {@link CarSignals}.
  *
- * <p>{@link #start()} / {@link #stop()} are called on the main thread. Each start spins up a fresh
+ * <p>{@link #start()} / {@link #stop()} are called on the owner's thread (MainActivity's main
+ * thread, the service's own thread). Each start spins up a fresh
  * {@link Poller} (own thread and connection); only the current poller may publish, so a quick
  * stop/start can't let an old thread overwrite the new one's results.
  */
@@ -47,8 +48,8 @@ final class VehicleData {
     private static volatile boolean sdkMissing;
 
     private final Context context;
-    private final Handler uiHandler;      // delivers onUpdate back to the caller's (UI) thread
-    private final Runnable onUpdate;      // called on the UI thread after each full read; may be null
+    private final Handler uiHandler;      // delivers onUpdate back to the caller's thread
+    private final Runnable onUpdate;      // called on the caller's thread after each full read; may be null
     private final long pollMs;
     private final int fullEvery;          // polls per full read
     private final CarSignals.SpeedHistory speeds = new CarSignals.SpeedHistory();
@@ -139,7 +140,7 @@ final class VehicleData {
             worker.post(this);
         }
 
-        /** Main thread. Disconnect runs on the worker before it quits (quitSafely drains posted work). */
+        /** Caller's thread. Disconnect runs on the worker before it quits (quitSafely drains posted work). */
         void shutdown() {
             stopped = true;
             worker.removeCallbacks(this);

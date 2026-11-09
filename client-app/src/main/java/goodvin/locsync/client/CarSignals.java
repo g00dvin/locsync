@@ -134,7 +134,7 @@ final class CarSignals {
 
     /**
      * Recent wheel speeds (km/h) by read time, to sample the car's speed at a GPS fix's measurement
-     * time. Written by the poll thread, read by the main thread.
+     * time. Written by the poll thread, read by the owner's thread.
      */
     static final class SpeedHistory {
         static final long MAX_GAP_MS = 600;     // don't interpolate across a longer hole
