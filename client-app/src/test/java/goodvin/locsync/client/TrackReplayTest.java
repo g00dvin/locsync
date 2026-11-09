@@ -547,9 +547,9 @@ public class TrackReplayTest {
     public void loadMotionReadsCarRows() throws Exception {
         Path dir = Files.createTempDirectory("track");
         TrackRecorder r = new TrackRecorder(dir.toFile(), new GyroYaw());
-        r.car(1000, 36f, "D");
-        r.car(1200, 36f, "R");
-        r.car(1400, 18f, "R");
+        r.car(1000, 36f, "D", null, null, Float.NaN, null);
+        r.car(1200, 36f, "R", null, null, Float.NaN, null);
+        r.car(1400, 18f, "R", null, null, Float.NaN, null);
         r.close();
         Motion m = loadMotion(TrackRecorder.fileFor(dir.toFile()).toPath());
         org.junit.Assert.assertEquals(600, m.maxGapMs);

@@ -40,7 +40,9 @@ final class TrackRecorder {
     static final String HEADER = "wall_ms,elapsed_ms,type,fix_ts,provider,sats,lat,lon,alt,acc,"
             + "speed,bearing,spd_acc,brg_acc,age_s,latency_ms,horizon_ms,"
             + "f_lat,f_lon,f_speed,f_bearing,nis,stationary,turn_dps,sigma_a,"
-            + "car_speed,car_speed_ipk,car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms,car_gear,out_src";
+            + "car_speed,car_speed_ipk,car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms,car_gear,out_src,"
+            + "w4m_tick,w4m_int,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,amb_temp,probe";
+    private static final String NO_CAR_EXTRA = ",,,,,,,,,,,,,,,,";   // the 16 car-row-only columns
 
     final GyroYaw gyro;   // the service's, fed by its sensor listener
     private final CsvLog log;
@@ -87,14 +89,42 @@ final class TrackRecorder {
         end(car == null ? null : car.gear, null);
     }
 
-    /** One wheel-speed poll (km/h, null = not readable) and the newest gear. */
-    void car(long elapsedMs, Float speedKmh, String gear) {
+    /**
+     * One wheel-speed poll (km/h, null = not readable) and the newest gear, with what else the car and the
+     * head unit said at that moment: the W4m group, the raw accelerometer (m/s²), the ambient-temperature sensor (°C)
+     * and the AdaptAPI census probe (once a second). Any of them may be null/NaN.
+     */
+    void car(long elapsedMs, Float speedKmh, String gear, CarSignals.W4m w4m, float[] acc, float ambTempC,
+             String probe) {
         start(elapsedMs, "car");
         sb.append(",,,,,,,,,,,,,,,,,,,,,,");   // fix_ts .. sigma_a
         optional(speedKmh, 2);
         sb.append(",");                           // car_speed_ipk; car_dt_ms empty (tail adds its comma)
         tail(elapsedMs, null);
-        end(gear, null);
+        endWith(gear, null);
+        if (w4m != null) {
+            sb.append(',').append(w4m.tick).append(',').append(w4m.interval);
+            fixed(w4m.yawRate, 4); fixed(w4m.latAcc, 3); fixed(w4m.lonAcc, 3);
+            fixed(w4m.vFL, 3); fixed(w4m.vFR, 3); fixed(w4m.vRL, 3); fixed(w4m.vRR, 3); fixed(w4m.steer, 2);
+            sb.append(',').append(w4m.gear);
+        } else {
+            sb.append(",,,,,,,,,,,");
+        }
+        if (acc != null) {
+            fixed(acc[0], 3); fixed(acc[1], 3); fixed(acc[2], 3);
+        } else {
+            sb.append(",,,");
+        }
+        fixed(ambTempC, 1);
+        sb.append(',');
+        if (probe != null) sb.append(probe);
+        log.writeLine(sb);
+    }
+
+    /** ',' then the value; NaN leaves the cell empty. */
+    private void fixed(double v, int decimals) {
+        sb.append(',');
+        if (!Double.isNaN(v)) CsvLog.appendFixed(sb, v, decimals);
     }
 
     /** A location handed to the mock provider. NaN accuracies are written as empty cells. */
@@ -113,11 +143,16 @@ final class TrackRecorder {
     }
 
     private void end(String gear, String src) {
+        endWith(gear, src);
+        sb.append(NO_CAR_EXTRA);
+        log.writeLine(sb);
+    }
+
+    private void endWith(String gear, String src) {
         sb.append(',');
         if (gear != null) sb.append(gear);
         sb.append(',');
         if (src != null) sb.append(src);
-        log.writeLine(sb);
     }
 
     void flush() {
