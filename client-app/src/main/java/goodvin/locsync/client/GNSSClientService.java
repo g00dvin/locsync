@@ -151,14 +151,14 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     // Record-everything: the newest raw accelerometer sample and the gyro chip's temperature, for the car rows.
     private final float[] lastAcc = new float[3];
     private boolean accSeen;
-    private float gyroTempC = Float.NaN;
-    private GnssRecorder gnssRecorder;      // the head unit's own GNSS, while "Record track" is on
+    private float ambTempC = Float.NaN;     // TYPE_AMBIENT_TEMPERATURE: which chip it reads is for the drive to show
+    private GnssRecorder gnssRecorder;      // the head unit's own GNSS while "Record track" is on; service thread only
     private final SensorEventListener imuListener = new SensorEventListener() {
         @Override
         public void onSensorChanged(SensorEvent e) {
             int type = e.sensor.getType();
             if (type == Sensor.TYPE_AMBIENT_TEMPERATURE) {
-                gyroTempC = e.values[0];
+                ambTempC = e.values[0];
                 return;
             }
             if (type != Sensor.TYPE_GYROSCOPE) {
@@ -301,6 +301,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
 
         instance = this;
+        // From service start, not transport start: catches the head unit's own GNSS before our mock owns "gps".
+        handler.post(this::updateGnssRecording);
         // Last: its callbacks start the transport on the service thread, which needs all of the above.
         registerWiFiStateReceiver();
     }
@@ -336,6 +338,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         // onAvailable can't restart the transport after this stop.
         handler.post(() -> {
             stopTransport("Service destroyed");
+            stopGnssRecording();
             mockLocationManager.shutdown();   // now, not in 5 s; also cancels a disable still pending
             executor.shutdown();
             if (metricsLog != null) {
@@ -430,7 +433,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                 TrackRecorder r = trackRecorder;
                 VehicleData car = vehicle;
                 if (r != null && car != null) {
-                    r.car(t, kmh, car.snapshot().gear, w4m, accSeen ? lastAcc : null, gyroTempC, probe);
+                    r.car(t, kmh, car.snapshot().gear, w4m, accSeen ? lastAcc : null, ambTempC, probe);
                 }
             }));
             v.start();
@@ -1013,7 +1016,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         for (int type : new int[]{Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_GYROSCOPE, Sensor.TYPE_AMBIENT_TEMPERATURE}) {
             Sensor s = sm.getDefaultSensor(type);
             if (s == null) {
-                AppLog.i(TAG, "No sensor of type " + type + ": no gyro heading");
+                AppLog.i(TAG, "No sensor of type " + type + " on this unit");
             } else {
                 sm.registerListener(imuListener, s, SensorManager.SENSOR_DELAY_GAME, handler);   // ~50 Hz
             }
@@ -1209,8 +1212,20 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         if (trackRecorder != null) {
             trackRecorder.close();
             trackRecorder = null;
-            stopGnssRecording();
+            VehicleData v = vehicle;
+            if (v != null) {
+                v.setRecordAll(false);
+            }
             updateImu();
+        }
+    }
+
+    /** Head-unit GNSS recording follows "Record track" for the service's lifetime (also with the transport down). */
+    private void updateGnssRecording() {
+        if (Preferences.trackRecording(this)) {
+            startGnssRecording();
+        } else {
+            stopGnssRecording();
         }
     }
 
@@ -1278,7 +1293,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                 if (types.length() > 0) types.append(';');
                 types.append(en.getKey()).append(':').append(en.getValue());
             }
-            g.status(SystemClock.elapsedRealtime(), n, used, k == 0 ? Double.NaN : top / k, types.toString());
+            if (g.status(SystemClock.elapsedRealtime(), n, used, k == 0 ? Double.NaN : top / k, types.toString())) {
+                g.flush();   // ~1 Hz; the metrics tick that flushes the track doesn't run while the transport is down
+            }
         }
     };
 
@@ -1321,11 +1338,16 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         gnssRecorder = null;
         LocationManager lm = getSystemService(LocationManager.class);
         if (lm != null) {
-            lm.removeUpdates(nativeGpsListener);
-            lm.removeNmeaListener(nmeaListener);
-            lm.unregisterGnssStatusCallback(gnssStatusCallback);
+            try {
+                lm.removeUpdates(nativeGpsListener);
+                lm.removeNmeaListener(nmeaListener);
+                lm.unregisterGnssStatusCallback(gnssStatusCallback);
+            } catch (RuntimeException e) {
+                AppLog.v(TAG, "Head-unit GNSS listeners not removed: " + e);
+            }
         }
         g.close();
+        AppLog.i(TAG, "Head-unit GNSS recording stopped");
     }
 
     private void saveWheelCalibration() {
@@ -1343,11 +1365,15 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         if (wanted && trackRecorder == null) {
             trackRecorder = new TrackRecorder(new java.io.File(getCacheDir(), "logs"), gyro);
             AppLog.i(TAG, "Track recording started");
-            startGnssRecording();
         } else if (!wanted && trackRecorder != null) {
             closeTrackRecorder();
             AppLog.i(TAG, "Track recording stopped");
         }
+        VehicleData v = vehicle;
+        if (v != null) {
+            v.setRecordAll(trackRecorder != null);
+        }
+        updateGnssRecording();
         updateImu();   // also follows the "Use car motion" switch, re-read on every fix
     }
 

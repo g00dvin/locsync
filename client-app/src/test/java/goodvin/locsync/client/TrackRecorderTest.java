@@ -74,13 +74,13 @@ public class TrackRecorderTest {
         }
         assertTrue(TrackRecorder.HEADER.contains(",car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms,car_gear,out_src,"));
         // Car read at 1500, fix arrived at 2000: the car value is 500 ms older than the fix.
-        assertTrue(lines.get(2), lines.get(2).endsWith(",36.00,37.80,-500,95,,,D,,,,,,,,,,,,,,,,"));
-        assertTrue(lines.get(3), lines.get(3).endsWith(",,,,,,,D,,,,,,,,,,,,,,,,"));             // no speed: no car_dt_ms
+        assertTrue(lines.get(2), lines.get(2).endsWith(",36.00,37.80,-500,95,,,D,,,,,,,,,,,,,,,,,"));
+        assertTrue(lines.get(3), lines.get(3).endsWith(",,,,,,,D,,,,,,,,,,,,,,,,,"));             // no speed: no car_dt_ms
         // Newest gyro sample at 2040, fix at 2060.
-        assertTrue(lines.get(4), lines.get(4).endsWith(",,37.80,-500,,2.292,-20,D,,,,,,,,,,,,,,,,"));
+        assertTrue(lines.get(4), lines.get(4).endsWith(",,37.80,-500,,2.292,-20,D,,,,,,,,,,,,,,,,,"));
         assertTrue(lines.get(5).contains(",out,"));
-        assertTrue(lines.get(5), lines.get(5).endsWith(",,,2.292,-60,,dr,,,,,,,,,,,,,,,"));
-        assertTrue(lines.get(6), lines.get(6).endsWith(",kf,,,,,,,,,,,,,,,"));
+        assertTrue(lines.get(5), lines.get(5).endsWith(",,,2.292,-60,,dr,,,,,,,,,,,,,,,,"));
+        assertTrue(lines.get(6), lines.get(6).endsWith(",kf,,,,,,,,,,,,,,,,"));
     }
 
     // Recording is appended across service restarts; the header is written only once.
@@ -131,7 +131,7 @@ public class TrackRecorderTest {
         List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
         List<String> header = java.util.Arrays.asList(TrackRecorder.HEADER.split(","));
         assertTrue(TrackRecorder.HEADER.endsWith(
-                ",w4m_tick,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,gyro_temp,probe"));
+                ",w4m_tick,w4m_int,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,amb_temp,probe"));
         String[] c = lines.get(1).split(",", -1);
         assertEquals(header.size(), c.length);
         assertEquals("123456", c[header.indexOf("w4m_tick")]);
@@ -140,7 +140,8 @@ public class TrackRecorderTest {
         assertEquals("10.100", c[header.indexOf("v_fr")]);
         assertEquals("3", c[header.indexOf("w4m_gear")]);
         assertEquals("-9.600", c[header.indexOf("acc_y")]);
-        assertEquals("31.5", c[header.indexOf("gyro_temp")]);
+        assertEquals("31.5", c[header.indexOf("amb_temp")]);
+        assertEquals("20", c[header.indexOf("w4m_int")]);
         assertEquals("100100=10;200200=3", c[header.indexOf("probe")]);
     }
 }

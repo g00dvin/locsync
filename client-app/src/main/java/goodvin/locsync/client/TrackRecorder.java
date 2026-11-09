@@ -41,8 +41,8 @@ final class TrackRecorder {
             + "speed,bearing,spd_acc,brg_acc,age_s,latency_ms,horizon_ms,"
             + "f_lat,f_lon,f_speed,f_bearing,nis,stationary,turn_dps,sigma_a,"
             + "car_speed,car_speed_ipk,car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms,car_gear,out_src,"
-            + "w4m_tick,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,gyro_temp,probe";
-    private static final String NO_CAR_EXTRA = ",,,,,,,,,,,,,,,";   // the 15 car-row-only columns
+            + "w4m_tick,w4m_int,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,amb_temp,probe";
+    private static final String NO_CAR_EXTRA = ",,,,,,,,,,,,,,,,";   // the 16 car-row-only columns
 
     final GyroYaw gyro;   // the service's, fed by its sensor listener
     private final CsvLog log;
@@ -91,10 +91,10 @@ final class TrackRecorder {
 
     /**
      * One wheel-speed poll (km/h, null = not readable) and the newest gear, with what else the car and the
-     * head unit said at that moment: the W4m group, the raw accelerometer (m/s²), the gyro temperature (°C)
+     * head unit said at that moment: the W4m group, the raw accelerometer (m/s²), the ambient-temperature sensor (°C)
      * and the AdaptAPI census probe (once a second). Any of them may be null/NaN.
      */
-    void car(long elapsedMs, Float speedKmh, String gear, CarSignals.W4m w4m, float[] acc, float gyroTempC,
+    void car(long elapsedMs, Float speedKmh, String gear, CarSignals.W4m w4m, float[] acc, float ambTempC,
              String probe) {
         start(elapsedMs, "car");
         sb.append(",,,,,,,,,,,,,,,,,,,,,,");   // fix_ts .. sigma_a
@@ -103,19 +103,19 @@ final class TrackRecorder {
         tail(elapsedMs, null);
         endWith(gear, null);
         if (w4m != null) {
-            sb.append(',').append(w4m.tick);
+            sb.append(',').append(w4m.tick).append(',').append(w4m.interval);
             fixed(w4m.yawRate, 4); fixed(w4m.latAcc, 3); fixed(w4m.lonAcc, 3);
             fixed(w4m.vFL, 3); fixed(w4m.vFR, 3); fixed(w4m.vRL, 3); fixed(w4m.vRR, 3); fixed(w4m.steer, 2);
             sb.append(',').append(w4m.gear);
         } else {
-            sb.append(",,,,,,,,,,");
+            sb.append(",,,,,,,,,,,");
         }
         if (acc != null) {
             fixed(acc[0], 3); fixed(acc[1], 3); fixed(acc[2], 3);
         } else {
             sb.append(",,,");
         }
-        fixed(gyroTempC, 1);
+        fixed(ambTempC, 1);
         sb.append(',');
         if (probe != null) sb.append(probe);
         log.writeLine(sb);

@@ -56,6 +56,7 @@ final class VehicleData {
     private volatile CarSignals.Snapshot latest = CarSignals.Snapshot.EMPTY;
     private volatile Poller poller;
     private volatile SpeedListener speedListener;
+    private volatile boolean recordAll;   // "Record track": census, W4m and probe reads (else none of that work)
 
     /**
      * Every wheel-speed poll (km/h, null = not readable), called on the poll thread, with the W4m group read
@@ -68,6 +69,15 @@ final class VehicleData {
     /** For the track log's 5 Hz car rows; null to stop. The listener must hop to its own thread. */
     void setSpeedListener(SpeedListener l) {
         speedListener = l;
+    }
+
+    /** While true (the track is being recorded), also run the AdaptAPI census and read W4m + the probe. */
+    void setRecordAll(boolean on) {
+        recordAll = on;
+    }
+
+    private boolean recording() {
+        return recordAll && speedListener != null;
     }
 
     /** @param pollMs how often the speed is read; all signals are read about once a second */
@@ -117,16 +127,20 @@ final class VehicleData {
             speeds.add(elapsedMs, kmh);
         }
         SpeedListener l = speedListener;
-        if (l != null) {
+        if (l != null && recordAll) {
             l.onSpeed(elapsedMs, kmh, w4m, null);
         }
     }
 
-    private void publish(Poller from, CarSignals.Snapshot snap) {
-        publish(from, snap, null, null);
+    /** A full read's recording extras, delivered after {@link #publish} so the probe never delays the snapshot. */
+    private void notifyRecorder(Poller from, CarSignals.Snapshot snap, CarSignals.W4m w4m, String probe) {
+        SpeedListener l = speedListener;
+        if (l != null && recordAll && poller == from) {
+            l.onSpeed(snap.readElapsedMs, snap.speedKmh, w4m, probe);
+        }
     }
 
-    private void publish(Poller from, CarSignals.Snapshot snap, CarSignals.W4m w4m, String probe) {
+    private void publish(Poller from, CarSignals.Snapshot snap) {
         // Locked with stop(): a poll that passed the check can't land after stop() cleared the state.
         synchronized (this) {
             if (poller != from) {
@@ -134,10 +148,6 @@ final class VehicleData {
             }
             latest = snap;
             speeds.add(snap.readElapsedMs, snap.speedKmh);
-        }
-        SpeedListener l = speedListener;
-        if (l != null) {
-            l.onSpeed(snap.readElapsedMs, snap.speedKmh, w4m, probe);
         }
         if (onUpdate != null) {
             uiHandler.post(onUpdate);
@@ -160,7 +170,7 @@ final class VehicleData {
         private Method isSupported;     // ISensor#isSensorSupported(int) -> FunctionStatus
         private Method[] w4mGetters;    // IW4mValue: yaw, latAcc, lonAcc, vFL, vFR, vRL, vRR, steer, gear
         private Method w4mTick, w4mInterval;
-        private boolean w4mFailed;
+        private boolean w4mFailed, censusDone;
         private int[] probeIds;
         private CarSignals.ProbeDiff probe;
         private int emptyPolls;
@@ -193,9 +203,17 @@ final class VehicleData {
                     connect();
                     polls = 0;
                 }
+                if (recording() && !censusDone) {
+                    censusDone = true;   // once per connection, also when recording starts mid-connection
+                    try {
+                        census(sensorManager);
+                    } catch (Exception | LinkageError e) {
+                        log("census failed: " + e);
+                    }
+                }
                 if (polls++ % fullEvery != 0) {
                     float raw = rawLatest(sensorManager, CarSignals.SPEED);
-                    CarSignals.W4m w4m = speedListener != null ? readW4m(sensorManager) : null;
+                    CarSignals.W4m w4m = recording() ? readW4m(sensorManager) : null;
                     if (!stopped) {
                         addSpeed(this, SystemClock.elapsedRealtime(), CarSignals.speedKmh(CarSignals.latest(raw)), w4m);
                         worker.postDelayed(this, pollMs);
@@ -210,14 +228,11 @@ final class VehicleData {
                     emptyPolls = 0;
                     disconnect();
                 }
-                CarSignals.W4m w4m = null;
-                String probeRow = null;
-                if (speedListener != null) {
-                    w4m = readW4m(sensorManager);
-                    probeRow = probeRow(sensorManager);
-                }
                 if (!stopped) {
-                    publish(this, snap, w4m, probeRow);
+                    publish(this, snap);
+                    if (recording() && sensorManager != null) {   // null after a stale-read disconnect just above
+                        notifyRecorder(this, snap, readW4m(sensorManager), probeRow(sensorManager));
+                    }
                     worker.postDelayed(this, pollMs);
                 }
             } catch (Exception | LinkageError e) {
@@ -271,9 +286,11 @@ final class VehicleData {
             sensorManager = mgr;
             loggedRaw = false;
             log("AdaptAPI sensor manager connected");
-            if (speedListener != null) {
-                census(iSensor, mgr);
-            }
+            censusDone = false;
+            w4mFailed = false;
+            w4mGetters = null;
+            probe = null;
+            probeIds = null;
         }
 
         /**
@@ -281,7 +298,8 @@ final class VehicleData {
          * and current value, one log line each; the ones that may report become the 1 Hz probe. Plus the W4m
          * group's first value and the mount angle.
          */
-        private void census(Class<?> iSensor, Object mgr) {
+        private void census(Object mgr) throws ClassNotFoundException {
+            Class<?> iSensor = Class.forName("com.ecarx.xui.adaptapi.car.sensor.ISensor");
             try {
                 getGroup = iSensor.getMethod("getSensorGroupLatestValue", int.class);
             } catch (Exception | LinkageError e) {
@@ -314,7 +332,8 @@ final class VehicleData {
                 int event = rawEvent(mgr, id);
                 log(String.format(Locale.US, "census %s 0x%x %s latest=%s(0x%x) event=%d",
                         f.getName(), id, status, latest, bits(latest), event));
-                if (!"notavailable".equals(status) && !"error".equals(status)) {
+                String st = status.toLowerCase(Locale.US);
+                if (!st.contains("notavailable") && !st.contains("error")) {
                     ids.add(id);
                 }
             }
@@ -353,26 +372,48 @@ final class VehicleData {
                     return null;
                 }
                 if (w4mGetters == null) {
+                    // One by one: a getter this build lacks reads NaN instead of losing the whole group.
                     Class<?> c = Class.forName("com.ecarx.xui.adaptapi.car.sensor.ISensorGroupValue$IW4mValue");
                     Class<?> g = Class.forName("com.ecarx.xui.adaptapi.car.sensor.ISensorGroupValue");
                     String[] names = {"getYawRate", "getLatAcc", "getLonAcc", "getVFLSpeed", "getVFRSpeed",
                             "getVRLSpeed", "getVRRSpeed", "getSteerAngle", "getGearState"};
                     Method[] m = new Method[names.length];
-                    for (int i = 0; i < names.length; i++) m[i] = c.getMethod(names[i]);
-                    w4mTick = g.getMethod("getTickTime");
-                    w4mInterval = g.getMethod("getInterval");
+                    for (int i = 0; i < names.length; i++) m[i] = method(c, names[i]);
+                    w4mTick = method(g, "getTickTime");
+                    w4mInterval = method(g, "getInterval");
                     w4mGetters = m;
                 }
                 float[] f = new float[8];
-                for (int i = 0; i < 8; i++) f[i] = ((Number) w4mGetters[i].invoke(v)).floatValue();
-                int gear = ((Number) w4mGetters[8].invoke(v)).intValue();
-                long tick = ((Number) w4mTick.invoke(v)).longValue();
-                int interval = ((Number) w4mInterval.invoke(v)).intValue();
-                return CarSignals.W4m.of(f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7], gear, tick, interval);
+                for (int i = 0; i < 8; i++) f[i] = (float) number(w4mGetters[i], v);
+                double gear = number(w4mGetters[8], v), tick = number(w4mTick, v), interval = number(w4mInterval, v);
+                return CarSignals.W4m.of(f[0], f[1], f[2], f[3], f[4], f[5], f[6], f[7],
+                        Double.isNaN(gear) ? -1 : (int) gear, Double.isNaN(tick) ? -1 : (long) tick,
+                        Double.isNaN(interval) ? -1 : (int) interval);
             } catch (Exception | LinkageError e) {
                 w4mFailed = true;   // once per connection: a missing API stays missing
                 log("W4m read failed, not retried this connection: " + e);
                 return null;
+            }
+        }
+
+        private Method method(Class<?> c, String name) {
+            try {
+                return c.getMethod(name);
+            } catch (NoSuchMethodException e) {
+                log("W4m: no " + name + " in this AdaptAPI");
+                return null;
+            }
+        }
+
+        /** The getter's value as a number; NaN when the getter is missing or fails. */
+        private double number(Method m, Object v) {
+            if (m == null) {
+                return Double.NaN;
+            }
+            try {
+                return ((Number) m.invoke(v)).doubleValue();
+            } catch (Exception e) {
+                return Double.NaN;
             }
         }
 
