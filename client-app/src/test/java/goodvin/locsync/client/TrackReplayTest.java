@@ -371,7 +371,7 @@ public class TrackReplayTest {
                 if (scored && f.hasSpeed && f.speed > ICON_MIN_SPEED && f.hasBearing) {
                     r.scoreIcon(f, Double.isNaN(prevBearing) ? 0 : Math.abs(wrap(f.bearing - prevBearing)) / dt);
                 }
-                double dTheta = tracker.valid(meas) ? tracker.deltaRadCcw(stateTime, stateTime + Math.round(dt * 1000)) : Double.NaN;
+                double dTheta = tracker.valid(meas) && !Double.isNaN(wheel.mpsAt(meas)) ? tracker.deltaRadCcw(stateTime, stateTime + Math.round(dt * 1000)) : Double.NaN;
                 kf.predict(dt, dTheta);
             }
             if (f.hasBearing) {
@@ -428,7 +428,10 @@ public class TrackReplayTest {
                 if (e == null && t - f.arrival <= 2500) {
                     e = kf.extrapolate(Math.max(0, Math.min((t - stateTime) / 1000.0, 3.0)));
                 }
-                if (e == null) break;   // freeze
+                if (e == null) {
+                    lastOutDr = false;   // as the service: a tick without a DR output clears it
+                    break;               // freeze
+                }
                 double[] o = {e.latitude, e.longitude, t, e.speed, e.bearingDeg};
                 r.addOut(o);
                 if (lastOut != null) {
@@ -442,6 +445,7 @@ public class TrackReplayTest {
                 first = false;
                 if (scored) r.outputs++;
             }
+            if (next - f.arrival > DR_MAX_MS) lastOutDr = false;   // the service stops dead reckoning at DR_MAX_MS
         }
         return r;
     }

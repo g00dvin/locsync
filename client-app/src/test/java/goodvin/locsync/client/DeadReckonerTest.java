@@ -108,7 +108,11 @@ public class DeadReckonerTest {
         DeadReckoner dr = new DeadReckoner(tracker(0, 0, 1000), t -> t < 500 ? 10 : Double.NaN);
         assertTrue(dr.anchor(LAT, LON, 3, 0, 0));
         assertTrue(dr.step(300));
-        assertFalse(dr.step(700));
+        assertTrue(dr.step(700));    // held: a stalled poll isn't the end
+        LocationKalmanFilter.Estimate e = new LocationKalmanFilter.Estimate();
+        dr.fill(e, 700);
+        assertEquals(10, e.speed, 1e-9);   // reports the speed it keeps moving at
+        assertFalse(dr.step(2400));  // missing for over MAX_HOLD_MS: stop, the caller falls back
         assertFalse(dr.active());
     }
 
@@ -133,5 +137,49 @@ public class DeadReckonerTest {
         e.latitude = LAT; e.longitude = LON;
         s.apply(e, 1000);
         assertEquals(0, east(e), 1e-9);
+    }
+
+    // One stalled wheel poll (SpeedHistory goes null 300 ms after its newest sample) must not end dead
+    // reckoning for the rest of a tunnel: hold, then walk the missed interval when the speed is back.
+    @Test
+    public void wheelHoleThenRecovers() {
+        HeadingTracker h = tracker(0, 0, 0);
+        DeadReckoner dr = new DeadReckoner(h, t -> t >= 500 && t < 800 ? Double.NaN : 10);
+        assertTrue(dr.anchor(LAT, LON, 3, 0, 0));
+        for (long t = 100; t <= 2000; t += 100) {
+            for (long y = t - 80; y <= t; y += 20) h.onYaw(y, 0);
+            assertTrue("t=" + t, dr.step(t));
+        }
+        LocationKalmanFilter.Estimate e = new LocationKalmanFilter.Estimate();
+        dr.fill(e, 2000);
+        assertEquals(20, north(e), 1.0);
+    }
+
+    @Test
+    public void longWheelHoleStops() {
+        HeadingTracker h = tracker(0, 0, 0);
+        DeadReckoner dr = new DeadReckoner(h, t -> t >= 500 ? Double.NaN : 10);
+        assertTrue(dr.anchor(LAT, LON, 3, 0, 0));
+        boolean stopped = false;
+        for (long t = 100; t <= 3000 && !stopped; t += 100) {
+            for (long y = t - 80; y <= t; y += 20) h.onYaw(y, 0);
+            stopped = !dr.step(t);
+        }
+        assertTrue(stopped);
+        assertFalse(dr.active());
+    }
+
+    // Switched off and on again (or a stalled thread): never walk one huge stale segment.
+    @Test
+    public void staleStepStops() {
+        HeadingTracker h = tracker(0, 0, 5000);
+        DeadReckoner dr = new DeadReckoner(h, t -> 10);
+        assertTrue(dr.anchor(LAT, LON, 3, 4800, 4800));
+        assertTrue(dr.step(4900));
+        h = null;
+        DeadReckoner stale = new DeadReckoner(tracker(0, 0, 5000), t -> 10);
+        assertTrue(stale.anchor(LAT, LON, 3, 0, 0));
+        assertFalse(stale.step(5000));
+        assertFalse(stale.active());
     }
 }

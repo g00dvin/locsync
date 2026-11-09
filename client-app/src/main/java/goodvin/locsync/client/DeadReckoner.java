@@ -35,12 +35,17 @@ final class DeadReckoner {
     private static final long ANCHOR_STEP_MS = 100;
     private static final double DISTANCE_ERROR = 0.01;   // wheel factor error left after calibration
     private static final double SPEED_ACC_MPS = 0.15;
+    // Through a wheel-speed hole up to this long (a stalled 200 ms poll) keep the last speed; a longer
+    // hole, or a step this long after the last (switch toggled, thread stalled), stops.
+    static final long MAX_HOLD_MS = 2000;
 
     private final HeadingTracker heading;
     private final WheelSpeed wheel;
     private boolean active;
     private double lat, lon, accM, distM;
     private long lastMs, anchoredAtMs;
+    private double lastV = Double.NaN;
+    private long lastVMs;
 
     DeadReckoner(HeadingTracker heading, WheelSpeed wheel) {
         this.heading = heading;
@@ -64,9 +69,16 @@ final class DeadReckoner {
         return nowMs <= lastMs || segment(nowMs);
     }
 
-    /** Walks from the previous time to {@code nowMs}. False (and inactive) once heading or wheel speed is missing. */
+    /**
+     * Walks from the previous time to {@code nowMs}. False (and inactive) once the heading is missing, the wheel
+     * speed has been missing for {@link #MAX_HOLD_MS}, or the previous step is that old.
+     */
     boolean step(long nowMs) {
         if (!active) {
+            return false;
+        }
+        if (nowMs - lastMs > MAX_HOLD_MS) {
+            active = false;
             return false;
         }
         return nowMs <= lastMs || segment(nowMs);
@@ -78,6 +90,12 @@ final class DeadReckoner {
         double v = wheel.mpsAt(mid);
         if (Double.isNaN(v)) {
             v = wheel.mpsAt(t1);
+        }
+        if (!Double.isNaN(v)) {
+            lastV = v;
+            lastVMs = t1;
+        } else if (!Double.isNaN(lastV) && t1 - lastVMs <= MAX_HOLD_MS) {
+            v = lastV;   // a stalled poll: keep going at the last speed rather than freeze and jump
         }
         if (Double.isNaN(h) || Double.isNaN(v)) {
             active = false;
@@ -104,6 +122,9 @@ final class DeadReckoner {
     void fill(LocationKalmanFilter.Estimate out, long nowMs) {
         double sigma = heading.sigmaDeg(nowMs);
         double v = wheel.mpsAt(nowMs);
+        if (Double.isNaN(v) && nowMs - lastVMs <= MAX_HOLD_MS) {
+            v = lastV;   // the speed it's moving at through a stalled poll
+        }
         out.latitude = lat;
         out.longitude = lon;
         out.speed = Double.isNaN(v) ? 0 : Math.abs(v);

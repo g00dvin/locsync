@@ -803,6 +803,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                         dt = Math.max(0, Math.min(dt, 5.0));
                         // With car motion on, the gyro says exactly how far the car turned over this step.
                         double dTheta = motionOn() && tracker != null && tracker.valid(measElapsed)
+                                && !Double.isNaN(wheelMps(measElapsed))   // no wheels: today's filter, unchanged
                                 ? tracker.deltaRadCcw(stateElapsedMs, stateElapsedMs + Math.round(dt * 1000))
                                 : Double.NaN;
                         kalman.predict(dt, dTheta);
