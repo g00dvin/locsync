@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright © 2025-2026 Dezz (https://github.com/DezzK). GPLv3. See <https://www.gnu.org/licenses/>. -->
+<resources>
+    <!-- Bootstrap screen: one live status row = state icon + label/detail. -->
+    <style name="BootstrapStepRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingVertical">4dp</item>
+    </style>
+
+    <style name="BootstrapStepIcon">
+        <item name="android:layout_width">22dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:text">○</item>
+        <item name="android:textColor">@color/ls_text_dim</item>
+        <item name="android:textSize">15sp</item>
+    </style>
+
+    <style name="BootstrapStepText">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="BootstrapStepLabel">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/ls_text</item>
+        <item name="android:textSize">13.5sp</item>
+    </style>
+
+    <style name="BootstrapStepDetail">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/ls_text_dim</item>
+        <item name="android:textSize">11.5sp</item>
+        <item name="android:visibility">gone</item>
+    </style>
+</resources>
