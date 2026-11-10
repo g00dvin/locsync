@@ -38,6 +38,7 @@
     <color name="ls_neutral_500">#9397AB</color>
     <color name="ls_neutral_800">#3F424D</color>
     <color name="ls_error">#E07A72</color>
+    <color name="ls_success">#6FCF97</color>
 
     <!-- Named helpers for literals the design table calls out, so layouts stay free of ad-hoc hexes -->
     <color name="ls_bar_unlit">#2B2D3A</color>
