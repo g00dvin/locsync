@@ -100,28 +100,4 @@
     <string name="setup_hotspot_sub">Turn on the phone\'s Wi-Fi hotspot, connect the head unit to it and start LocSync Client there</string>
     <string name="boot_autostart">Start when the phone boots</string>
     <string name="boot_autostart_sub">Starts the server after the phone restarts, unless it was stopped from the notification. Usually not needed: the car\'s Bluetooth or Wi-Fi start it.</string>
-
-    <!-- Hidden head-unit bootstrap screen -->
-    <string name="bootstrap_title">Head unit setup</string>
-    <string name="bootstrap_hint">Taps left to unlock setup: %d</string>
-    <string name="bootstrap_intro">Enables ADB on the connected head unit over its own Wi-Fi, then installs and launches apps on it. Connect this phone to the head unit\'s Wi-Fi first.</string>
-    <string name="bootstrap_addr_label">Head unit address</string>
-    <string name="bootstrap_addr_hint">fe80::…%%wlan0 or 192.168.x.x</string>
-    <string name="bootstrap_scan">Find head unit</string>
-    <string name="bootstrap_enable_adb">Enable ADB on head unit</string>
-    <string name="bootstrap_install_client">Install LocSync client</string>
-    <string name="bootstrap_install_apk">Install APK…</string>
-    <string name="bootstrap_working">Working…</string>
-    <string name="bootstrap_need_addr">Enter or find the head unit address first</string>
-    <string name="bootstrap_adb_ok">ADB enabled. adbd is up on port 5555 and this phone is authorised.</string>
-    <string name="bootstrap_adb_fail">Could not enable ADB: %s</string>
-    <string name="bootstrap_install_ok">Installed %1$s and launched it</string>
-    <string name="bootstrap_install_fail">Install failed: %s</string>
-    <string name="bootstrap_no_client">Bundled client APK not found in the app</string>
-    <string name="bootstrap_same_version">%1$s %2$s is already installed — launching it</string>
-    <string name="bootstrap_grants_label">Grant to the installed app (via ADB):</string>
-    <string name="bootstrap_grant_mock">Mock location</string>
-    <string name="bootstrap_grant_install">Install unknown apps (install other APKs)</string>
-    <string name="bootstrap_grant_vpn">VPN (skip the consent dialog)</string>
-    <string name="bootstrap_grant_settings">Modify system settings</string>
 </resources>
