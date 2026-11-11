@@ -37,10 +37,7 @@ import java.net.Socket;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -66,39 +63,17 @@ public final class HuDiscovery {
     private static final int ECHO_COUNT = 3;
     private static final long ECHO_SPACING_MS = 300;
     private static final long SWEEP_DEADLINE_MS = 2000;
-    private static final int THREADS = 48;
 
     private final Context ctx;
     private final Consumer<String> log;
-    /** First confirmed host wins; later hits (racing IPv4 threads, 2nd sweep) are ignored. */
-    private final AtomicBoolean delivered = new AtomicBoolean(false);
-    /** Set by {@link #cancel()} when the screen is torn down; stops delivery and new probes. */
-    private volatile boolean cancelled = false;
-    private volatile ExecutorService ipv4Pool;
 
     public HuDiscovery(Context ctx, Consumer<String> log) {
         this.ctx = ctx.getApplicationContext();
         this.log = log;
     }
 
-    /** Stops delivery and tears down the IPv4 pool. Safe to call from any thread. */
-    public void cancel() {
-        cancelled = true;
-        ExecutorService p = ipv4Pool;
-        if (p != null) p.shutdownNow();
-    }
-
-    /**
-     * Runs the sweeps; the first confirmed telnet host is delivered to {@code onHost}
-     * exactly once. IPv6 link-local takes precedence — the IPv4 fallback is skipped
-     * once IPv6 has found the unit.
-     */
+    /** Runs both sweeps; each confirmed telnet host is delivered to {@code onHost}. */
     public void find(Consumer<String> onHost) {
-        // Gate: deliver at most one host, never after cancellation.
-        Consumer<String> gate = host -> {
-            if (cancelled) return;
-            if (delivered.compareAndSet(false, true)) onHost.accept(host);
-        };
         Network wifi = awaitWifi(4000);
         if (wifi == null) {
             log.accept("no Wi-Fi network — connect the phone to the head unit first");
@@ -112,13 +87,12 @@ public final class HuDiscovery {
             return;
         }
         try {
-            icmpSweep(wifi, lp, iface, gate);
+            icmpSweep(wifi, lp, iface, onHost);
         } catch (Exception e) {
             log.accept("ICMPv6 sweep failed: " + e);
         }
-        if (delivered.get() || cancelled) return;   // IPv6 found it — skip the /24 fallback
         try {
-            ipv4Sweep(wifi, gate);
+            ipv4Sweep(wifi, onHost);
         } catch (Exception e) {
             log.accept("IPv4 sweep failed: " + e);
         }
@@ -207,33 +181,12 @@ public final class HuDiscovery {
         }
         if (prefix == null) return;
         log.accept("scanning " + prefix + "0/24 :23 …");
-        // Probe all 254 hosts concurrently so an unreachable /24 finishes in
-        // ~one batch of probe timeouts instead of 254 × 500ms (~2 min) serially.
-        final String p = prefix;
-        ExecutorService pool = Executors.newFixedThreadPool(THREADS);
-        ipv4Pool = pool;
         for (int i = 1; i < 255; i++) {
-            final String ip = p + i;
-            pool.submit(() -> {
-                if (cancelled || delivered.get()) return;
-                if (tcpProbe(wifi, ip, TELNET_PORT)) {
-                    log.accept("telnet host: " + ip);
-                    onHost.accept(ip);   // gate dedups; first hit wins
-                }
-            });
-        }
-        pool.shutdown();
-        // Worst case: ceil(254/THREADS) batches, each bounded by one probe timeout,
-        // plus a margin. Blocking connects ignore interrupt, so the bound must cover them.
-        int batches = (254 + THREADS - 1) / THREADS;
-        long deadline = (long) batches * PROBE_TIMEOUT_MS + SWEEP_DEADLINE_MS;
-        try {
-            pool.awaitTermination(deadline, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        } finally {
-            pool.shutdownNow();
-            ipv4Pool = null;
+            String ip = prefix + i;
+            if (tcpProbe(wifi, ip, TELNET_PORT)) {
+                log.accept("telnet host: " + ip);
+                onHost.accept(ip);
+            }
         }
     }
 
