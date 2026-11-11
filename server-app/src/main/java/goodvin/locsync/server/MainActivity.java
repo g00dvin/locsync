@@ -501,7 +501,6 @@ public class MainActivity extends AppCompatActivity {
         String shown = buildLabel.isEmpty() ? appVersion : buildLabel;
         bindAction(R.id.rowVersion, getString(R.string.version_label, shown),
                 getString(R.string.about_protocol), false, null);
-        bindBootstrapTapGesture(findViewById(R.id.rowVersion));
         // Local, branch and CI builds aren't releases (different signature, placeholder version):
         // only release-workflow builds look for updates.
         updateRow = new UpdateRow(this, findViewById(R.id.rowUpdate), "locsync-server-", appVersion,
@@ -1004,32 +1003,6 @@ public class MainActivity extends AppCompatActivity {
     private void bindToggle(int rowId, String label, String sub, boolean checked,
                             java.util.function.Consumer<Boolean> onChange) {
         SettingsRows.bindToggle(findViewById(rowId), label, sub, checked, onChange);
-    }
-
-    // Hidden head-unit setup screen: 7 taps on the version row (dev-options style).
-    private static final int BOOTSTRAP_TAPS = 7;
-    private static final long BOOTSTRAP_TAP_WINDOW_MS = 3000L;
-    private int bootstrapTapCount;
-    private long bootstrapLastTap;
-
-    private void bindBootstrapTapGesture(View row) {
-        if (row == null) return;
-        row.setOnClickListener(v -> {
-            long now = SystemClock.elapsedRealtime();
-            if (now - bootstrapLastTap > BOOTSTRAP_TAP_WINDOW_MS) {
-                bootstrapTapCount = 0;
-            }
-            bootstrapLastTap = now;
-            bootstrapTapCount++;
-            int remaining = BOOTSTRAP_TAPS - bootstrapTapCount;
-            if (remaining <= 0) {
-                bootstrapTapCount = 0;
-                startActivity(new Intent(this, goodvin.locsync.server.bootstrap.BootstrapActivity.class));
-            } else if (remaining <= 3) {
-                Toast.makeText(this, getString(R.string.bootstrap_hint, remaining),
-                        Toast.LENGTH_SHORT).show();
-            }
-        });
     }
 
     private void bindAction(int rowId, String label, String sub, boolean chevron, Runnable click) {
