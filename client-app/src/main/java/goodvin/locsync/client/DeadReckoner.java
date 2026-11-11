@@ -38,6 +38,10 @@ final class DeadReckoner {
     // Through a wheel-speed hole up to this long (a stalled 200 ms poll) keep the last speed; a longer
     // hole, or a step this long after the last (switch toggled, thread stalled), stops.
     static final long MAX_HOLD_MS = 2000;
+    // The service dead-reckons through a GPS loss at most this long, or until it's this unsure; then it freezes.
+    // A wheel+gyro replay of the 2026-11-10 drive drifted 42 m (p90) after 2 min and 144 m (p90) after 5 min.
+    static final long MAX_MS = 300_000;
+    static final double MAX_ACC_M = 200;
 
     private final HeadingTracker heading;
     private final WheelSpeed wheel;

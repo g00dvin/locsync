@@ -300,8 +300,8 @@ public class TrackReplayTest {
         return i < 0 ? null : m.gear[i];
     }
 
-    static final long DR_MAX_MS = 120_000;      // GNSSClientService: dead reckoning through GPS loss at most this long
-    static final double DR_MAX_ACC_M = 60;      // ... or until its accuracy is this poor
+    static final long DR_MAX_MS = DeadReckoner.MAX_MS;
+    static final double DR_MAX_ACC_M = DeadReckoner.MAX_ACC_M;
 
     /**
      * The motion-fusion pipeline (the reference glue GNSSClientService copies step for step): gyro heading

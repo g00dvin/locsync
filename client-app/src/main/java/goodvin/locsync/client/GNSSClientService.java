@@ -145,8 +145,6 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private boolean lastOutDr;               // the last injected location came from dead reckoning
     private long lastOutElapsedMs;
     private int biasSavedAt;
-    private static final long DR_MAX_MS = 120_000;      // dead reckoning through GPS loss at most this long
-    private static final double DR_MAX_ACC_M = 60;      // ... or until it's this unsure: then freeze as before
     private static final int BIAS_SAVE_EVERY = 60;      // standstill bias updates between saves
     // Record-everything: the newest raw accelerometer sample and the gyro chip's temperature, for the car rows.
     private final float[] lastAcc = new float[3];
@@ -912,9 +910,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             }
         }
         if (motionOn() && kalman.isInitialized() && deadReckoner != null && lastFixElapsedMs != 0
-                && nowElapsed - lastFixElapsedMs <= DR_MAX_MS && deadReckoner.step(nowElapsed)) {
+                && nowElapsed - lastFixElapsedMs <= DeadReckoner.MAX_MS && deadReckoner.step(nowElapsed)) {
             deadReckoner.fill(drOut, nowElapsed);
-            if (drOut.accuracy <= DR_MAX_ACC_M) {
+            if (drOut.accuracy <= DeadReckoner.MAX_ACC_M) {
                 slide.apply(drOut, nowElapsed);
                 lastHorizonMs = nowElapsed - stateElapsedMs;
                 lastOutDr = true;
