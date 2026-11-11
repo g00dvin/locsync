@@ -41,8 +41,9 @@ final class HeadingTracker {
     private static final double MAX_GPS_ERROR_DEG = 45;
     private static final double REINIT_MIN_SPEED = 8.0;
     private static final int REINIT_AFTER = 3;
-    private static final double BASE_SIGMA_DEG = 2.0;
-    private static final double SIGMA_GROWTH_DPS = 0.03;   // bias uncertainty once GPS stops correcting
+    // Fitted to the 2026-11-10 replay drift (see DeadReckoner.MAX_MS): 2° and 0.03 °/s claimed 60 m after 1 min at 90 km/h.
+    private static final double BASE_SIGMA_DEG = 1.0;
+    private static final double SIGMA_GROWTH_DPS = 0.003;   // bias uncertainty once GPS stops correcting
     private static final long RING_STEP_MS = 50;
     private static final int RING_SIZE = 100;              // ≥ 5 s of history
 

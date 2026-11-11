@@ -95,10 +95,21 @@ public class DeadReckonerTest {
         assertEquals(1, e.speed, 1e-9);
     }
 
+    /**
+     * 2026-11-10: output froze 63 s into a phone GNSS loss at 90 km/h, at 60 m modeled error. A wheel+gyro
+     * replay of that drive drifted 42 m (p90) after 2 min and 144 m (p90) after 5 min.
+     */
+    @Test
+    public void highwayOutageStaysUnderTheCapForTheWholeWindow() {
+        LocationKalmanFilter.Estimate e = run(0, 0, t -> 25, DeadReckoner.MAX_MS);
+        assertTrue(e.accuracy + " m", e.accuracy <= DeadReckoner.MAX_ACC_M);
+        assertTrue(DeadReckoner.MAX_MS >= 300_000);
+    }
+
     @Test
     public void accuracyGrowsWithDistance() {
         LocationKalmanFilter.Estimate e = run(0, 0, t -> 1000, 1000);
-        double sigma = Math.toRadians(Math.hypot(2.0, 0.03));
+        double sigma = Math.toRadians(Math.hypot(1.0, 0.003));
         assertEquals(Math.sqrt(9 + 100 + Math.pow(1000 * Math.sin(sigma), 2)), e.accuracy, 0.5);
         assertEquals(e.accuracy, e.accuracy68, 1e-9);
     }
