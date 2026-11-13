@@ -78,7 +78,7 @@
     <string name="wifi_network_use_current">Текущая</string>
     <string name="wifi_network_unknown">Телефон не в Wi-Fi или Android скрывает имя сети: включите геолокацию и попробуйте снова</string>
     <string name="autostart_channel">Автозапуск</string>
-    <string name="wifi_start_failed_title">Не удалось запустить по Wi-Fi машины</string>
+    <string name="wifi_start_failed_title">Не удалось запустить сервер автоматически</string>
     <string name="wifi_start_failed_text">Android не разрешил запуск в фоне. Откройте LocSync Server и разрешите работу батареи без ограничений и доступ к местоположению «Разрешить в любом режиме».</string>
     <string name="wifi_needs_background_location">Чтобы узнавать Wi-Fi машины в фоне, разрешите доступ к местоположению «Разрешить в любом режиме» (Настройки → Разрешения)</string>
     <string name="setup_intro">Пройдите эти шаги один раз. Каждый открывает нужный экран — после настройки вернитесь сюда.</string>
@@ -94,4 +94,10 @@
     <string name="setup_hotspot_sub">Включите точку доступа Wi-Fi на телефоне, подключите к ней магнитолу и запустите на ней LocSync Client</string>
     <string name="boot_autostart">Запуск при загрузке телефона</string>
     <string name="boot_autostart_sub">Запускать сервер после перезагрузки телефона, если его не остановили из уведомления. Обычно не нужно: его запускают Bluetooth или Wi-Fi машины.</string>
+    <string name="pair_row">Связать с магнитолой</string>
+    <string name="pair_button">Связать</string>
+    <string name="pair_sub_unpaired">Не связано: координаты никому не передаются. Запустите сервер, подключите оба устройства к Wi-Fi машины и в течение минуты нажмите «Связать» здесь и в настройках клиента.</string>
+    <string name="pair_sub_paired">Связано. Координаты получает только эта магнитола. Свяжите заново, чтобы заменить её.</string>
+    <string name="pair_started">Связывание открыто на минуту. Сервер должен быть запущен. Теперь нажмите «Связать» на магнитоле.</string>
+    <string name="pair_done">Магнитола связана</string>
 </resources>

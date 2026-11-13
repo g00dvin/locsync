@@ -41,4 +41,5 @@ message LocationUpdate {
   optional float bearing_accuracy = 12;  // degrees, from Fused Location.getBearingAccuracyDegrees()
   optional double msl_altitude = 13;          // meters above mean sea level, from Location.getMslAltitudeMeters() (API 34+)
   optional float msl_altitude_accuracy = 14;  // meters, from Location.getMslAltitudeAccuracyMeters() (API 34+)
+  int64 fix_elapsed_ms = 15;    // the fix's time on the phone's monotonic clock (elapsedRealtime): order and spacing of fixes, immune to wall-clock steps
 }

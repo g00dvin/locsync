@@ -457,7 +457,8 @@ public class LocationKalmanFilterTest {
     }
 
     // A source whose positions are far steadier than the accuracy it claims (like Fused): the filter
-    // must learn to trust them more, within its 4x variance bound.
+    // must learn to trust them more, down to its floor: half the reported 68% radius as sigma, which is
+    // 0.25 · 1.51² = 0.57 of the variance the report itself stands for.
     @Test
     public void adaptivePositionTightensForOverstatedAccuracy() {
         LocationKalmanFilter f = newFilter();
@@ -470,8 +471,7 @@ public class LocationKalmanFilterTest {
             f.update(59.0 + (n + noise) / M_PER_DEG_LAT, 30.0, 10.0, 0.0, 5.0, 0.2, 2.0);
             n += 10.0;
         }
-        assertTrue("should trust positions more: " + f.getPositionNoiseScale(), f.getPositionNoiseScale() < 0.5);
-        assertTrue(f.getPositionNoiseScale() >= 0.25);
+        assertEquals("should trust positions as much as allowed", 0.57, f.getPositionNoiseScale(), 0.005);
     }
 
     // Accuracy that matches reality must leave the trust unchanged.
@@ -540,6 +540,23 @@ public class LocationKalmanFilterTest {
 
         f.setAccelerationExtrapolation(false);
         assertEquals(last, f.extrapolate(0.5).speed, 1e-9);
+    }
+
+    // Braking hard to a halt with a late fix: the output stops where the car does (v²/2a ahead of the
+    // fix), it doesn't keep "braking" backwards past it.
+    @Test
+    public void brakingToAHaltStopsAheadOfTheFix() {
+        LocationKalmanFilter f = newFilter();
+        double v = 18.5, n = 0;
+        for (int i = 0; i < 5; i++) {
+            if (i > 0) f.predict(1.0);
+            f.update(59.0 + n / M_PER_DEG_LAT, 30.0, v, 0.0, 5.0, 0.1, 0.5);
+            n += v - 2.0;
+            v -= 4.0;
+        }
+        double ahead = (f.extrapolate(1.5).latitude - f.getLatitude()) * M_PER_DEG_LAT;
+        assertEquals(0.0, f.extrapolate(1.5).speed, 1e-9);
+        assertTrue("stopped " + ahead + " m from the fix", ahead > 0.3 && ahead < 2.0);
     }
 
     @Test

@@ -23,13 +23,8 @@ import android.content.Intent;
 import android.util.Log;
 import goodvin.locsync.shared.AppLog;
 
-import androidx.core.content.ContextCompat;
-
 public class BroadcastsReceiver extends BroadcastReceiver {
     private static final String TAG = "BroadcastsReceiver";
-
-    private static final String ACTION_START_SERVICE = "goodvin.locsync.server.START";
-    private static final String ACTION_STOP_SERVICE = "goodvin.locsync.server.STOP";
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -41,30 +36,11 @@ public class BroadcastsReceiver extends BroadcastReceiver {
         Context appContext = context.getApplicationContext();
 
         switch (intent.getAction()) {
-            case ACTION_START_SERVICE:
-                if (GNSSServerService.isServiceRunning()) {
-                    return;
-                }
-
-                AppLog.i(TAG, "Starting GNSS server service");
-                GNSSServerService.setServiceEnabled(appContext, true);
-                startService(appContext);
-                break;
-
-            case ACTION_STOP_SERVICE:
-                if (!GNSSServerService.isServiceRunning()) {
-                    return;
-                }
-
-                AppLog.i(TAG, "Stopping GNSS server service");
-                GNSSServerService.setServiceEnabled(appContext, false);
-                stopService(appContext);
-                break;
-
             case Intent.ACTION_BOOT_COMPLETED:
                 AppLog.d(TAG, "Device boot completed, checking if GNSS server should auto-start");
                 WifiTrigger.sync(appContext, true);   // network callbacks don't survive a reboot
                 BluetoothReceiver.sync(appContext);
+                Preferences.clearConnectedTriggerDevices(appContext);   // a reboot drops them; ACL events re-add
 
                 // Only when the user wants it (Settings → Automation) and the server was left enabled
                 if (!Preferences.bootAutoStartEnabled(appContext)) {
@@ -76,7 +52,7 @@ public class BroadcastsReceiver extends BroadcastReceiver {
                     }
 
                     AppLog.i(TAG, "Auto-starting GNSS server service");
-                    startService(appContext);
+                    GNSSServerService.start(appContext);
                 } else {
                     AppLog.d(TAG, "GNSS server service not enabled for auto-start");
                 }
@@ -87,13 +63,20 @@ public class BroadcastsReceiver extends BroadcastReceiver {
         }
     }
 
-    private void startService(Context context) {
-        Intent serviceIntent = new Intent(context, GNSSServerService.class);
-        ContextCompat.startForegroundService(context, serviceIntent);
-    }
-
-    private void stopService(Context context) {
-        Intent serviceIntent = new Intent(context, GNSSServerService.class);
-        context.stopService(serviceIntent);
+    /**
+     * The notification's Stop action. Not exported: the receiver above is (for the boot broadcast), behind a
+     * permission any app can hold, so it must not start or stop the server for whoever asks.
+     */
+    public static class Stop extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (!GNSSServerService.isServiceRunning()) {
+                return;
+            }
+            AppLog.i(TAG, "Stopping GNSS server service");
+            Context appContext = context.getApplicationContext();
+            GNSSServerService.setServiceEnabled(appContext, false);
+            appContext.stopService(new Intent(appContext, GNSSServerService.class));
+        }
     }
 }

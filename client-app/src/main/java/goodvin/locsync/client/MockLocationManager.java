@@ -47,6 +47,8 @@ public class MockLocationManager {
     private final Runnable disableMockLocationProvider = this::disableMockLocationProvider;
 
     private boolean isMockLocationProviderSetup = false;
+    private static final long SETUP_RETRY_MS = 1000;
+    private long lastSetupAttemptMs;
 
     public MockLocationManager(Context context, Handler handler) {
         this.context = context.getApplicationContext();
@@ -69,11 +71,41 @@ public class MockLocationManager {
         handler.postDelayed(this.disableMockLocationProvider, delayMillis);
     }
 
-    public void setMockLocation(@NonNull Location location) {
+    /**
+     * Injects the location. False (nothing injected) while the provider can't be set up, i.e. until the user
+     * picks this app as the mock location app: setup is retried once a second, so it then starts by itself.
+     */
+    public boolean setMockLocation(@NonNull Location location) {
+        if (!isMockLocationProviderSetup && !retrySetup()) {
+            return false;
+        }
         if (Preferences.staticJitterEnabled(context) && isStatic(location)) {
             applyJitter(location);
         }
-        locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, location);
+        try {
+            locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, location);
+            return true;
+        } catch (IllegalArgumentException e) {
+            // "not a test provider": it was removed behind our back (another mock app took over). Set up again.
+            AppLog.i(TAG, "Mock provider lost, setting it up again: " + e.getMessage());
+            isMockLocationProviderSetup = false;
+            return false;
+        }
+    }
+
+    private boolean retrySetup() {
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (now - lastSetupAttemptMs < SETUP_RETRY_MS) {
+            return false;
+        }
+        lastSetupAttemptMs = now;
+        try {
+            setupMockLocationProvider();
+            enableMockLocationProvider();
+            return true;
+        } catch (RuntimeException e) {
+            return false;   // still not the mock location app; startMockLocationProvider already reported it
+        }
     }
 
     private boolean isStatic(Location location) {
@@ -145,6 +177,11 @@ public class MockLocationManager {
         if (isMockLocationProviderSetup) {
             return;
         }
+        // Android 10+ ignores addTestProvider from an app that isn't the selected mock app, without an error:
+        // believing that "setup" left every later injection failing until the service was restarted.
+        if (!isSelectedMockApp(context)) {
+            throw new SecurityException("not selected as the mock location app");
+        }
 
         // Remove existing test provider if it exists
         try {
@@ -179,7 +216,15 @@ public class MockLocationManager {
     }
 
     private void disableMockLocationProvider() {
-        locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false);
-        AppLog.d(TAG, "Mock location provider disabled");
+        if (!isMockLocationProviderSetup) {
+            return;
+        }
+        try {
+            locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false);
+            AppLog.d(TAG, "Mock location provider disabled");
+        } catch (RuntimeException e) {
+            // Runs delayed on the service thread: an exception here (provider gone) took the process down.
+            AppLog.i(TAG, "Mock location provider not disabled: " + e);
+        }
     }
 }

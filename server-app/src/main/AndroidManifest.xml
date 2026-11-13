@@ -89,10 +89,12 @@
             android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="goodvin.locsync.server.START" />
-                <action android:name="goodvin.locsync.server.STOP" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".BroadcastsReceiver$Stop"
+            android:exported="false" />
 
         <receiver
             android:name=".WifiTrigger$Receiver"

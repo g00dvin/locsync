@@ -53,7 +53,12 @@ public class AutostartJobService extends JobService {
 
         if (decision == AutostartPolicy.Decision.START) {
             AppLog.i(TAG, "Auto-starting GNSS client service from network job");
-            ContextCompat.startForegroundService(this, new Intent(this, GNSSClientService.class));
+            try {
+                ContextCompat.startForegroundService(this, new Intent(this, GNSSClientService.class));
+            } catch (RuntimeException e) {
+                // Background start refused (Android 12+): a job is no exemption. The next trigger tries again.
+                AppLog.w(TAG, "Failed to start GNSS client service: " + e);
+            }
         }
 
         // Re-arm (with a cooldown) while still enabled so future WiFi connects — or a service kill —

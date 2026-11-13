@@ -251,7 +251,40 @@ public class Preferences {
 
     /** All stored settings, for the diagnostics export. */
     public static java.util.Map<String, ?> dump(Context context) {
-        return new java.util.TreeMap<>(getPrefs(context).getAll());
+        java.util.Map<String, Object> all = new java.util.TreeMap<>(getPrefs(context).getAll());
+        all.remove(PREF_PAIRING_KEY);   // the export is shared with others
+        return all;
+    }
+
+    private static final String PREF_BT_CONNECTED = "bluetoothConnectedTriggers";
+
+    /** Trigger devices connected right now, as the ACL broadcasts reported (see BluetoothReceiver). */
+    static java.util.Set<String> connectedTriggerDevices(Context context) {
+        return getPrefs(context).getStringSet(PREF_BT_CONNECTED, java.util.Collections.emptySet());
+    }
+
+    static void setTriggerDeviceConnected(Context context, String mac, boolean connected) {
+        java.util.Set<String> set = new java.util.HashSet<>(connectedTriggerDevices(context));
+        if (connected ? set.add(mac) : set.remove(mac)) {
+            getPrefs(context).edit().putStringSet(PREF_BT_CONNECTED, set).apply();
+        }
+    }
+
+    static void clearConnectedTriggerDevices(Context context) {
+        getPrefs(context).edit().remove(PREF_BT_CONNECTED).apply();
+    }
+
+    private static final String PREF_PAIRING_KEY = "pairingKey";
+
+    /** The paired head unit's key (see Protocol), or null before pairing. */
+    public static byte[] pairingKey(Context context) {
+        String s = getPrefs(context).getString(PREF_PAIRING_KEY, null);
+        return s == null ? null : android.util.Base64.decode(s, android.util.Base64.NO_WRAP);
+    }
+
+    public static void setPairingKey(Context context, byte[] key) {
+        getPrefs(context).edit()
+                .putString(PREF_PAIRING_KEY, android.util.Base64.encodeToString(key, android.util.Base64.NO_WRAP)).apply();
     }
 
     private static volatile SharedPreferences prefs;

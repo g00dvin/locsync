@@ -436,7 +436,23 @@ public class Preferences {
 
     /** All stored settings, for the diagnostics export. */
     public static java.util.Map<String, ?> dump(Context context) {
-        return new java.util.TreeMap<>(getPrefs(context).getAll());
+        java.util.Map<String, Object> all = new java.util.TreeMap<>(getPrefs(context).getAll());
+        all.remove(PREF_PAIRING_KEY);   // the export is shared with others
+        return all;
+    }
+
+    private static final String PREF_PAIRING_KEY = "pairingKey";
+
+    /** This head unit's pairing key (see Protocol), made on first use. */
+    public static synchronized byte[] pairingKey(Context context) {
+        String s = getPrefs(context).getString(PREF_PAIRING_KEY, null);
+        if (s != null) {
+            return android.util.Base64.decode(s, android.util.Base64.NO_WRAP);
+        }
+        byte[] key = goodvin.locsync.shared.Protocol.random(goodvin.locsync.shared.Protocol.KEY_BYTES);
+        getPrefs(context).edit()
+                .putString(PREF_PAIRING_KEY, android.util.Base64.encodeToString(key, android.util.Base64.NO_WRAP)).apply();
+        return key;
     }
 
     // Cached: settings are read on every 10 Hz output tick and on every fix. Resolving the
