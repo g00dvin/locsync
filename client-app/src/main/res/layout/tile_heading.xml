@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright © 2026 LocSync. GPLv3. See <https://www.gnu.org/licenses/>. -->
+<!-- Heading tile beside the speed readout: same child ids as tile_stat, so setTile() fills it. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="match_parent"
+    android:gravity="center_vertical"
+    android:minWidth="96dp"
+    android:orientation="vertical">
+
+    <TextView
+        android:id="@+id/tileLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:letterSpacing="0.12"
+    android:textAllCaps="true"
+    android:textColor="@color/ls_text_dim"
+    android:textSize="11sp" />
+
+    <TextView
+        android:id="@+id/tileValue"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:fontFamily="sans-serif-medium"
+        android:includeFontPadding="false"
+        android:text="@string/value_none"
+        android:textColor="@color/ls_text_dim"
+        android:textSize="44sp" />
+
+    <!-- Unused by the heading; kept so setTile() can treat every tile alike. -->
+    <TextView
+        android:id="@+id/tileUnit"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/tileHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:fontFamily="sans-serif-medium"
+        android:textColor="@color/ls_accent"
+        android:textSize="15sp" />
+</LinearLayout>
