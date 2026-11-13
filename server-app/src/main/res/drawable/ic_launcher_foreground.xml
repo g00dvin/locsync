@@ -1,28 +1,27 @@
-<!--
-  ~ Copyright © 2026 Dezz (https://github.com/DezzK)
-  ~
-  ~ This program is free software: you can redistribute it and/or modify
-  ~ it under the terms of the GNU General Public License as published by
-  ~ the Free Software Foundation, either version 3 of the License, or
-  ~ (at your option) any later version.
-  ~
-  ~ This program is distributed in the hope that it will be useful,
-  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
-  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  ~ GNU General Public License for more details.
-  ~
-  ~ You should have received a copy of the GNU General Public License
-  ~ along with this program.  If not, see <https://www.gnu.org/licenses/>.
-  -->
-
-<!-- LocSync "route pin": location pin with a road carved out (negative space). -->
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright © 2026 LocSync. GPLv3. See <https://www.gnu.org/licenses/>. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
   <path
-      android:fillColor="#FFFFFF"
-      android:fillType="evenOdd"
-      android:pathData="M54,24 C66.7,24 77,34.3 77,47 C77,62 65,72 54,86 C43,72 31,62 31,47 C31,34.3 41.3,24 54,24 Z M50,37 L58,37 C60,46 63.5,54 67,62 L41,62 C44.5,54 48,46 50,37 Z"/>
+      android:fillColor="#FF0B0D10"
+      android:strokeColor="#FF0B0D10"
+      android:strokeWidth="2.5"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round"
+      android:pathData="M42,46L54,76L42,70L30,76Z"/>
+  <path
+      android:strokeColor="#FF0B0D10"
+      android:strokeWidth="5"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round"
+      android:pathData="M48.2,38.8A24,24 0,0 1,65.2 55.8"/>
+  <path
+      android:strokeColor="#FF0B0D10"
+      android:strokeWidth="5"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round"
+      android:pathData="M51.1,28.2A35,35 0,0 1,75.8 52.9"/>
 </vector>

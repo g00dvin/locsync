@@ -30,7 +30,7 @@
     <string name="request_permissions_short">Request</string>
     <string name="about_protocol">Protocol v%1$d · UDP %2$d</string>
     <string name="license_gpl3">GNU GPL v3.0</string>
-    <string name="license_view">View the license</string>
+    <string name="license_view">© 2025-2026 Dezz, © 2026 LocSync · view the license</string>
     <string name="warn_background_location">⚠ Background location is not set to “Allow all the time”. Tap to open permissions.</string>
 
     <!-- Additional redesign copy (sub-lines, section labels, monitor readouts) -->

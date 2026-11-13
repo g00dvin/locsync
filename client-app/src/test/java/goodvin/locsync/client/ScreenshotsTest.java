@@ -51,6 +51,39 @@ public class ScreenshotsTest {
 
     @Test
     public void captureScreens() throws Exception {
+        MainActivity activity = startConnected();
+        File dir = screenshotsDir();
+        captureIcon(activity, new File(dir, "client-icon.png"));
+        capture(activity, new File(dir, "client-home.png"), true);
+        activity.findViewById(R.id.btnRight).performClick();
+        idle(Duration.ofMillis(1100));   // the log renders on the next 1 s tick
+        capture(activity, new File(dir, "client-monitor.png"), true);
+        activity.findViewById(R.id.btnLeft).performClick();   // back to home
+        idle(Duration.ofMillis(300));
+        activity.findViewById(R.id.btnLeft).performClick();   // settings
+        idle(Duration.ofMillis(300));
+        capture(activity, new File(dir, "client-settings.png"), true);
+        activity.findViewById(R.id.rowSetup).performClick();
+        idle(Duration.ofMillis(300));
+        capture(activity, new File(dir, "client-setup.png"), true);
+    }
+
+    /** The home screen in a wide, short window: the head unit sharing its screen with the navigator. */
+    @Test
+    @Config(sdk = 35, qualifiers = "ru-w1280dp-h740dp-land-mdpi")
+    public void captureSplitScreenHome() throws Exception {
+        MainActivity activity = startConnected();
+        capture(activity, new File(screenshotsDir(), "client-home-split.png"), false);
+    }
+
+    private static File screenshotsDir() {
+        File dir = new File(System.getProperty("screenshots.dir", "build/screenshots"));
+        dir.mkdirs();
+        return dir;
+    }
+
+    /** The activity on its home screen, "connected" to a phone and a car, with a minute of fixes fed in. */
+    private MainActivity startConnected() throws Exception {
         Application app = RuntimeEnvironment.getApplication();
         shadowOf(app).grantPermissions(Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.POST_NOTIFICATIONS);
@@ -76,6 +109,7 @@ public class ScreenshotsTest {
         goodvin.locsync.shared.AppLog.i("GNSSClientService", "Mock location provider enabled");
         controller = Robolectric.buildActivity(MainActivity.class).setup();
         MainActivity activity = controller.get();
+        setCar(activity);
         idle(Duration.ofMinutes(12).plusSeconds(34));   // "online 12:34"
 
         for (int i = 0; i < 40; i++) {                  // fill the Monitor sparklines
@@ -87,20 +121,7 @@ public class ScreenshotsTest {
                 .setBatteryTempC(36.4f).build());
         idle(Duration.ofMillis(300));
 
-        File dir = new File(System.getProperty("screenshots.dir", "build/screenshots"));
-        dir.mkdirs();
-        capture(activity, new File(dir, "client-home.png"), true);
-        activity.findViewById(R.id.btnRight).performClick();
-        idle(Duration.ofMillis(1100));   // the log renders on the next 1 s tick
-        capture(activity, new File(dir, "client-monitor.png"), true);
-        activity.findViewById(R.id.btnLeft).performClick();   // back to home
-        idle(Duration.ofMillis(300));
-        activity.findViewById(R.id.btnLeft).performClick();   // settings
-        idle(Duration.ofMillis(300));
-        capture(activity, new File(dir, "client-settings.png"), true);
-        activity.findViewById(R.id.rowSetup).performClick();
-        idle(Duration.ofMillis(300));
-        capture(activity, new File(dir, "client-setup.png"), true);
+        return activity;
     }
 
     private static void feed(Application app, MainActivity activity, int i) throws Exception {
@@ -141,6 +162,14 @@ public class ScreenshotsTest {
         app.sendBroadcast(new Intent("goodvin.locsync.FILTER_STATS").setPackage(app.getPackageName())
                 .putExtra("labels", labelText)
                 .putExtra("values", values));
+    }
+
+    /** What a head unit with car signals would report, so the fuel and odometer tiles show. */
+    private static void setCar(MainActivity activity) throws Exception {
+        Field f = MainActivity.class.getDeclaredField("vehicleData");
+        f.setAccessible(true);
+        setField(f.get(activity), "latest", new CarSignals.Snapshot(56f, null, "D", 37f, 462f, 5f, 23275f,
+                null, android.os.SystemClock.elapsedRealtime()));
     }
 
     /** Keeps the phone card fresh (it hides a state older than 30 s). */
@@ -189,6 +218,17 @@ public class ScreenshotsTest {
             bmp.compress(Bitmap.CompressFormat.PNG, 100, fos);
         }
         System.out.println("Saved " + out + " (" + w + "x" + h + ")");
+    }
+
+    /** The launcher icon as the system draws it (background, glyph, mask). */
+    private static void captureIcon(android.content.Context context, File out) throws Exception {
+        android.graphics.drawable.Drawable icon = context.getDrawable(R.mipmap.ic_launcher);
+        Bitmap bmp = Bitmap.createBitmap(432, 432, Bitmap.Config.ARGB_8888);
+        icon.setBounds(0, 0, 432, 432);
+        icon.draw(new Canvas(bmp));
+        try (FileOutputStream fos = new FileOutputStream(out)) {
+            bmp.compress(Bitmap.CompressFormat.PNG, 100, fos);
+        }
     }
 
     private static ScrollView findVisibleScroll(View v) {

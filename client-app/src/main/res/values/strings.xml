@@ -179,17 +179,8 @@
     <string name="filter_reset_confirm">All smoothing settings will return to their defaults</string>
     <string name="filter_reset_action">Reset</string>
     <string name="filter_reset_done">Smoothing settings reset</string>
-    <string name="phone_battery">Phone: battery %1$d%%</string>
-    <string name="phone_battery_charging">Phone: battery %1$d%%, charging</string>
-    <string name="phone_ok">Battery and temperature are fine</string>
-    <string name="phone_hot">Overheating: GPS may get worse or stop. Keep the phone out of the sun or away from the heater.</string>
-    <string name="phone_low_battery">Battery is low: connect the charger</string>
-    <string name="phone_title">Phone</string>
-    <string name="car_title">Car</string>
-    <string name="car_fuel_fmt">fuel %1$d L</string>
-    <string name="car_range_fmt">%1$d km</string>
+    <string name="car_range_fmt">range %1$d km</string>
     <string name="car_outside_fmt">out %1$d °C</string>
-    <string name="car_odo_fmt">odo %1$,d km</string>
     <string name="setup_intro">Go through these steps once. Each one opens the right screen; come back here when done.</string>
     <string name="setup_location">Location access</string>
     <string name="setup_location_sub">Needed to give the navigator a position</string>
@@ -216,4 +207,12 @@
         <item>N</item><item>NE</item><item>E</item><item>SE</item>
         <item>S</item><item>SW</item><item>W</item><item>NW</item>
     </string-array>
+    <string name="tile_phone">Phone</string>
+    <string name="tile_fuel">Fuel</string>
+    <string name="tile_odometer">Odometer, km</string>
+    <string name="unit_l">L</string>
+    <string name="phone_hint_charging">charging</string>
+    <string name="phone_hint_battery">on battery</string>
+    <string name="phone_hint_hot">overheating</string>
+    <string name="phone_hint_low">low battery</string>
 </resources>

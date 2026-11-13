@@ -176,17 +176,8 @@
     <string name="filter_reset_confirm">Все настройки сглаживания вернутся к значениям по умолчанию</string>
     <string name="filter_reset_action">Сбросить</string>
     <string name="filter_reset_done">Настройки сглаживания сброшены</string>
-    <string name="phone_battery">Телефон: батарея %1$d%%</string>
-    <string name="phone_battery_charging">Телефон: батарея %1$d%%, заряжается</string>
-    <string name="phone_ok">Заряд и температура в норме</string>
-    <string name="phone_hot">Перегревается: GPS может работать хуже или отключиться. Уберите телефон с солнца или от обдува печки.</string>
-    <string name="phone_low_battery">Мало заряда: подключите зарядку</string>
-    <string name="phone_title">Телефон</string>
-    <string name="car_title">Машина</string>
-    <string name="car_fuel_fmt">топливо %1$d л</string>
-    <string name="car_range_fmt">%1$d км</string>
+    <string name="car_range_fmt">запас %1$d км</string>
     <string name="car_outside_fmt">снаружи %1$d °C</string>
-    <string name="car_odo_fmt">пробег %1$,d км</string>
     <string name="setup_intro">Пройдите эти шаги один раз. Каждый открывает нужный экран — после настройки вернитесь сюда.</string>
     <string name="setup_location">Доступ к местоположению</string>
     <string name="setup_location_sub">Нужен, чтобы передавать позицию навигатору</string>
@@ -211,4 +202,12 @@
         <item>С</item><item>СВ</item><item>В</item><item>ЮВ</item>
         <item>Ю</item><item>ЮЗ</item><item>З</item><item>СЗ</item>
     </string-array>
+    <string name="tile_phone">Телефон</string>
+    <string name="tile_fuel">Топливо</string>
+    <string name="tile_odometer">Пробег, км</string>
+    <string name="unit_l">л</string>
+    <string name="phone_hint_charging">заряжается</string>
+    <string name="phone_hint_battery">от батареи</string>
+    <string name="phone_hint_hot">перегрев</string>
+    <string name="phone_hint_low">низкий заряд</string>
 </resources>

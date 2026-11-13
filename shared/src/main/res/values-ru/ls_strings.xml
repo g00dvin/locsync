@@ -29,7 +29,7 @@
     <string name="request_permissions_short">Запросить</string>
     <string name="about_protocol">Протокол v%1$d · UDP %2$d</string>
     <string name="license_gpl3">GNU GPL v3.0</string>
-    <string name="license_view">Открыть лицензию</string>
+    <string name="license_view">© 2025-2026 Dezz, © 2026 LocSync · открыть лицензию</string>
     <string name="warn_background_location">⚠ Не включён постоянный доступ к местоположению. Нажмите, чтобы открыть разрешения.</string>
 
     <string name="section_filter">Фильтр сглаживания</string>

@@ -96,7 +96,7 @@ public class MainActivity extends AppCompatActivity {
     // Connect
     private TextView btnPower, bannerText;
     private View connectBanner;
-    private View tileSpeed, tileHeading, tileAccuracy, tileSats, tileFresh;
+    private View tileSpeed, tileHeading, tileAccuracy, tileSats, tileFresh, tilePhone, tileFuel, tileOdo;
     private View navDot;
     private TextView navTitle, navDetail;
 
@@ -432,6 +432,9 @@ public class MainActivity extends AppCompatActivity {
         tileAccuracy = findViewById(R.id.tileAccuracy);
         tileSats = findViewById(R.id.tileSats);
         tileFresh = findViewById(R.id.tileFresh);
+        tilePhone = findViewById(R.id.tilePhone);
+        tileFuel = findViewById(R.id.tileFuel);
+        tileOdo = findViewById(R.id.tileOdo);
         navDot = findViewById(R.id.navDot);
         navTitle = findViewById(R.id.navTitle);
         navDetail = findViewById(R.id.navDetail);
@@ -441,6 +444,9 @@ public class MainActivity extends AppCompatActivity {
         setText(tileAccuracy, R.id.tileLabel, getString(R.string.tile_accuracy));
         setText(tileSats, R.id.tileLabel, getString(R.string.stat_satellites));
         setText(tileFresh, R.id.tileLabel, getString(R.string.tile_fresh));
+        setText(tilePhone, R.id.tileLabel, getString(R.string.tile_phone));
+        setText(tileFuel, R.id.tileLabel, getString(R.string.tile_fuel));
+        setText(tileOdo, R.id.tileLabel, getString(R.string.tile_odometer));
 
         btnPower.setOnClickListener(v -> togglePower());
         connectBanner.setOnClickListener(v -> {
@@ -1031,71 +1037,61 @@ public class MainActivity extends AppCompatActivity {
                 fresh ? textColor : getColor(R.color.ls_error));
     }
 
-    /** "Phone: 78%, charging · 36 °C" and a warning when it overheats or runs flat. */
+    /** Phone tile: battery percent, with "charging · 36 °C" or a warning when it overheats or runs flat. */
     private void updatePhoneCard(boolean connected) {
-        View card = findViewById(R.id.phoneCard);
         LocationProto.PhoneState phone = connected ? GNSSClientService.getPhoneState() : null;
-        if (phone == null) {
-            card.setVisibility(View.GONE);
-            return;
-        }
-        card.setVisibility(View.VISIBLE);
+        tilePhone.setVisibility(phone == null ? View.GONE : View.VISIBLE);
+        if (phone == null) return;
         float temp = phone.hasBatteryTempC() ? phone.getBatteryTempC() : Float.NaN;
         int percent = phone.hasBatteryPercent() ? phone.getBatteryPercent() : -1;
-        StringBuilder title = new StringBuilder(percent < 0 ? getString(R.string.phone_title)
-                : getString(phone.getCharging() ? R.string.phone_battery_charging : R.string.phone_battery, percent));
-        // Floor, so 44.6 °C doesn't read "45 °C" while the card still says it's fine (hot is ≥ 45).
-        if (!Float.isNaN(temp)) title.append(" · ").append((int) Math.floor(temp)).append(" °C");
-        TextView titleView = findViewById(R.id.phoneTitle);
-        titleView.setText(title);
         PhoneHealth health = PhoneHealth.of(percent, phone.getCharging(), temp,
                 phone.getThermalStatus());
-        TextView detail = findViewById(R.id.phoneDetail);
-        detail.setText(switch (health) {
-            case HOT -> R.string.phone_hot;
-            case LOW_BATTERY -> R.string.phone_low_battery;
-            default -> R.string.phone_ok;
-        });
-        findViewById(R.id.phoneDot).getBackground().mutate().setTint(getColor(
-                health == PhoneHealth.OK ? R.color.ls_accent_400 : R.color.ls_error));
+        StringBuilder hint = new StringBuilder(getString(switch (health) {
+            case HOT -> R.string.phone_hint_hot;
+            case LOW_BATTERY -> R.string.phone_hint_low;
+            default -> phone.getCharging() ? R.string.phone_hint_charging : R.string.phone_hint_battery;
+        }));
+        // Floor, so 44.6 °C doesn't read "45 °C" while the tile still looks fine (hot is ≥ 45).
+        if (!Float.isNaN(temp)) append(hint, (int) Math.floor(temp) + " °C");
+        setTile(tilePhone, percent < 0 ? getString(R.string.value_none) : String.valueOf(percent),
+                percent < 0 ? "" : "%", hint.toString(),
+                getColor(health == PhoneHealth.OK ? R.color.ls_text : R.color.ls_error));
     }
 
-    /** e.g. "Car  54 km/h  D" over "fuel 38 L · 408 km · out 1 °C · odo 23,275 km" — the head unit's own signals. */
+    /**
+     * The head unit's own signals as tiles: fuel (with range and outside temperature) and odometer
+     * (with the car's speed and gear). A tile shows only when the car reports its value.
+     */
     private void updateCarCard() {
-        View card = findViewById(R.id.carCard);
         CarSignals.Snapshot s = vehicleData == null ? null : vehicleData.snapshot();
-        if (s == null || !s.hasAny()) {
-            card.setVisibility(View.GONE);
-            return;
+        boolean fuel = s != null && s.fuelLitres != null;
+        boolean odo = s != null && s.odometerKm != null;
+        tileFuel.setVisibility(fuel ? View.VISIBLE : View.GONE);
+        tileOdo.setVisibility(odo ? View.VISIBLE : View.GONE);
+        if (s != null) {
+            int textColor = getColor(R.color.ls_text);
+            StringBuilder motion = new StringBuilder();
+            if (s.speedKmh != null) {
+                append(motion, String.format(Locale.US, "%.0f %s", s.speedKmh, getString(R.string.unit_kmh)));
+            }
+            if (s.gear != null) append(motion, s.gear);
+            StringBuilder trip = new StringBuilder();
+            if (s.rangeKm != null) append(trip, getString(R.string.car_range_fmt, Math.round(s.rangeKm)));
+            if (s.outsideTempC != null) append(trip, getString(R.string.car_outside_fmt, Math.round(s.outsideTempC)));
+            if (fuel) {
+                // Without an odometer tile the fuel tile carries the car's speed and gear too.
+                if (!odo && motion.length() > 0) append(trip, motion.toString());
+                setTile(tileFuel, String.valueOf(Math.round(s.fuelLitres)), getString(R.string.unit_l),
+                        trip.toString(), textColor);
+            }
+            if (odo) {
+                setTile(tileOdo, String.format(Locale.getDefault(), "%,d", Math.round(s.odometerKm)), "",
+                        motion.toString(), textColor);
+            }
         }
-        card.setVisibility(View.VISIBLE);
-
-        // Title: Motion (speed, gear).
-        StringBuilder title = new StringBuilder(getString(R.string.car_title));
-        if (s.speedKmh != null) {
-            title.append("  ").append(String.format(Locale.US, "%.0f", s.speedKmh))
-                    .append(' ').append(getString(R.string.unit_kmh));
-        }
-        if (s.gear != null) {
-            title.append("  ").append(s.gear);
-        }
-        ((TextView) findViewById(R.id.carTitle)).setText(title);
-
-        // Detail: Energy + Temperature + Odometer, " · "-joined.
-        StringBuilder detail = new StringBuilder();
-        if (s.fuelLitres != null) {
-            append(detail, getString(R.string.car_fuel_fmt, Math.round(s.fuelLitres)));
-        }
-        if (s.rangeKm != null) {
-            append(detail, getString(R.string.car_range_fmt, Math.round(s.rangeKm)));
-        }
-        if (s.outsideTempC != null) {
-            append(detail, getString(R.string.car_outside_fmt, Math.round(s.outsideTempC)));
-        }
-        if (s.odometerKm != null) {
-            append(detail, getString(R.string.car_odo_fmt, Math.round(s.odometerKm)));
-        }
-        ((TextView) findViewById(R.id.carDetail)).setText(detail.toString());
+        // The row holds the phone and car tiles; hide it when none of them has data.
+        findViewById(R.id.rowDevices).setVisibility(tilePhone.getVisibility() == View.VISIBLE || fuel || odo
+                ? View.VISIBLE : View.GONE);
     }
 
     private static void append(StringBuilder sb, String piece) {
