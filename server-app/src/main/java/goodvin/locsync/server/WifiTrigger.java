@@ -36,7 +36,6 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.core.app.NotificationCompat;
-import androidx.core.content.ContextCompat;
 
 import goodvin.locsync.shared.AppLog;
 
@@ -183,12 +182,8 @@ public final class WifiTrigger {
                 return;
             }
             AppLog.i(TAG, "Joined trigger Wi-Fi \"" + ssid + "\", starting the server");
-            try {
-                ContextCompat.startForegroundService(context, new Intent(context, GNSSServerService.class));
+            if (GNSSServerService.start(context)) {
                 GNSSServerService.setServiceEnabled(context, true);
-            } catch (IllegalStateException | SecurityException e) {
-                AppLog.w(TAG, "Cannot start the server in the background: " + e.getMessage());
-                notifyStartFailed(context);
             }
         }
     }
@@ -197,7 +192,7 @@ public final class WifiTrigger {
     private static final int START_FAILED_NOTIFICATION_ID = 2;
 
     /** Android refused the background start: tell the user how to allow it (tapping opens the app). */
-    private static void notifyStartFailed(Context context) {
+    static void notifyStartFailed(Context context) {
         NotificationManager nm = context.getSystemService(NotificationManager.class);
         if (nm == null) return;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

@@ -47,7 +47,11 @@ public class BootReceiver extends BroadcastReceiver {
             if (decision == AutostartPolicy.Decision.START) {
                 AppLog.i(TAG, "Auto-starting GNSS client service");
                 Intent serviceIntent = new Intent(context, GNSSClientService.class);
-                context.startForegroundService(serviceIntent);
+                try {
+                    context.startForegroundService(serviceIntent);
+                } catch (RuntimeException e) {
+                    AppLog.w(TAG, "Failed to start GNSS client service: " + e);
+                }
             } else {
                 AppLog.d(TAG, "Not auto-starting GNSS client service: " + decision.name());
             }

@@ -26,11 +26,8 @@ import android.content.pm.PackageManager;
 import android.util.Log;
 import goodvin.locsync.shared.AppLog;
 
-import androidx.core.content.ContextCompat;
 import androidx.core.content.IntentCompat;
 
-import java.util.HashSet;
-import java.util.Set;
 
 /**
  * BroadcastReceiver for Bluetooth connection events.
@@ -41,15 +38,14 @@ import java.util.Set;
 public class BluetoothReceiver extends BroadcastReceiver {
     private static final String TAG = "BluetoothReceiver";
 
-    // Tracks which registered trigger devices are currently connected (in-memory).
-    // Reset on process death, which is acceptable — we'll get fresh ACL events.
-    private static final Set<String> connectedTriggerDevices = new HashSet<>();
-
     /**
      * Enables this receiver only while Bluetooth auto-start is on, so ACL events don't wake the
      * process otherwise. Component state survives app updates; the manifest default is enabled.
      */
     static void sync(Context context) {
+        if (!Preferences.bluetoothAutoStartEnabled(context)) {
+            Preferences.clearConnectedTriggerDevices(context);   // no ACL events from here on: don't keep a stale set
+        }
         context.getPackageManager().setComponentEnabledSetting(
                 new ComponentName(context, BluetoothReceiver.class),
                 Preferences.bluetoothAutoStartEnabled(context)
@@ -58,9 +54,18 @@ public class BluetoothReceiver extends BroadcastReceiver {
                 PackageManager.DONT_KILL_APP);
     }
 
-    /** Returns true if no registered trigger devices are currently connected. */
-    public static boolean allTriggerDevicesDisconnected() {
-        return connectedTriggerDevices.isEmpty();
+    /**
+     * Returns true if no registered trigger devices are currently connected. The connected set is persisted:
+     * kept in memory, a process restart mid-drive forgot the car was connected, and the next Wi-Fi blip
+     * auto-stopped the server.
+     */
+    public static boolean allTriggerDevicesDisconnected(Context context) {
+        for (String mac : Preferences.connectedTriggerDevices(context)) {
+            if (Preferences.isBluetoothTriggerDevice(context, mac)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override
@@ -116,7 +121,7 @@ public class BluetoothReceiver extends BroadcastReceiver {
 
     private void handleDeviceConnected(Context context, String deviceMac, String deviceName) {
         AppLog.i(TAG, "Trigger device connected: " + deviceName + " (" + deviceMac + ")");
-        connectedTriggerDevices.add(deviceMac);
+        Preferences.setTriggerDeviceConnected(context, deviceMac, true);
 
         if (GNSSServerService.isServiceRunning()) {
             // Cancel any pending auto-stop (don't mark as BT-managed — service may have been started manually)
@@ -125,17 +130,16 @@ public class BluetoothReceiver extends BroadcastReceiver {
             // Start the service
             AppLog.i(TAG, "Starting GNSS service due to Bluetooth connection");
             GNSSServerService.setServiceEnabled(context, true);
-            Intent serviceIntent = new Intent(context, GNSSServerService.class);
-            ContextCompat.startForegroundService(context, serviceIntent);
+            GNSSServerService.start(context);
         }
     }
 
     private void handleDeviceDisconnected(Context context, String deviceMac, String deviceName) {
         AppLog.i(TAG, "Trigger device disconnected: " + deviceName + " (" + deviceMac + ")");
-        connectedTriggerDevices.remove(deviceMac);
+        Preferences.setTriggerDeviceConnected(context, deviceMac, false);
 
-        if (!connectedTriggerDevices.isEmpty()) {
-            AppLog.d(TAG, "Other trigger devices still connected: " + connectedTriggerDevices.size() + ", not stopping");
+        if (!allTriggerDevicesDisconnected(context)) {
+            AppLog.d(TAG, "Other trigger devices still connected, not stopping");
             return;
         }
 

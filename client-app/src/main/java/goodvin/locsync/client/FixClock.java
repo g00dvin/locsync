@@ -27,7 +27,7 @@ import java.util.ArrayDeque;
  * arrived &gt;200 ms late and 1% &gt;1 s late, often bunched with the next one, which made the
  * extrapolated icon jump back and forth by a second's worth of travel.
  *
- * <p>The phone's fix timestamps and our elapsed clock drift apart only by milliseconds per hour,
+ * <p>The phone's monotonic fix times and our elapsed clock drift apart only by milliseconds per hour,
  * so {@code arrival - fixTimestamp} is a constant clock offset plus that fix's total latency. Its
  * minimum over a sliding window is the offset plus the best-case latency; the excess over it is
  * the extra delay of this particular fix. The best-case latency itself is taken as the smallest
@@ -37,7 +37,7 @@ import java.util.ArrayDeque;
  */
 final class FixClock {
     static final long WINDOW_MS = 120_000;
-    // A jump this large in the offset means the phone's clock was changed (NTP, manual); start over.
+    // A jump this large in the offset means another clock (the phone rebooted, or it's another phone); start over.
     private static final long CLOCK_JUMP_MS = 10_000;
 
     private final ArrayDeque<long[]> window = new ArrayDeque<>(); // {arrivalElapsedMs, offsetMs, ageMs}
@@ -45,7 +45,7 @@ final class FixClock {
 
     /**
      * @param arrivalElapsedMs our elapsedRealtime when the packet was received
-     * @param fixTimestampMs   the fix's timestamp on the phone's wall clock
+     * @param fixTimestampMs   the fix's time on the phone's monotonic clock (LocationUpdate.fix_elapsed_ms)
      * @param ageMs            the fix's age as reported by the phone when it sent the packet
      * @return the fix's total latency on arrival (ms, &ge; 0): phone-side age plus Wi-Fi delay
      */

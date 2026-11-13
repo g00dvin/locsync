@@ -87,7 +87,10 @@ public class LocationKalmanFilter {
     // Adaptive position noise (see adaptPositionNoise).
     private static final double POS_NIS_ALPHA = 0.1;
     private static final double POS_R_RATE = 0.1;
-    private static final double MIN_POS_R_SCALE = 0.25;   // trust positions at most 4x more than claimed
+    // Trust positions at most this much more than claimed. 0.57 of the variance from a proper sigma is the same
+    // floor as before (0.25 of the 68% radius taken as sigma: half the reported accuracy), where Fused sat on
+    // the recorded drives, so those behave as they did.
+    private static final double MIN_POS_R_SCALE = 0.25 * RADIUS68_PER_SIGMA * RADIUS68_PER_SIGMA;
     private boolean adaptivePosition = true;
     private double posRScale = 1.0;
     private double posNisEma = 2.0;
@@ -226,7 +229,7 @@ public class LocationKalmanFilter {
         }
     }
 
-    /** Factor applied to the reported position variance (1 = as reported, 0.25 = 2x tighter σ). */
+    /** Factor applied to the reported position variance (1 = as reported, down to 0.57 = 1.3x tighter σ). */
     public double getPositionNoiseScale() {
         return posRScale;
     }
@@ -552,7 +555,12 @@ public class LocationKalmanFilter {
             return;
         }
         double t = Math.min(horizonS, MAX_RATE_HORIZON);
-        double dv = Math.max(accel * t, -v);       // braking stops at zero, never reverses
+        if (accel < 0) {
+            // Braking ends at a stop, never reverses. Cutting only the speed there (and still taking
+            // a·t²/2 over the whole ramp) put a car braking to a halt up to 2 m behind its fix.
+            t = Math.min(t, v / -accel);
+        }
+        double dv = accel * t;
         double dist = accel * t * t / 2 + dv * (horizonS - t);
         double ue = s[2] / v, un = s[3] / v;
         s[0] += ue * dist;
@@ -711,8 +719,13 @@ public class LocationKalmanFilter {
         }
     }
 
+    /**
+     * Per-axis sigma (m) of a fix from its reported accuracy. Android reports the 68% radius, which is
+     * 1.51 sigma: taking it as the sigma itself (while the output was converted properly) trusted every
+     * position 1.5x less than it claimed.
+     */
     private double posSigma(double accuracy) {
-        return accuracy > 0 ? accuracy : 10.0;
+        return accuracy > 0 ? accuracy / RADIUS68_PER_SIGMA : 10.0;
     }
 
     private double velSigma(double speed, double speedAccuracy, double bearingAccuracyDeg) {

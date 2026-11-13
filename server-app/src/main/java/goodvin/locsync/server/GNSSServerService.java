@@ -89,6 +89,39 @@ public class GNSSServerService extends Service {
     private volatile DatagramSocket udpSocket;
     private volatile SocketAddress clientAddr = null;   // the single current client
     private volatile long lastHeard = 0;                // elapsedRealtime of the last HELLO from clientAddr
+    // Only the paired head unit gets fixes (see Protocol): a HELLO counts once it answers this nonce with the
+    // pairing key. One use each, so a recorded HELLO can't be replayed from another address.
+    private volatile byte[] challenge = Protocol.random(Protocol.NONCE_BYTES);
+    private volatile byte[] clientNonce;                // the current client's: its responses are signed with it
+    private static final long PAIRING_WINDOW_MS = 60_000;
+    private static volatile long pairingUntilElapsed = 0;   // "Pair" was tapped: a PAIR packet is accepted until then
+
+    /**
+     * Starts the server from the background (boot, Bluetooth and Wi-Fi triggers). False, with a notification
+     * saying what to allow, when it can't: without the location permission the service can't go foreground,
+     * and Android 12+ may refuse a background start outright. Either used to crash the app.
+     */
+    static boolean start(Context context) {
+        try {
+            if (androidx.core.content.ContextCompat.checkSelfPermission(context,
+                    android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                    && androidx.core.content.ContextCompat.checkSelfPermission(context,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                throw new SecurityException("no location permission");
+            }
+            androidx.core.content.ContextCompat.startForegroundService(context, new Intent(context, GNSSServerService.class));
+            return true;
+        } catch (IllegalStateException | SecurityException e) {
+            AppLog.w(TAG, "Cannot start the server in the background: " + e.getMessage());
+            WifiTrigger.notifyStartFailed(context);
+            return false;
+        }
+    }
+
+    /** Settings → Pair: for a minute, the head unit's key is accepted (it taps Pair too). The server must be running. */
+    public static void openPairing() {
+        pairingUntilElapsed = SystemClock.elapsedRealtime() + PAIRING_WINDOW_MS;
+    }
     private final Runnable keepaliveRunnable = this::keepaliveTick;
     // Main thread only. The keepalive tick runs only while a client is present: a HELLO arms it,
     // and it stops re-arming itself once the client is gone (no wakeups while nobody listens).
@@ -181,11 +214,19 @@ public class GNSSServerService extends Service {
 
         createNotificationChannel();
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(NOTIFICATION_ID, createNotification(),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
-        } else {
-            startForeground(NOTIFICATION_ID, createNotification());
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(NOTIFICATION_ID, createNotification(),
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+            } else {
+                startForeground(NOTIFICATION_ID, createNotification());
+            }
+        } catch (RuntimeException e) {
+            // Location permission revoked (Android 14+ refuses a location foreground service then): the sticky
+            // restart that follows would otherwise crash here, again and again.
+            Log.e(TAG, "Cannot run as a foreground service", e);
+            stopSelf();
+            return;
         }
 
         running = true;
@@ -208,6 +249,9 @@ public class GNSSServerService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (!running) {
+            return START_NOT_STICKY;   // onCreate gave up
+        }
         serverStartError = null;
         startServer();
 
@@ -346,9 +390,32 @@ public class GNSSServerService extends Service {
             return;
         }
 
+        SocketAddress src = packet.getSocketAddress();
+        if (header.type == Protocol.TYPE_PAIR) {
+            if (header.payloadLength == Protocol.KEY_BYTES && SystemClock.elapsedRealtime() < pairingUntilElapsed) {
+                pairingUntilElapsed = 0;   // one head unit per tap
+                Preferences.setPairingKey(this, java.util.Arrays.copyOfRange(packet.getData(),
+                        header.payloadOffset, header.payloadOffset + Protocol.KEY_BYTES));
+                AppLog.i(TAG, "Paired with the head unit at " + src);
+                mainHandler.post(() -> android.widget.Toast.makeText(this, R.string.pair_done,
+                        android.widget.Toast.LENGTH_LONG).show());
+            }
+            return;
+        }
         if (header.type == Protocol.TYPE_HELLO) {
+            byte[] nonce = Protocol.verifyAuthHello(Preferences.pairingKey(this), challenge, packet.getData(), header);
+            if (nonce == null) {
+                // Not (yet) proven to be the paired head unit: all it gets is the nonce to prove it with. Only a
+                // plain HELLO is answered, so a wrong key can't ping-pong.
+                if (header.payloadLength == 0) {
+                    sendPacket(Protocol.buildPacket(Protocol.TYPE_CHALLENGE, challenge), src);
+                }
+                return;
+            }
+            challenge = Protocol.random(Protocol.NONCE_BYTES);
+            clientNonce = nonce;
             boolean isNewClient = (clientAddr == null);
-            clientAddr = packet.getSocketAddress();
+            clientAddr = src;
             lastHeard = SystemClock.elapsedRealtime();   // monotonic: wall-clock changes can't fake a timeout
             mainHandler.post(armKeepalive);   // every HELLO, not just a new client: no-op while armed
             if (isNewClient) {
@@ -643,6 +710,7 @@ public class GNSSServerService extends Service {
         // Create protobuf message
         LocationProto.LocationUpdate.Builder builder = LocationProto.LocationUpdate.newBuilder()
                 .setTimestamp(location.getTime())
+                .setFixElapsedMs(fixNanos > 0 ? fixNanos / 1_000_000 : receivedElapsed)
                 .setLatitude(location.getLatitude())
                 .setLongitude(location.getLongitude())
                 .setProvider(location.getProvider())
@@ -729,11 +797,12 @@ public class GNSSServerService extends Service {
 
     private void broadcastLocationUpdate(LocationProto.ServerResponse serverResponse) {
         SocketAddress dest = clientAddr;
-        if (dest == null) {
+        byte[] key = Preferences.pairingKey(this), nonce = clientNonce;
+        if (dest == null || key == null || nonce == null) {
             return;
         }
         lastResponseSentElapsed = SystemClock.elapsedRealtime();
-        sendPacket(Protocol.buildPacket(Protocol.TYPE_RESPONSE, serverResponse.toByteArray()), dest);
+        sendPacket(Protocol.buildResponse(key, nonce, serverResponse.toByteArray()), dest);
     }
 
     private void keepaliveTick() {
@@ -891,8 +960,7 @@ public class GNSSServerService extends Service {
         }
 
         // Stop action for notification shade
-        Intent stopIntent = new Intent("goodvin.locsync.server.STOP");
-        stopIntent.setPackage(getPackageName());
+        Intent stopIntent = new Intent(this, BroadcastsReceiver.Stop.class);
         PendingIntent stopPendingIntent = PendingIntent.getBroadcast(
                 this, 1, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
@@ -1003,7 +1071,7 @@ public class GNSSServerService extends Service {
 
     /** No enabled trigger (Bluetooth device, car Wi-Fi) is connected. */
     private boolean triggersGone() {
-        boolean btGone = !Preferences.bluetoothAutoStartEnabled(this) || BluetoothReceiver.allTriggerDevicesDisconnected();
+        boolean btGone = !Preferences.bluetoothAutoStartEnabled(this) || BluetoothReceiver.allTriggerDevicesDisconnected(this);
         boolean wifiGone = !WifiTrigger.isActive(this) || !WifiTrigger.isConnected();
         return btGone && wifiGone;
     }

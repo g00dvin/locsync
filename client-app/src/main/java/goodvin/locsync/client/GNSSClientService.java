@@ -88,6 +88,13 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private static volatile PhoneSample phoneSample;
     /** True while MainActivity's Monitor screen is shown; the filter rows are built only then. */
     private static volatile boolean filterStatsWanted;
+    /** True while MainActivity is on screen: per-fix and per-second UI broadcasts are sent only then. */
+    private static volatile boolean uiVisible;
+    private volatile boolean mockFailed;   // a mock-provider (or version) error is on the banner
+
+    static void setUiVisible(boolean visible) {
+        uiVisible = visible;
+    }
     private int lastBroadcastSatelliteCount = -1;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile long lastResponseTime = 0;     // elapsedRealtime of the last RESPONSE
@@ -107,7 +114,32 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private long stateElapsedMs = 0;
     private static final long MAX_LATENCY_MS = 3000;        // ignore absurd ages (clock glitches)
     private static final double MAX_HORIZON_S = 3.0;        // never extrapolate further than this
-    private long lastFedFixTimestampMs = Long.MIN_VALUE;  // LocationUpdate.timestamp last fed to the filter (dedup keepalive resends)
+    // LocationUpdate.fix_elapsed_ms (the phone's monotonic clock) last fed to the filter: dedups keepalive
+    // resends and drops fixes that arrive out of order. Not the fix's wall-clock timestamp: when the phone's
+    // clock stepped back, every fix was dropped until it caught up.
+    private long lastFedFixMs = Long.MIN_VALUE;
+    // A fix this much "older" than the last one is not a late packet: the phone rebooted, or it's another phone.
+    private static final long FIX_CLOCK_RESTART_MS = 10_000;
+    // Pairing and authentication (see Protocol). The key is ours, made once; the phone learns it while "Pair" is
+    // open on both. The nonce is per transport start: responses signed for an earlier one don't verify.
+    private byte[] pairingKey;
+    private volatile byte[] sessionNonce;
+    private static final long PAIRING_WINDOW_MS = 60_000;
+    private static volatile long pairingUntilElapsed = 0;
+    // First and latest CHALLENGE since the last valid RESPONSE (0 = none): a phone that keeps asking and never
+    // answers doesn't have our key.
+    private static volatile long challengedSinceElapsed = 0, lastChallengeElapsed = 0;
+
+    /** Settings → Pair (or the banner): for a minute, a phone that asks gets our key. It must have Pair open too. */
+    static void openPairing() {
+        pairingUntilElapsed = SystemClock.elapsedRealtime() + PAIRING_WINDOW_MS;
+    }
+
+    /** A phone is there but has been refusing us for a few seconds: not paired (or paired with another head unit). */
+    static boolean needsPairing() {
+        long now = SystemClock.elapsedRealtime(), since = challengedSinceElapsed;
+        return instance != null && since != 0 && now - since > 3000 && now - lastChallengeElapsed < 5000;
+    }
     private volatile double lastAltitude = 0;
     // Last vertical accuracy / MSL altitude received, replayed onto the smoothed output (the Kalman
     // filter is horizontal-only, so these pass through unchanged). NaN = not reported.
@@ -287,6 +319,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
         AppLog.setDebug(Preferences.debugLoggingEnabled(this));
         notificationManager = getSystemService(NotificationManager.class);
+        pairingKey = Preferences.pairingKey(this);
         mockLocationManager = new MockLocationManager(this, handler);
         connectionManager = new ConnectionManager(this, this);
 
@@ -376,6 +409,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             return;
         }
         udpSocket = sock;
+        sessionNonce = Protocol.random(Protocol.NONCE_BYTES);
         try {
             sock.setBroadcast(true);
         } catch (SocketException e) {
@@ -467,6 +501,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
         lastFixElapsedMs = 0;
         stateElapsedMs = 0;
+        lastFedFixMs = Long.MIN_VALUE;   // the next transport may be another phone, with another clock
+        challengedSinceElapsed = 0;
         kalman.reset();
         fixClock.reset();
         fixIntervalEmaMs = 1000;
@@ -638,40 +674,94 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             broadcastMockLocationStatus(getString(R.string.version_mismatch), true);
             return;
         }
-        if (header.type != Protocol.TYPE_RESPONSE) {
+        if (header.type == Protocol.TYPE_CHALLENGE) {
+            onChallenge(packet, header);
             return;
         }
+        // Only the paired phone can sign for this session's nonce: anything else on the network is ignored.
+        int bodyLength = Protocol.verifyResponse(pairingKey, sessionNonce, packet.getData(), header);
+        if (bodyLength < 0) {
+            return;
+        }
+        challengedSinceElapsed = 0;
+        pairingUntilElapsed = 0;   // paired: stop offering the key
         metrics.recordPacketRecv(packet.getLength(), SystemClock.elapsedRealtime());
 
         try {
             // Parse in place from the receive buffer (no copy); handled synchronously before the
             // buffer is reused for the next datagram.
             LocationProto.ServerResponse response = LocationProto.ServerResponse.parseFrom(
-                    java.nio.ByteBuffer.wrap(packet.getData(), header.payloadOffset, header.payloadLength));
+                    java.nio.ByteBuffer.wrap(packet.getData(), header.payloadOffset, bodyLength));
 
             lastResponseTime = SystemClock.elapsedRealtime();   // monotonic, immune to clock changes
-            String srcAddr = packet.getAddress().getHostAddress();
-            connectionManager.setLearnedServerAddress(srcAddr);
-            if (!connectionManager.isConnected()) {
-                connectionManager.setState(ConnectionManager.ConnectionState.CONNECTED,
-                        "Receiving from server", srcAddr);
-            }
+            final String srcAddr = packet.getAddress().getHostAddress();
+            // Taken here, before the hop to the service thread, so queueing there doesn't count as network delay.
+            final long arrivalElapsed = SystemClock.elapsedRealtime();
+            // Everything else on the service thread: the connection state, the notification and the last
+            // location were written from both threads.
+            handler.post(() -> onResponse(response, srcAddr, arrivalElapsed));
+        } catch (IOException e) {
+            Log.w(TAG, "Failed to parse ServerResponse", e);
+        }
+    }
 
-            if (response.hasPhone()) {
-                phoneSample = new PhoneSample(response.getPhone(), SystemClock.elapsedRealtime());
-            }
-            if (response.hasLocationUpdate()) {
-                handleLocationUpdate(response);
-            } else {
-                AppLog.i(TAG, "Server status: " + response.getStatus());
+    /** A verified RESPONSE, on the service thread. */
+    private void onResponse(LocationProto.ServerResponse response, String srcAddr, long arrivalElapsed) {
+        if (!running.get()) {
+            return;   // queued before stopTransport: would show "connected" (and reopen the track log) after it
+        }
+        connectionManager.setLearnedServerAddress(srcAddr);
+        if (!connectionManager.isConnected()) {
+            connectionManager.setState(ConnectionManager.ConnectionState.CONNECTED,
+                    "Receiving from server", srcAddr);
+        }
+
+        if (response.hasPhone()) {
+            phoneSample = new PhoneSample(response.getPhone(), SystemClock.elapsedRealtime());
+        }
+        if (response.hasLocationUpdate()) {
+            handleLocationUpdate(response, arrivalElapsed);
+        } else {
+            AppLog.i(TAG, "Server status: " + response.getStatus());
+            if (uiVisible) {
                 Intent intent = new Intent("goodvin.locsync.LOCATION_UPDATE");
                 intent.setPackage(getPackageName());
                 intent.putExtra("satellites", response.getSatellites());
                 sendBroadcast(intent);
             }
-            broadcastSatelliteStatusToWidget(response.getSatellites());
+        }
+        broadcastSatelliteStatusToWidget(response.getSatellites());
+    }
+
+    /**
+     * The phone answers a HELLO it can't attribute to its paired head unit with a nonce: prove the key over it.
+     * While "Pair" is open here, hand the key over first (the one time it crosses the air); the phone takes it
+     * only while "Pair" is open there too.
+     */
+    private void onChallenge(DatagramPacket packet, Protocol.Header header) {
+        DatagramSocket sock = udpSocket;
+        byte[] nonce = sessionNonce;
+        if (header.payloadLength != Protocol.NONCE_BYTES || sock == null || nonce == null) {
+            return;
+        }
+        long now = SystemClock.elapsedRealtime();
+        lastChallengeElapsed = now;
+        if (challengedSinceElapsed == 0) {
+            challengedSinceElapsed = now;
+        }
+        byte[] serverNonce = java.util.Arrays.copyOfRange(packet.getData(), header.payloadOffset,
+                header.payloadOffset + Protocol.NONCE_BYTES);
+        try {
+            if (now < pairingUntilElapsed) {
+                byte[] pair = Protocol.buildPacket(Protocol.TYPE_PAIR, pairingKey);
+                sock.send(new DatagramPacket(pair, pair.length, packet.getSocketAddress()));
+                AppLog.i(TAG, "Pairing: key sent to " + packet.getSocketAddress());
+            }
+            byte[] hello = Protocol.buildAuthHello(pairingKey, serverNonce, nonce);
+            sock.send(new DatagramPacket(hello, hello.length, packet.getSocketAddress()));
+            metrics.recordPacketSent(hello.length);
         } catch (IOException e) {
-            Log.w(TAG, "Failed to parse ServerResponse", e);
+            AppLog.v(TAG, "Failed to answer the challenge: " + e.getMessage());
         }
     }
 
@@ -701,7 +791,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         }
     }
 
-    private void handleLocationUpdate(LocationProto.ServerResponse response) {
+    private void handleLocationUpdate(LocationProto.ServerResponse response, final long arrivalElapsed) {
         try {
             LocationProto.LocationUpdate locationUpdate = response.getLocationUpdate();
             metrics.recordFixAgeMs(locationUpdate.getLocationAge() * 1000.0);
@@ -728,38 +818,38 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             // Update notification with new location data
             updateNotificationThrottled();
 
-            // Broadcast location update to activity
-            Intent intent = new Intent("goodvin.locsync.LOCATION_UPDATE");
-            intent.putExtra("location", location);
-            intent.putExtra("satellites", response.getSatellites());
-            intent.putExtra("provider", locationUpdate.getProvider());
-            intent.putExtra("locationAge", locationUpdate.getLocationAge());
-            intent.setPackage(getPackageName());
-            sendBroadcast(intent);
+            // Broadcast location update to activity, while it is on screen: a parcelled Location per fix
+            // through the system otherwise, for a receiver that only caches it
+            if (uiVisible) {
+                Intent intent = new Intent("goodvin.locsync.LOCATION_UPDATE");
+                intent.putExtra("location", location);
+                intent.putExtra("satellites", response.getSatellites());
+                intent.putExtra("provider", locationUpdate.getProvider());
+                intent.putExtra("locationAge", locationUpdate.getLocationAge());
+                intent.setPackage(getPackageName());
+                sendBroadcast(intent);
+            }
 
             // Feed the fix into the Kalman filter on the service thread; the smoothing loop
             // (same thread) reads/predicts the same filter, so all access is confined
             // to one thread and no synchronization is needed.
-            final LocationProto.LocationUpdate u = locationUpdate;   // immutable: read on the service thread below
-            // Taken on the receive thread, before the hop to the service thread, so queueing there
-            // doesn't count as network delay.
-            final long arrivalElapsed = SystemClock.elapsedRealtime();
-            handler.post(() -> {
-                if (!running.get()) {
-                    return;   // queued before stopTransport: would reopen the track log after it
-                }
+            final LocationProto.LocationUpdate u = locationUpdate;
+            {   // (was a hop to the service thread; onResponse already runs there)
                 try {
-                    final long fixTs = u.getTimestamp();
+                    final long fixTs = u.getFixElapsedMs();   // the phone's monotonic clock, not its wall clock
                     // Skip keepalive resends of a fix already fed to the filter. The server re-sends the
                     // last response ~1 Hz to keep the connection live; re-feeding that same stale fix (and,
                     // in a tunnel, its phantom speed=0) is what pinned velocity and froze the icon.
                     // Older than what we already have (a delayed packet overtaken by a newer one): the
                     // filter has moved past it, feeding it would step the state backwards.
-                    if (fixTs <= lastFedFixTimestampMs) {
+                    long prevFixTs = lastFedFixMs;
+                    if (prevFixTs != Long.MIN_VALUE && prevFixTs - fixTs >= FIX_CLOCK_RESTART_MS) {
+                        prevFixTs = Long.MIN_VALUE;   // another clock (phone rebooted or replaced): no "previous fix"
+                    }
+                    if (fixTs <= prevFixTs) {
                         return;
                     }
-                    long prevFixTs = lastFedFixTimestampMs;
-                    lastFedFixTimestampMs = fixTs;
+                    lastFedFixMs = fixTs;
                     metrics.recordFix();
                     inSpeedAcc = u.hasSpeedAccuracy() ? u.getSpeedAccuracy() : Double.NaN;
                     inBearingAcc = u.hasBearingAccuracy() ? u.getBearingAccuracy() : Double.NaN;
@@ -865,7 +955,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
                     updateTrackRecorder();
                     if (trackRecorder != null) {
-                        trackRecorder.fix(nowElapsed, fixTs, u.getProvider(), response.getSatellites(),
+                        trackRecorder.fix(nowElapsed, u.getTimestamp(), u.getProvider(), response.getSatellites(),
                                 u.getLatitude(), u.getLongitude(), u.getAltitude(), u.getAccuracy(),
                                 u.hasSpeed(), u.getSpeed(), u.hasBearing(), u.getBearing(),
                                 u.getSpeedAccuracy(), u.getBearingAccuracy(), u.getLocationAge(), latencyMs, kalman,
@@ -874,7 +964,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                 } catch (Exception e) {
                     Log.e(TAG, "Error updating Kalman filter", e);
                 }
-            });
+            }
         } catch (SecurityException e) {
             Log.e(TAG, "Security exception - mock location permission denied", e);
             broadcastMockLocationStatus(getString(R.string.mock_location_permission_denied), true);
@@ -1097,7 +1187,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         lastReceivedLocation = loc;
         lastUpdateTime = System.currentTimeMillis();
         try {
-            mockLocationManager.setMockLocation(loc);
+            if (mockLocationManager.setMockLocation(loc) && mockFailed) {
+                mockFailed = false;
+                broadcastMockLocationStatus(null, false);   // injecting again: take the error banner down
+            }
             if (trackRecorder != null) {
                 // after setMockLocation: records what was actually injected (incl. static jitter)
                 trackRecorder.out(SystemClock.elapsedRealtime(), loc.getLatitude(), loc.getLongitude(), moving,
@@ -1144,7 +1237,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                         metricsLog.flush();   // export reads the file; flush also notices "Clear logs"
                         Log.i(METRICS_TAG, s.toLogLine());
                     }
-                    sendBroadcast(new Intent("goodvin.locsync.METRICS")
+                    if (uiVisible) sendBroadcast(new Intent("goodvin.locsync.METRICS")
                             .setPackage(getPackageName())
                             .putExtra("pktSentPerSec", s.pktSentPerSec)
                             .putExtra("pktRecvPerSec", s.pktRecvPerSec)
@@ -1428,6 +1521,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     }
 
     private void broadcastMockLocationStatus(String message, boolean error) {
+        if (message != null) {
+            mockFailed = true;
+        }
         Intent intent = new Intent("goodvin.locsync.MOCK_LOCATION_STATUS");
         intent.setPackage(getPackageName());
         intent.putExtra("message", message);

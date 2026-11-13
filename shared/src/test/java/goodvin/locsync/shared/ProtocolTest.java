@@ -75,4 +75,35 @@ public class ProtocolTest {
         assertEquals(false, Protocol.isSupportedVersion(Protocol.VERSION + 1));
         assertEquals(false, Protocol.isSupportedVersion(1));
     }
+
+    @Test
+    public void authHello_verifiesOnlyWithTheKeyAndTheServersNonce() {
+        byte[] key = Protocol.random(Protocol.KEY_BYTES);
+        byte[] serverNonce = Protocol.random(Protocol.NONCE_BYTES), clientNonce = Protocol.random(Protocol.NONCE_BYTES);
+        byte[] packet = Protocol.buildAuthHello(key, serverNonce, clientNonce);
+        Protocol.Header h = Protocol.parse(packet, packet.length);
+
+        assertArrayEquals(clientNonce, Protocol.verifyAuthHello(key, serverNonce, packet, h));
+        assertEquals(null, Protocol.verifyAuthHello(Protocol.random(Protocol.KEY_BYTES), serverNonce, packet, h));
+        assertEquals(null, Protocol.verifyAuthHello(key, Protocol.random(Protocol.NONCE_BYTES), packet, h));   // replay
+        assertEquals(null, Protocol.verifyAuthHello(null, serverNonce, packet, h));                             // unpaired
+        byte[] plain = Protocol.buildPacket(Protocol.TYPE_HELLO, null);
+        assertEquals(null, Protocol.verifyAuthHello(key, serverNonce, plain, Protocol.parse(plain, plain.length)));
+    }
+
+    @Test
+    public void response_verifiesOnlyUntamperedForThisClientNonce() {
+        byte[] key = Protocol.random(Protocol.KEY_BYTES), clientNonce = Protocol.random(Protocol.NONCE_BYTES);
+        byte[] body = {1, 2, 3, 4, 5};
+        byte[] packet = Protocol.buildResponse(key, clientNonce, body);
+        Protocol.Header h = Protocol.parse(packet, packet.length);
+
+        assertEquals(body.length, Protocol.verifyResponse(key, clientNonce, packet, h));
+        assertEquals(-1, Protocol.verifyResponse(key, Protocol.random(Protocol.NONCE_BYTES), packet, h));   // other session
+        assertEquals(-1, Protocol.verifyResponse(Protocol.random(Protocol.KEY_BYTES), clientNonce, packet, h));
+        packet[Protocol.HEADER_BYTES] ^= 1;
+        assertEquals(-1, Protocol.verifyResponse(key, clientNonce, packet, h));
+        byte[] unsigned = Protocol.buildPacket(Protocol.TYPE_RESPONSE, new byte[]{1, 2});
+        assertEquals(-1, Protocol.verifyResponse(key, clientNonce, unsigned, Protocol.parse(unsigned, unsigned.length)));
+    }
 }

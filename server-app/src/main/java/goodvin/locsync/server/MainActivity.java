@@ -479,6 +479,12 @@ public class MainActivity extends AppCompatActivity {
                 });
         bindActionButton(R.id.rowWifiNetwork, getString(R.string.wifi_network), wifiNetworkSummary(),
                 getString(R.string.wifi_network_use_current), this::useCurrentWifiAsTrigger);
+        bindActionButton(R.id.rowPair, getString(R.string.pair_row),
+                getString(Preferences.pairingKey(this) != null ? R.string.pair_sub_paired : R.string.pair_sub_unpaired),
+                getString(R.string.pair_button), () -> {
+                    GNSSServerService.openPairing();
+                    Toast.makeText(this, R.string.pair_started, Toast.LENGTH_LONG).show();
+                });
 
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,

@@ -294,10 +294,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         unregisterReceiver(connectionReceiver);
-        unregisterReceiver(locationReceiver);
         unregisterReceiver(mockLocationStatusReceiver);
-        unregisterReceiver(metricsReceiver);
-        unregisterReceiver(filterStatsReceiver);
         uiHandler.removeCallbacksAndMessages(null);
     }
 
@@ -305,6 +302,11 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         super.onStart();
         started = true;
+        // The per-fix and per-second feeds only while on screen (the service sends them only then).
+        registerReceiver(locationReceiver, new IntentFilter("goodvin.locsync.LOCATION_UPDATE"), RECEIVER_NOT_EXPORTED);
+        registerReceiver(metricsReceiver, new IntentFilter("goodvin.locsync.METRICS"), RECEIVER_NOT_EXPORTED);
+        registerReceiver(filterStatsReceiver, new IntentFilter("goodvin.locsync.FILTER_STATS"), RECEIVER_NOT_EXPORTED);
+        GNSSClientService.setUiVisible(true);
         GNSSClientService.setFilterStatsWanted(monitorShown());
         if (monitorShown()) redrawMonitor();   // onResume redraws the rest (refreshState)
         blinkLogDot();
@@ -317,6 +319,10 @@ public class MainActivity extends AppCompatActivity {
     protected void onStop() {
         super.onStop();
         started = false;
+        GNSSClientService.setUiVisible(false);
+        unregisterReceiver(locationReceiver);
+        unregisterReceiver(metricsReceiver);
+        unregisterReceiver(filterStatsReceiver);
         GNSSClientService.setFilterStatsWanted(false);
         uiHandler.removeCallbacks(uiTick);
         if (dotAnimator != null) dotAnimator.pause();   // a 60 fps animator nobody sees otherwise
@@ -514,6 +520,8 @@ public class MainActivity extends AppCompatActivity {
                         AutostartScheduler.cancel(this);
                     }
                 });
+        bindActionButton(R.id.rowPair, getString(R.string.pair_row), getString(R.string.pair_sub),
+                getString(R.string.pair_button), this::startPairing);
         bindToggle(R.id.rowAutostartBoot, getString(R.string.autostart_boot),
                 getString(R.string.autostart_boot_sub), Preferences.autostartBoot(this),
                 checked -> Preferences.setAutostartBoot(this, checked));
@@ -769,11 +777,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void registerReceivers() {
+        // Rare, one-shot events, kept for the activity's whole life: one missed while off screen would be lost.
         registerReceiver(connectionReceiver, new IntentFilter("goodvin.locsync.CONNECTION_CHANGED"), RECEIVER_NOT_EXPORTED);
-        registerReceiver(locationReceiver, new IntentFilter("goodvin.locsync.LOCATION_UPDATE"), RECEIVER_NOT_EXPORTED);
         registerReceiver(mockLocationStatusReceiver, new IntentFilter("goodvin.locsync.MOCK_LOCATION_STATUS"), RECEIVER_NOT_EXPORTED);
-        registerReceiver(metricsReceiver, new IntentFilter("goodvin.locsync.METRICS"), RECEIVER_NOT_EXPORTED);
-        registerReceiver(filterStatsReceiver, new IntentFilter("goodvin.locsync.FILTER_STATS"), RECEIVER_NOT_EXPORTED);
     }
 
     // --- power / state ---
@@ -845,6 +851,9 @@ public class MainActivity extends AppCompatActivity {
         } else if (!isMockAppSelected()) {
             msg = getString(R.string.mock_app_not_selected);
             action = this::openMockLocationSettings;
+        } else if (GNSSClientService.needsPairing()) {
+            msg = getString(R.string.pair_needed);
+            action = this::startPairing;
         }
         UpdateChecker.Release update = updateRow != null ? updateRow.available() : null;
         bannerIsUpdate = msg == null && update != null && !updateBannerDismissed;
@@ -1299,6 +1308,11 @@ public class MainActivity extends AppCompatActivity {
         sub.setText(f.exists() && f.length() > 0
                 ? base + String.format(Locale.US, " · %.1f MB", f.length() / 1048576.0) : base);
         sub.setVisibility(View.VISIBLE);
+    }
+
+    private void startPairing() {
+        GNSSClientService.openPairing();
+        Toast.makeText(this, R.string.pair_started, Toast.LENGTH_LONG).show();
     }
 
     // --- small view helpers ---
