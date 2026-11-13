@@ -6,22 +6,22 @@
     android:layout_height="match_parent"
     android:background="@drawable/bg_card"
     android:orientation="vertical"
-    android:paddingHorizontal="12dp"
-    android:paddingVertical="10dp">
+    android:paddingHorizontal="13dp"
+    android:paddingVertical="11dp">
 
     <TextView
         android:id="@+id/tileLabel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:letterSpacing="0.10"
+        android:letterSpacing="0.12"
         android:textAllCaps="true"
         android:textColor="@color/ls_text_dim"
-        android:textSize="10sp" />
+        android:textSize="11sp" />
 
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="3dp"
         android:baselineAligned="true"
         android:orientation="horizontal">
 
@@ -32,7 +32,7 @@
             android:fontFamily="sans-serif-medium"
             android:text="@string/value_none"
             android:textColor="@color/ls_text_dim"
-            android:textSize="24sp" />
+            android:textSize="28sp" />
 
         <TextView
             android:id="@+id/tileUnit"
@@ -40,15 +40,15 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="5dp"
             android:textColor="@color/ls_text_muted"
-            android:textSize="12sp" />
+            android:textSize="14sp" />
     </LinearLayout>
 
     <TextView
         android:id="@+id/tileHint"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
+        android:layout_marginTop="1dp"
         android:maxLines="2"
         android:textColor="@color/ls_text_muted"
-        android:textSize="11sp" />
+        android:textSize="12sp" />
 </LinearLayout>

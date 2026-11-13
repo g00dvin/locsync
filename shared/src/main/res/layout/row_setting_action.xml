@@ -11,6 +11,18 @@
     android:paddingHorizontal="12dp"
     android:paddingVertical="11dp">
 
+    <!-- Optional step badge (setup checklist): a number, or a check mark when done; hidden by default -->
+    <TextView
+        android:id="@+id/row_badge"
+        android:layout_width="26dp"
+        android:layout_height="26dp"
+        android:layout_marginEnd="12dp"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"

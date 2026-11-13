@@ -30,7 +30,7 @@
             android:layout_height="wrap_content"
             android:fontFamily="monospace"
             android:text="@string/value_none"
-            android:textColor="@color/ls_accent_300"
+            android:textColor="@color/ls_text_dim"
             android:textSize="12sp" />
     </LinearLayout>
 

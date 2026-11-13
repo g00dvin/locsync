@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright © 2026 LocSync. GPLv3. See <https://www.gnu.org/licenses/>. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="@android:color/transparent" />
+    <stroke android:width="1.5dp" android:color="@color/ls_neutral_500" />
+</shape>

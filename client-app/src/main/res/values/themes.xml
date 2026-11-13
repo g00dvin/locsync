@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright © 2026 LocSync. GPLv3. See <https://www.gnu.org/licenses/>. -->
+<resources>
+    <!-- Dark-only (the activity forces night mode); accent tints switches, inputs and progress. -->
+    <style name="Theme.LocSync" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="colorAccent">@color/ls_accent</item>
+        <item name="android:windowBackground">@color/ls_bg</item>
+    </style>
+</resources>

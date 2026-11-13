@@ -77,9 +77,14 @@ public final class SetupChecklist {
             Step step = steps.get(i);
             View row = container.getChildAt(i * 2);
             TextView label = row.findViewById(R.id.row_label);
-            label.setText(ctx.getString(step.done() ? R.string.setup_step_done : R.string.setup_step_todo,
-                    i + 1, step.title()));
+            label.setText(step.title());
             label.setTextColor(ctx.getColor(step.done() ? R.color.ls_text_muted : R.color.ls_text));
+            // Badge: a filled check when done, otherwise the outlined step number.
+            TextView badge = row.findViewById(R.id.row_badge);
+            badge.setVisibility(View.VISIBLE);
+            badge.setText(step.done() ? "✓" : String.valueOf(i + 1));
+            badge.setBackgroundResource(step.done() ? R.drawable.bg_badge_done : R.drawable.bg_badge_todo);
+            badge.setTextColor(ctx.getColor(step.done() ? R.color.ls_bg : R.color.ls_text));
             TextView sub = row.findViewById(R.id.row_sub);
             String subText = step.optional() && !step.done()
                     ? ctx.getString(R.string.setup_recommended, step.sub()) : step.sub();

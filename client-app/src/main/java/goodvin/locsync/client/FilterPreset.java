@@ -63,12 +63,6 @@ public enum FilterPreset {
         Preferences.setFilterStandstillSpeed(context, standstillSpeed);
     }
 
-    /** Next preset in the cycle; hand-tuned values (null) go to BALANCED. */
-    public static FilterPreset next(FilterPreset current) {
-        if (current == null) return BALANCED;
-        return values()[(current.ordinal() + 1) % values().length];
-    }
-
     private static boolean same(float a, float b) {
         return Math.abs(a - b) < 1e-3f;
     }

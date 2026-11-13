@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright © 2026 LocSync. GPLv3. See <https://www.gnu.org/licenses/>. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M9.5,2.5h5a2.5,2.5 0,0 1,2.5 2.5v14a2.5,2.5 0,0 1,-2.5 2.5h-5a2.5,2.5 0,0 1,-2.5 -2.5v-14a2.5,2.5 0,0 1,2.5 -2.5z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M11,18h2"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

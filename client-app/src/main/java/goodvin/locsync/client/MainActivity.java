@@ -59,7 +59,6 @@ import java.util.Locale;
 import goodvin.locsync.proto.LocationProto;
 import goodvin.locsync.shared.AppLog;
 import goodvin.locsync.shared.LinkState;
-import goodvin.locsync.shared.PowerOrbView;
 import goodvin.locsync.shared.SettingsRows;
 import goodvin.locsync.shared.SetupChecklist;
 import goodvin.locsync.shared.SparklineView;
@@ -94,10 +93,9 @@ public class MainActivity extends AppCompatActivity {
     private androidx.activity.OnBackPressedCallback backCallback;
 
     // Connect
-    private PowerOrbView powerOrb;
-    private TextView statusLine, statusSub, bannerText;
+    private TextView btnPower, bannerText;
     private View connectBanner;
-    private View tileSpeed, tileAccuracy, tileSats, tileFresh;
+    private View tileSpeed, tileHeading, tileAccuracy, tileSats, tileFresh;
     private View navDot;
     private TextView navTitle, navDetail;
 
@@ -425,12 +423,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bindConnect() {
-        powerOrb = findViewById(R.id.powerOrb);
-        statusLine = findViewById(R.id.statusLine);
-        statusSub = findViewById(R.id.statusSub);
+        btnPower = findViewById(R.id.btnPower);
         connectBanner = findViewById(R.id.connectBanner);
         bannerText = findViewById(R.id.bannerText);
         tileSpeed = findViewById(R.id.tileSpeed);
+        tileHeading = findViewById(R.id.tileHeading);
         tileAccuracy = findViewById(R.id.tileAccuracy);
         tileSats = findViewById(R.id.tileSats);
         tileFresh = findViewById(R.id.tileFresh);
@@ -439,11 +436,12 @@ public class MainActivity extends AppCompatActivity {
         navDetail = findViewById(R.id.navDetail);
 
         setText(tileSpeed, R.id.tileLabel, getString(R.string.tile_speed));
+        setText(tileHeading, R.id.tileLabel, getString(R.string.tile_heading));
         setText(tileAccuracy, R.id.tileLabel, getString(R.string.tile_accuracy));
         setText(tileSats, R.id.tileLabel, getString(R.string.stat_satellites));
         setText(tileFresh, R.id.tileLabel, getString(R.string.tile_fresh));
 
-        powerOrb.setOnClickListener(v -> togglePower());
+        btnPower.setOnClickListener(v -> togglePower());
         connectBanner.setOnClickListener(v -> {
             if (bannerAction != null) bannerAction.run();
         });
@@ -638,18 +636,36 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bindFilterPresetRow() {
-        FilterPreset preset = FilterPreset.current(this);
-        bindAction(R.id.rowFilterPreset, getString(R.string.filter_preset),
-                getString(R.string.filter_preset_sub, presetName(preset)), true, () -> {
-                    FilterPreset.next(FilterPreset.current(this)).apply(this);
-                    recreate();   // the parameter rows below show the new values
-                });
+        bindPresetSegment(R.id.presetSmooth, FilterPreset.SMOOTH);
+        bindPresetSegment(R.id.presetBalanced, FilterPreset.BALANCED);
+        bindPresetSegment(R.id.presetResponsive, FilterPreset.RESPONSIVE);
+        refreshFilterPresetSub();
     }
 
-    /** Hand-editing a preset parameter turns the Style row into "Custom" (or back) at once. */
+    private void bindPresetSegment(int id, FilterPreset preset) {
+        findViewById(id).setOnClickListener(v -> {
+            if (FilterPreset.current(this) == preset) return;
+            preset.apply(this);
+            recreate();   // the parameter rows below show the new values
+        });
+    }
+
+    /**
+     * Highlights the active style and names it under the label. Hand-editing a preset parameter
+     * turns it into "Custom" (no segment selected), or back, at once.
+     */
     private void refreshFilterPresetSub() {
-        setText(R.id.rowFilterPreset, R.id.row_sub,
-                getString(R.string.filter_preset_sub, presetName(FilterPreset.current(this))));
+        FilterPreset current = FilterPreset.current(this);
+        setText(R.id.rowFilterPreset, R.id.row_sub, getString(R.string.filter_preset_sub, presetName(current)));
+        styleSegment(R.id.presetSmooth, current == FilterPreset.SMOOTH);
+        styleSegment(R.id.presetBalanced, current == FilterPreset.BALANCED);
+        styleSegment(R.id.presetResponsive, current == FilterPreset.RESPONSIVE);
+    }
+
+    private void styleSegment(int id, boolean selected) {
+        TextView segment = findViewById(id);
+        segment.setBackgroundResource(selected ? R.drawable.bg_seg_selected : 0);
+        segment.setTextColor(getColor(selected ? R.color.ls_bg : R.color.ls_text_muted));
     }
 
     private String presetName(FilterPreset p) {
@@ -810,27 +826,15 @@ public class MainActivity extends AppCompatActivity {
 
     private void refreshState() {
         LinkState state = currentState();
-        powerOrb.setState(state);
+        Ui.stylePower(btnPower, btnPower, state != LinkState.STOPPED);
         trackConnectedSince(state);
 
+        // Top-bar subtitle: who we're linked to, or how we're looking for the phone.
         switch (state) {
-            case CONNECTED -> {
-                statusLine.setText(R.string.status_client_connected);
-                statusLine.setTextColor(getColor(R.color.ls_accent_400));
-                statusSub.setText(connectedSub());
-            }
-            case WAITING -> {
-                statusLine.setText(R.string.status_client_connecting);
-                statusLine.setTextColor(getColor(R.color.ls_accent_300));
-                statusSub.setText(R.string.sub_client_waiting);
-            }
-            default -> {
-                statusLine.setText(R.string.status_hint_start);
-                statusLine.setTextColor(getColor(R.color.ls_text_muted));
-                statusSub.setText(R.string.subtitle_client);
-            }
+            case CONNECTED -> subtitleText.setText(connectedSub());
+            case WAITING -> subtitleText.setText(R.string.sub_client_waiting);
+            default -> subtitleText.setText(R.string.subtitle_client);
         }
-        subtitleText.setText(state == LinkState.CONNECTED ? getString(R.string.sub_client_connected) : statusSub.getText());
         updateBanner(state);
         updateConnectReadouts();
         if (viewFlipper.getDisplayedChild() == VIEW_SETUP) renderSetup();
@@ -959,7 +963,7 @@ public class MainActivity extends AppCompatActivity {
         } else if (state == LinkState.WAITING) {
             navTitle.setText(R.string.nav_waiting_title);
             navDetail.setText(R.string.nav_waiting_detail);
-            dotColor = getColor(R.color.ls_accent_300);
+            dotColor = getColor(R.color.ls_warn);
         } else {
             navTitle.setText(R.string.nav_off_title);
             navDetail.setText(R.string.nav_off_detail);
@@ -975,6 +979,7 @@ public class MainActivity extends AppCompatActivity {
         if (loc == null) {
             String hint = connected ? getString(R.string.hint_no_fix) : "";
             setTile(tileSpeed, none, "", hint, dimColor);
+            setTile(tileHeading, none, "", "", dimColor);
             setTile(tileAccuracy, none, "", hint, dimColor);
             setTile(tileSats, none, "", hint, dimColor);
             setTile(tileFresh, none, "", hint, dimColor);
@@ -988,6 +993,16 @@ public class MainActivity extends AppCompatActivity {
                     getString(kmh < 2 ? R.string.hint_speed_stopped : R.string.hint_speed), textColor);
         } else {
             setTile(tileSpeed, none, getString(R.string.unit_kmh), getString(R.string.hint_speed_none), dimColor);
+        }
+
+        // Heading: whole degrees and the nearest of eight compass points
+        if (loc.hasBearing()) {
+            int deg = Math.round(loc.getBearing()) % 360;
+            String[] points = getResources().getStringArray(R.array.compass_points);
+            setTile(tileHeading, getString(R.string.heading_format, deg), "",
+                    points[Math.round(deg / 45f) % points.length], textColor);
+        } else {
+            setTile(tileHeading, none, "", "", dimColor);
         }
 
         // Accuracy (68% radius reported by the phone) with a plain-language grade
@@ -1167,7 +1182,7 @@ public class MainActivity extends AppCompatActivity {
     private final Runnable uiTick = new Runnable() {
         @Override public void run() {
             if (currentState() == LinkState.CONNECTED) {
-                statusSub.setText(connectedSub());
+                subtitleText.setText(connectedSub());
             }
             if (viewFlipper.getDisplayedChild() == VIEW_CONNECT) {
                 updateConnectReadouts();   // freshness and the navigator status age every second

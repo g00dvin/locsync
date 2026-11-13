@@ -5,31 +5,32 @@
     android:layout_height="wrap_content"
     android:background="@drawable/bg_card"
     android:orientation="vertical"
-    android:padding="11dp">
+    android:paddingHorizontal="13dp"
+    android:paddingVertical="11dp">
 
     <TextView
         android:id="@+id/statLabel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:letterSpacing="0.10"
+        android:letterSpacing="0.12"
         android:textAllCaps="true"
         android:textColor="@color/ls_text_dim"
-        android:textSize="10sp" />
+        android:textSize="11sp" />
 
     <TextView
         android:id="@+id/statValue"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="3dp"
         android:fontFamily="sans-serif-medium"
         android:text="@string/value_none"
         android:textColor="@color/ls_text_dim"
-        android:textSize="17sp" />
+        android:textSize="28sp" />
 
     <TextView
         android:id="@+id/statUnit"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textColor="@color/ls_text_dim"
-        android:textSize="10sp" />
+        android:textSize="12sp" />
 </LinearLayout>

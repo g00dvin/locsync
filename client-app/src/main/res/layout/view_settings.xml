@@ -43,7 +43,49 @@
         <!-- Smoothing (Kalman filter feeding the mock provider) -->
         <TextView style="@style/LsGroupLabel" android:text="@string/group_smoothing" />
         <LinearLayout style="@style/LsGroupCard">
-            <include layout="@layout/row_setting_action" android:id="@+id/rowFilterPreset" />
+            <!-- Style preset: label + sub (row_setting_action ids) over a three-way selector -->
+            <LinearLayout
+                android:id="@+id/rowFilterPreset"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingHorizontal="12dp"
+                android:paddingTop="11dp"
+                android:paddingBottom="12dp">
+
+                <TextView
+                    android:id="@+id/row_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/filter_preset"
+                    android:textColor="@color/ls_text"
+                    android:textSize="13.5sp" />
+
+                <TextView
+                    android:id="@+id/row_sub"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/ls_text_dim"
+                    android:textSize="11sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_console"
+                    android:baselineAligned="false"
+                    android:orientation="horizontal"
+                    android:padding="3dp">
+
+                    <TextView android:id="@+id/presetSmooth" style="@style/LsSegment"
+                        android:text="@string/filter_preset_smooth" />
+                    <TextView android:id="@+id/presetBalanced" style="@style/LsSegment"
+                        android:text="@string/filter_preset_balanced_short" />
+                    <TextView android:id="@+id/presetResponsive" style="@style/LsSegment"
+                        android:text="@string/filter_preset_responsive" />
+                </LinearLayout>
+            </LinearLayout>
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowFilterAdvanced" />
             <View style="@style/LsDivider" />
