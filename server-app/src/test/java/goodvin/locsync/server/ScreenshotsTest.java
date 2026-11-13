@@ -95,6 +95,7 @@ public class ScreenshotsTest {
         setField(service, "satellitesUsed", cn0.length);
         File dir = new File(System.getProperty("screenshots.dir", "build/screenshots"));
         dir.mkdirs();
+        captureIcon(activity, new File(dir, "server-icon.png"));
         capture(activity, new File(dir, "server-home.png"), true);
         activity.findViewById(R.id.btnRight).performClick();
         idle(Duration.ofMillis(1100));   // the log renders on the next 1 s tick
@@ -158,6 +159,17 @@ public class ScreenshotsTest {
             bmp.compress(Bitmap.CompressFormat.PNG, 100, fos);
         }
         System.out.println("Saved " + out + " (" + w + "x" + h + ")");
+    }
+
+    /** The launcher icon as the system draws it (background, glyph, mask). */
+    private static void captureIcon(android.content.Context context, File out) throws Exception {
+        android.graphics.drawable.Drawable icon = context.getDrawable(R.mipmap.ic_launcher);
+        Bitmap bmp = Bitmap.createBitmap(432, 432, Bitmap.Config.ARGB_8888);
+        icon.setBounds(0, 0, 432, 432);
+        icon.draw(new Canvas(bmp));
+        try (FileOutputStream fos = new FileOutputStream(out)) {
+            bmp.compress(Bitmap.CompressFormat.PNG, 100, fos);
+        }
     }
 
     private static ScrollView findVisibleScroll(View v) {

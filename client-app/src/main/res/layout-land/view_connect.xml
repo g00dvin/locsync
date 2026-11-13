@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright © 2025-2026 Dezz (https://github.com/DezzK). GPLv3. See <https://www.gnu.org/licenses/>. -->
+<!-- Client home in a wide, short window (head unit in landscape, or sharing the screen with the
+     navigator): speed and heading on the left, the tiles in a grid on the right, so everything
+     stays on screen. Same views and ids as the tall layout. -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <include layout="@layout/home_status" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="8dp"
+            android:baselineAligned="false"
+            android:minHeight="150dp"
+            android:orientation="horizontal">
+
+            <include layout="@layout/home_hero"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginStart="22dp"
+                android:layout_marginEnd="8dp" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1.3"
+                android:orientation="vertical">
+
+                <!-- What the phone reports about the fix -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:layout_marginHorizontal="10dp"
+                    android:baselineAligned="false"
+                    android:orientation="horizontal">
+
+                    <include layout="@layout/tile_stat" android:id="@+id/tileAccuracy"
+                        android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                        android:layout_marginHorizontal="4dp" />
+
+                    <include layout="@layout/tile_stat" android:id="@+id/tileSats"
+                        android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                        android:layout_marginHorizontal="4dp" />
+
+                    <include layout="@layout/tile_stat" android:id="@+id/tileFresh"
+                        android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                        android:layout_marginHorizontal="4dp" />
+                </LinearLayout>
+
+                <!-- The phone's battery and heat, and the car's fuel and odometer. Each tile shows only when
+                     there is data for it; the row goes away when none has. -->
+                <LinearLayout
+                    android:id="@+id/rowDevices"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:layout_marginHorizontal="10dp"
+                    android:layout_marginTop="8dp"
+                    android:baselineAligned="false"
+                    android:orientation="horizontal"
+                    android:visibility="gone">
+
+                    <include layout="@layout/tile_stat" android:id="@+id/tilePhone"
+                        android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                        android:layout_marginHorizontal="4dp"
+                        android:visibility="gone" />
+
+                    <include layout="@layout/tile_stat" android:id="@+id/tileFuel"
+                        android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                        android:layout_marginHorizontal="4dp"
+                        android:visibility="gone" />
+
+                    <include layout="@layout/tile_stat" android:id="@+id/tileOdo"
+                        android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                        android:layout_marginHorizontal="4dp"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <Space
+            android:layout_width="match_parent"
+            android:layout_height="10dp" />
+    </LinearLayout>
+</ScrollView>

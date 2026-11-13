@@ -155,17 +155,19 @@
         </LinearLayout>
 
         <!-- Footer -->
+        <!-- Link to the project page -->
         <TextView
-            android:id="@+id/copyrightTextSettings"
+            android:id="@+id/repoLink"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="8dp"
             android:autoLink="web"
             android:gravity="center"
             android:linksClickable="true"
-            android:text="@string/copyright_notice"
+            android:minHeight="44dp"
+            android:text="@string/repo_link"
             android:textColor="@color/ls_text_dim"
             android:textColorLink="@color/ls_accent_400"
-            android:textSize="10.5sp" />
+            android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>
