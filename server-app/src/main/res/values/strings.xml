@@ -101,7 +101,6 @@
     <string name="boot_autostart">Start when the phone boots</string>
     <string name="boot_autostart_sub">Starts the server after the phone restarts, unless it was stopped from the notification. Usually not needed: the car\'s Bluetooth or Wi-Fi start it.</string>
     <string name="pair_row">Pair with the head unit</string>
-    <string name="pair_button">Pair</string>
     <string name="pair_sub_unpaired">Not paired: nobody gets the location. With the server running and both devices on the car\'s Wi-Fi, tap Pair here and in the client\'s settings within a minute.</string>
     <string name="pair_sub_paired">Paired. Only that head unit gets the location. Pair again to replace it.</string>
     <string name="pair_started">Pairing is open for a minute. The server must be running. Now tap Pair on the head unit.</string>

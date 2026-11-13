@@ -91,4 +91,5 @@
     <string name="power_start">Старт</string>
     <string name="power_stop">Стоп</string>
     <string name="signal_caption">Уровень сигнала по спутникам</string>
+    <string name="pair_button">Связать</string>
 </resources>

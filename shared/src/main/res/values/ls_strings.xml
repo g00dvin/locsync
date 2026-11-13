@@ -99,4 +99,5 @@
     <string name="power_start">Start</string>
     <string name="power_stop">Stop</string>
     <string name="signal_caption">Signal strength per satellite</string>
+    <string name="pair_button">Pair</string>
 </resources>
