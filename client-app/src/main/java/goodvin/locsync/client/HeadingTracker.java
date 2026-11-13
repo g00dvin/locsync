@@ -129,7 +129,9 @@ final class HeadingTracker {
         }
         double at = rawHeadingAt(tMs);
         if (Double.isNaN(at)) {
-            at = heading;
+            // Older than the history (a fix 5 s late) or across a gyro hole: there is no heading of that moment
+            // to compare with, and today's would read a turn since then as an error.
+            return;
         }
         double err = wrap180(bearingDeg - at);
         if (!initialized) {

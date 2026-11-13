@@ -93,6 +93,10 @@ public class GNSSServerService extends Service {
     // pairing key. One use each, so a recorded HELLO can't be replayed from another address.
     private volatile byte[] challenge = Protocol.random(Protocol.NONCE_BYTES);
     private volatile byte[] clientNonce;                // the current client's: its responses are signed with it
+    // Diagnostics: counted on the receive thread, one log line every so many.
+    private static final int EVENT_LOG_EVERY = 60;
+    private int challengesSent, authFailures;
+    private SocketAddress lastChallenged;
     private static final long PAIRING_WINDOW_MS = 60_000;
     private static volatile long pairingUntilElapsed = 0;   // "Pair" was tapped: a PAIR packet is accepted until then
 
@@ -120,6 +124,7 @@ public class GNSSServerService extends Service {
 
     /** Settings → Pair: for a minute, the head unit's key is accepted (it taps Pair too). The server must be running. */
     public static void openPairing() {
+        AppLog.i(TAG, "Pairing opened for " + PAIRING_WINDOW_MS / 1000 + " s");
         pairingUntilElapsed = SystemClock.elapsedRealtime() + PAIRING_WINDOW_MS;
     }
     private final Runnable keepaliveRunnable = this::keepaliveTick;
@@ -209,6 +214,7 @@ public class GNSSServerService extends Service {
 
     @Override
     public void onCreate() {
+        AppLog.install(this, "server");
         AppLog.setDebug(Preferences.debugLoggingEnabled(this));
         notificationManager = getSystemService(NotificationManager.class);
 
@@ -269,6 +275,7 @@ public class GNSSServerService extends Service {
         }
 
         cancelBluetoothAutoStop();
+        mainHandler.removeCallbacks(retryStartServer);
         stopServer();
         stopLocationUpdates();
         if (metricsLog != null) {
@@ -336,6 +343,13 @@ public class GNSSServerService extends Service {
         }
     }
 
+    private static final long START_RETRY_MS = 5000;
+    private final Runnable retryStartServer = () -> {
+        if (running && instance == this) {
+            startServer();
+        }
+    };
+
     private void startServer() {
         executor.execute(() -> {
             // Guard against START_STICKY redelivery (or any re-entry) while already bound: binding
@@ -348,10 +362,19 @@ public class GNSSServerService extends Service {
             try {
                 udpSocket = new DatagramSocket(Protocol.PORT);
                 AppLog.d(TAG, "UDP server bound on port " + Protocol.PORT);
+                if (serverStartError != null) {
+                    serverStartError = null;
+                    mainHandler.post(() -> updateNotification("Server started"));
+                }
             } catch (Throwable e) {
                 Log.e(TAG, "Error starting UDP server", e);
-                serverStartError = e.getMessage();
+                serverStartError = String.valueOf(e.getMessage());
                 stopServer();
+                // Say so (the notification kept claiming "no clients") and keep trying: the port is usually
+                // held by the previous instance for a moment.
+                mainHandler.post(() -> updateNotification("Server start failed"));
+                mainHandler.removeCallbacks(retryStartServer);
+                mainHandler.postDelayed(retryStartServer, START_RETRY_MS);
                 return;
             }
 
@@ -399,21 +422,39 @@ public class GNSSServerService extends Service {
                 AppLog.i(TAG, "Paired with the head unit at " + src);
                 mainHandler.post(() -> android.widget.Toast.makeText(this, R.string.pair_done,
                         android.widget.Toast.LENGTH_LONG).show());
+            } else {
+                AppLog.i(TAG, "PAIR from " + src + " ignored: " + (header.payloadLength == Protocol.KEY_BYTES
+                        ? "pairing isn't open here" : "bad length " + header.payloadLength));
             }
             return;
         }
         if (header.type == Protocol.TYPE_HELLO) {
-            byte[] nonce = Protocol.verifyAuthHello(Preferences.pairingKey(this), challenge, packet.getData(), header);
+            byte[] key = Preferences.pairingKey(this);
+            byte[] nonce = Protocol.verifyAuthHello(key, challenge, packet.getData(), header);
             if (nonce == null) {
                 // Not (yet) proven to be the paired head unit: all it gets is the nonce to prove it with. Only a
                 // plain HELLO is answered, so a wrong key can't ping-pong.
                 if (header.payloadLength == 0) {
                     sendPacket(Protocol.buildPacket(Protocol.TYPE_CHALLENGE, challenge), src);
+                    // One a second per client in normal running (the keepalive handshake): log a new sender, then few.
+                    if (!src.equals(lastChallenged) || challengesSent % EVENT_LOG_EVERY == 0) {
+                        AppLog.i(TAG, "Challenged " + src + (key == null ? " (not paired with any head unit)" : "")
+                                + ", " + challengesSent + " so far");
+                    }
+                    lastChallenged = src;
+                    challengesSent++;
+                } else if (authFailures++ % EVENT_LOG_EVERY == 0) {
+                    AppLog.i(TAG, "HELLO from " + src + " didn't verify (" + (key == null ? "not paired"
+                            : header.payloadLength != Protocol.HELLO_AUTH_BYTES ? "length " + header.payloadLength
+                            : "another key, or an already used nonce") + "), " + authFailures + " so far");
                 }
                 return;
             }
             challenge = Protocol.random(Protocol.NONCE_BYTES);
             clientNonce = nonce;
+            if (clientAddr != null && !src.equals(clientAddr)) {
+                AppLog.i(TAG, "Client moved from " + clientAddr + " to " + src);
+            }
             boolean isNewClient = (clientAddr == null);
             clientAddr = src;
             lastHeard = SystemClock.elapsedRealtime();   // monotonic: wall-clock changes can't fake a timeout

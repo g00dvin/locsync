@@ -606,6 +606,12 @@ public class LocationKalmanFilter {
         double qpp = s2 * dt4 / 4.0, qpv = s2 * dt3 / 2.0, qvv = s2 * dt2;
         cov[0][0] += qpp; cov[0][2] += qpv; cov[2][0] += qpv; cov[2][2] += qvv;
         cov[1][1] += qpp; cov[1][3] += qpv; cov[3][1] += qpv; cov[3][3] += qvv;
+        // The updates use P = (I - KH)P and read P as symmetric; keep rounding from pulling the halves apart.
+        for (int i = 0; i < 4; i++) {
+            for (int j = i + 1; j < 4; j++) {
+                cov[i][j] = cov[j][i] = (cov[i][j] + cov[j][i]) / 2;
+            }
+        }
     }
 
     private void buildTransition(double dt, double w) {

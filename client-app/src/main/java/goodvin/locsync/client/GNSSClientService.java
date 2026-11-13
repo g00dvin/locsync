@@ -124,6 +124,12 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     // open on both. The nonce is per transport start: responses signed for an earlier one don't verify.
     private byte[] pairingKey;
     private volatile byte[] sessionNonce;
+    // Diagnostics: counted on the receive thread, one log line every so many.
+    private static final int EVENT_LOG_EVERY = 60;
+    private int challenges, rejectedResponses;
+    private long lastReinitCount;
+    private String lastOutputState;          // what the output ticks are doing, as last logged
+    private long lastOutputStateLogMs;
     private static final long PAIRING_WINDOW_MS = 60_000;
     private static volatile long pairingUntilElapsed = 0;
     // First and latest CHALLENGE since the last valid RESPONSE (0 = none): a phone that keeps asking and never
@@ -132,6 +138,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
     /** Settings → Pair (or the banner): for a minute, a phone that asks gets our key. It must have Pair open too. */
     static void openPairing() {
+        AppLog.i(TAG, "Pairing opened for " + PAIRING_WINDOW_MS / 1000 + " s");
         pairingUntilElapsed = SystemClock.elapsedRealtime() + PAIRING_WINDOW_MS;
     }
 
@@ -317,6 +324,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     public void onCreate() {
         super.onCreate();
 
+        AppLog.install(this, "client");
         AppLog.setDebug(Preferences.debugLoggingEnabled(this));
         notificationManager = getSystemService(NotificationManager.class);
         pairingKey = Preferences.pairingKey(this);
@@ -681,6 +689,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         // Only the paired phone can sign for this session's nonce: anything else on the network is ignored.
         int bodyLength = Protocol.verifyResponse(pairingKey, sessionNonce, packet.getData(), header);
         if (bodyLength < 0) {
+            if (header.type == Protocol.TYPE_RESPONSE && rejectedResponses++ % EVENT_LOG_EVERY == 0) {
+                AppLog.i(TAG, "RESPONSE from " + packet.getSocketAddress() + " isn't signed by the paired phone for this"
+                        + " session: dropped (" + rejectedResponses + " so far)");
+            }
             return;
         }
         challengedSinceElapsed = 0;
@@ -745,6 +757,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             return;
         }
         long now = SystemClock.elapsedRealtime();
+        if (challenges++ % EVENT_LOG_EVERY == 0) {   // one a second in normal running: the keepalive handshake
+            AppLog.i(TAG, "Challenge " + challenges + " from " + packet.getSocketAddress()
+                    + (now < pairingUntilElapsed ? " (pairing open)" : ""));
+        }
         lastChallengeElapsed = now;
         if (challengedSinceElapsed == 0) {
             challengedSinceElapsed = now;
@@ -844,16 +860,28 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     // filter has moved past it, feeding it would step the state backwards.
                     long prevFixTs = lastFedFixMs;
                     if (prevFixTs != Long.MIN_VALUE && prevFixTs - fixTs >= FIX_CLOCK_RESTART_MS) {
+                        AppLog.i(TAG, "Fix time went back " + (prevFixTs - fixTs) + " ms: another phone clock, starting over");
                         prevFixTs = Long.MIN_VALUE;   // another clock (phone rebooted or replaced): no "previous fix"
                     }
                     if (fixTs <= prevFixTs) {
+                        if (fixTs < prevFixTs) {   // equal is the keepalive resend, every 1.5 s without GPS
+                            AppLog.i(TAG, "Fix " + (prevFixTs - fixTs) + " ms older than the last one dropped (out of order)");
+                        }
                         return;
                     }
                     lastFedFixMs = fixTs;
                     metrics.recordFix();
                     inSpeedAcc = u.hasSpeedAccuracy() ? u.getSpeedAccuracy() : Double.NaN;
                     inBearingAcc = u.hasBearingAccuracy() ? u.getBearingAccuracy() : Double.NaN;
+                    boolean hadWifiLocks = filterConfig.wifiLowLatency;
                     filterConfig = Preferences.filterConfig(this);
+                    if (filterConfig.wifiLowLatency != hadWifiLocks) {   // the switch applied only on the next connect
+                        if (filterConfig.wifiLowLatency) {
+                            acquireWifiLocks();
+                        } else {
+                            releaseWifiLocks();
+                        }
+                    }
                     kalman.setTurnModel(filterConfig.turnModel);
                     kalman.setTurnResponsiveness(filterConfig.turnResponsiveness);
                     kalman.setBearingHandling(filterConfig.bearingCompensation, filterConfig.minBearingAccuracyDeg);
@@ -891,6 +919,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     if (drBridged) {
                         // GPS is back after a gap the dead reckoning bridged (e.g. a tunnel): re-anchor the filter
                         // there, backed off to this fix's measurement time, instead of snapping from scratch.
+                        AppLog.i(TAG, "GPS back after " + (nowElapsed - lastFixElapsedMs)
+                                + " ms: filter re-anchored from dead reckoning");
                         deadReckoner.fill(drOut, lastOutElapsedMs);
                         double back = drOut.speed * Math.max(0, lastOutElapsedMs - measElapsed) / 1000.0;
                         double br = Math.toRadians(drOut.bearingDeg);
@@ -900,6 +930,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     } else if (resumingAfterGap) {
                         // Fresh start, or the first real fix after a GPS gap (e.g. tunnel exit): re-anchor so
                         // the estimate snaps to the new position instead of lurching from stale state.
+                        if (lastFixElapsedMs != 0) {
+                            AppLog.i(TAG, "GPS back after " + (nowElapsed - lastFixElapsedMs) + " ms: filter reset");
+                        }
                         kalman.reset();
                     } else if (kalman.isInitialized() && stateElapsedMs > 0) {
                         // Step the state from the previous fix time to this one. The phone's fix timestamps
@@ -913,7 +946,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                         // With car motion on, the gyro says exactly how far the car turned over this step.
                         double dTheta = motionOn() && tracker != null && tracker.valid(measElapsed)
                                 && !Double.isNaN(wheelMps(measElapsed))   // no wheels: today's filter, unchanged
-                                ? tracker.deltaRadCcw(stateElapsedMs, stateElapsedMs + Math.round(dt * 1000))
+                                // The filter's course is the GPS bearing's, which describes the car GPS_LAG_MS
+                                // earlier: take the gyro's turn over that same, shifted window.
+                                ? tracker.deltaRadCcw(stateElapsedMs - HeadingTracker.GPS_LAG_MS,
+                                        stateElapsedMs - HeadingTracker.GPS_LAG_MS + Math.round(dt * 1000))
                                 : Double.NaN;
                         kalman.predict(dt, dTheta);
                     }
@@ -921,7 +957,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                         VehicleData gearCar = vehicle;
                         boolean reverse = gearCar != null && "R".equals(gearCar.snapshot().gear);
                         tracker.onGpsBearing(measElapsed - HeadingTracker.GPS_LAG_MS, u.getSpeed(),
-                                u.getBearing() + (kalman.isBearingQuantized() ? 0.5 : 0), reverse);
+                                u.getBearing() + (filterConfig.bearingCompensation && kalman.isBearingQuantized() ? 0.5 : 0),
+                                reverse);
                     }
                     // The car's wheel speed at the fix's measurement time replaces the GPS speed when
                     // readable: phone Doppler glitches by up to 10 km/h in town, the wheels don't.
@@ -945,6 +982,11 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                         }
                     }
                     kalman.update(u.getLatitude(), u.getLongitude(), fSpd, u.getBearing(), u.getAccuracy(), fSpdAcc, u.getBearingAccuracy(), fHasSpd, u.hasBearing());
+                    if (kalman.getReinitCount() != lastReinitCount) {
+                        lastReinitCount = kalman.getReinitCount();
+                        AppLog.i(TAG, "Filter re-anchored on the fixes after consecutive outliers (" + lastReinitCount
+                                + " so far), fix accuracy " + u.getAccuracy() + " m");
+                    }
                     lastAltitude = u.getAltitude();
                     lastVerticalAcc = u.hasVerticalAccuracy() ? u.getVerticalAccuracy() : Float.NaN;
                     lastMslAltitude = u.hasMslAltitude() ? u.getMslAltitude() : Double.NaN;
@@ -955,6 +997,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
 
                     updateTrackRecorder();
                     if (trackRecorder != null) {
+                        HeadingTracker ht = tracker;
+                        boolean headingValid = ht != null && ht.valid(nowElapsed);
+                        trackRecorder.extra(fixTs, lastNetworkDelayMs, headingValid ? ht.headingDeg() : Double.NaN,
+                                headingValid ? ht.sigmaDeg(nowElapsed) : Double.NaN, ht != null ? ht.biasDps() : Double.NaN);
                         trackRecorder.fix(nowElapsed, u.getTimestamp(), u.getProvider(), response.getSatellites(),
                                 u.getLatitude(), u.getLongitude(), u.getAltitude(), u.getAccuracy(),
                                 u.hasSpeed(), u.getSpeed(), u.hasBearing(), u.getBearing(),
@@ -1007,6 +1053,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                 lastHorizonMs = nowElapsed - stateElapsedMs;
                 lastOutDr = true;
                 lastOutElapsedMs = nowElapsed;
+                logOutputState(gpsLost ? "dead reckoning, GPS lost" : "dead reckoning between fixes", nowElapsed);
                 injectSmoothed(drOut);
                 scheduleNextTick(intervalMs);
                 return;
@@ -1020,10 +1067,23 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             double horizonS = Math.max(0, Math.min((nowElapsed - stateElapsedMs) / 1000.0, maxHorizonS));
             lastHorizonMs = horizonS * 1000.0;
             lastOutElapsedMs = nowElapsed;
+            logOutputState("filter", nowElapsed);
             injectSmoothed(kalman.extrapolate(horizonS));
+        } else {
+            logOutputState(lastFixElapsedMs == 0 ? "nothing: no fix yet"
+                    : gpsLost ? "frozen: no fix for over " + lossCapMs + " ms" : "nothing: waiting for a usable fix", nowElapsed);
         }
         // When GPS is lost, we simply stop advancing/injecting (freeze) until fixes resume.
         scheduleNextTick(intervalMs);
+    }
+
+    /** One log line when what the output ticks do changes (at most one a second, should it flap). */
+    private void logOutputState(String state, long nowElapsed) {
+        if (!state.equals(lastOutputState) && nowElapsed - lastOutputStateLogMs >= 1000) {
+            lastOutputState = state;
+            lastOutputStateLogMs = nowElapsed;
+            AppLog.i(TAG, "Output: " + state);
+        }
     }
 
     private void scheduleNextTick(long intervalMs) {

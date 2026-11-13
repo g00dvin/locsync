@@ -219,6 +219,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
         setContentView(R.layout.activity_main_server);
+        AppLog.install(this, "server");
         AppLog.setDebug(Preferences.debugLoggingEnabled(this));
 
         appVersion = VersionGetter.getAppVersionName(this);

@@ -256,6 +256,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         appVersion = VersionGetter.getAppVersionName(this);
+        AppLog.install(this, "client");
         AppLog.setDebug(Preferences.debugLoggingEnabled(this));
 
         bindTopBar();
