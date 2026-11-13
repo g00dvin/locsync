@@ -140,8 +140,11 @@ public class ScreenshotsTest {
                 page.measure(View.MeasureSpec.makeMeasureSpec(page.getWidth(), View.MeasureSpec.EXACTLY),
                         View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
                 extra = Math.max(0, page.getMeasuredHeight() - flipper.getHeight());
+                // The probe left the page's children with unbounded measured sizes; without a fresh
+                // pass, views that fill free space (the hero readout) would draw as if unsized.
+                page.requestLayout();
             }
-            if (extra > 0) {
+            if (extra > 0 || scroll == null) {
                 int newH = h + extra;
                 root.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
                         View.MeasureSpec.makeMeasureSpec(newH, View.MeasureSpec.EXACTLY));

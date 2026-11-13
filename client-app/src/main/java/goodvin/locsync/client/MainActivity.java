@@ -59,6 +59,7 @@ import java.util.Locale;
 import goodvin.locsync.proto.LocationProto;
 import goodvin.locsync.shared.AppLog;
 import goodvin.locsync.shared.LinkState;
+import goodvin.locsync.shared.Protocol;
 import goodvin.locsync.shared.SettingsRows;
 import goodvin.locsync.shared.SetupChecklist;
 import goodvin.locsync.shared.SparklineView;
@@ -623,7 +624,7 @@ public class MainActivity extends AppCompatActivity {
         String buildLabel = getString(R.string.build_label);
         String shown = buildLabel.isEmpty() ? appVersion : buildLabel;
         bindAction(R.id.rowVersion, getString(R.string.version_label, shown),
-                getString(R.string.about_protocol), false, null);
+                getString(R.string.about_protocol, Protocol.VERSION, Protocol.PORT), false, null);
         // Local, branch and CI builds aren't releases (different signature, placeholder version):
         // only release-workflow builds look for updates.
         updateRow = new UpdateRow(this, findViewById(R.id.rowUpdate), "locsync-client-", appVersion,
