@@ -173,6 +173,8 @@ final class VehicleData {
         private boolean w4mFailed, censusDone;
         private int[] probeIds;
         private CarSignals.ProbeDiff probe;
+        private double[] baseline, vMin, vMax;   // per supported sensor, captured at census, for scanMoved
+        private long lastScanMs;
         private int emptyPolls;
         private int polls;
         private boolean loggedRaw;
@@ -203,13 +205,14 @@ final class VehicleData {
                     connect();
                     polls = 0;
                 }
-                if (recording() && !censusDone) {
+                if (recordAll && !censusDone) {
                     censusDone = true;   // once per connection, also when recording starts mid-connection
                     try {
                         census(sensorManager);
                     } catch (Exception | LinkageError e) {
-                        log("census failed: " + e);
+                        AppLog.i(TAG, "census failed: " + e);
                     }
+                    CarVendorProbe.run(context);   // the privileged VHAL path, for the signals AdaptAPI zeroes
                 }
                 if (polls++ % fullEvery != 0) {
                     float raw = rawLatest(sensorManager, CarSignals.SPEED);
@@ -219,6 +222,9 @@ final class VehicleData {
                         worker.postDelayed(this, pollMs);
                     }
                     return;
+                }
+                if (recordAll) {
+                    scanMoved(sensorManager);
                 }
                 CarSignals.Snapshot snap = read();
                 if (snap.hasAny()) {
@@ -291,6 +297,7 @@ final class VehicleData {
             w4mGetters = null;
             probe = null;
             probeIds = null;
+            baseline = null;
         }
 
         /**
@@ -330,7 +337,7 @@ final class VehicleData {
                 }
                 float latest = rawLatest(mgr, id);
                 int event = rawEvent(mgr, id);
-                log(String.format(Locale.US, "census %s 0x%x %s latest=%s(0x%x) event=%d",
+                AppLog.i(TAG, String.format(Locale.US, "census %s 0x%x %s latest=%s(0x%x) event=%d",
                         f.getName(), id, status, latest, bits(latest), event));
                 String st = status.toLowerCase(Locale.US);
                 if (!st.contains("notavailable") && !st.contains("error")) {
@@ -340,25 +347,34 @@ final class VehicleData {
             probeIds = new int[ids.size()];
             for (int i = 0; i < probeIds.length; i++) probeIds[i] = ids.get(i);
             probe = new CarSignals.ProbeDiff(probeIds);
+            baseline = new double[probeIds.length];
+            vMin = new double[probeIds.length];
+            vMax = new double[probeIds.length];
+            for (int i = 0; i < probeIds.length; i++) {
+                baseline[i] = probeValue(mgr, probeIds[i]);
+                vMin[i] = baseline[i];
+                vMax[i] = baseline[i];
+            }
+            lastScanMs = 0;
             CarSignals.W4m w = readW4m(mgr);
-            log(w == null ? "census W4m: none" : String.format(Locale.US,
+            AppLog.i(TAG, w == null ? "census W4m: none" : String.format(Locale.US,
                     "census W4m yaw=%s lat=%s lon=%s fl=%s fr=%s rl=%s rr=%s steer=%s gear=%d tick=%d interval=%d",
                     w.yawRate, w.latAcc, w.lonAcc, w.vFL, w.vFR, w.vRL, w.vRR, w.steer, w.gear, w.tick, w.interval));
             try {
                 Object ma = iSensor.getMethod("getMountAngle").invoke(mgr);
                 if (ma != null) {
                     Class<?> c = Class.forName("com.ecarx.xui.adaptapi.car.sensor.ISensorGroup$IMountAngle");
-                    log("census mount angle has=" + c.getMethod("hasMountAngle").invoke(ma)
+                    AppLog.i(TAG, "census mount angle has=" + c.getMethod("hasMountAngle").invoke(ma)
                             + " pitch=" + c.getMethod("getPitchMountAngle").invoke(ma)
                             + " roll=" + c.getMethod("getRollMountAngle").invoke(ma)
                             + " yaw=" + c.getMethod("getYawMountAngle").invoke(ma));
                 } else {
-                    log("census mount angle: none");
+                    AppLog.i(TAG, "census mount angle: none");
                 }
             } catch (Exception | LinkageError e) {
-                log("census mount angle failed: " + e);
+                AppLog.i(TAG, "census mount angle failed: " + e);
             }
-            log("census probe: " + probeIds.length + " sensors");
+            AppLog.i(TAG, "census probe: " + probeIds.length + " sensors");
         }
 
         /** The W4m group (car yaw rate, accelerations, four wheel speeds); null when unreadable. */
@@ -414,6 +430,44 @@ final class VehicleData {
                 return ((Number) m.invoke(v)).doubleValue();
             } catch (Exception e) {
                 return Double.NaN;
+            }
+        }
+
+        /** One sensor's current value: continuous ids (0x1xxxxx) as a float, the rest as an event int. */
+        private double probeValue(Object mgr, int id) {
+            return (id & 0xF00000) == 0x100000 ? rawLatest(mgr, id) : rawEvent(mgr, id);
+        }
+
+        /**
+         * Item-2 diagnostic: every ~15 s, re-read every supported sensor and log the ones whose value has
+         * moved more than a hair since the census baseline, with the range seen so far. A cell that tracks
+         * steering, the odometer or a wheel speed shows up here by its motion, whatever its id.
+         */
+        private void scanMoved(Object mgr) {
+            if (baseline == null || probeIds == null) {
+                return;
+            }
+            long now = SystemClock.elapsedRealtime();
+            if (now - lastScanMs < 15000) {
+                return;
+            }
+            lastScanMs = now;
+            StringBuilder movers = new StringBuilder();
+            for (int i = 0; i < probeIds.length; i++) {
+                double v = probeValue(mgr, probeIds[i]);
+                if (Double.isNaN(v)) {
+                    continue;
+                }
+                if (v < vMin[i]) vMin[i] = v;
+                if (v > vMax[i]) vMax[i] = v;
+                // "Moved" = the range seen over the drive is bigger than sensor noise.
+                if (vMax[i] - vMin[i] > 0.5 && movers.length() < 900) {
+                    movers.append(String.format(Locale.US, " 0x%x=%.3f[%.3f..%.3f]",
+                            probeIds[i], v, vMin[i], vMax[i]));
+                }
+            }
+            if (movers.length() > 0) {
+                AppLog.i(TAG, "moved" + movers);
             }
         }
 
