@@ -19,6 +19,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Vendor car signals (steering, wheel speeds, odometer) via CarPropertyManager. Protection level
+         signature|privileged: granted only to a platform-signed or privileged install; a normal install
+         is simply denied. Declaring it lets such a build reach signals AdaptAPI leaves at 0 (CarVendorProbe). -->
+    <uses-permission android:name="android.car.permission.CAR_VENDOR_EXTENSION" />
+
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_LOCATION_EXTRA_COMMANDS" />
@@ -46,6 +51,9 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:theme="@style/Theme.LocSync">
+        <!-- Present on Android Automotive head units; optional so the app still installs on a phone. -->
+        <uses-library android:name="android.car" android:required="false" />
+
 
         <activity
             android:name=".MainActivity"
