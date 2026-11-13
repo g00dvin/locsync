@@ -135,7 +135,7 @@
     <string name="nav_waiting_title">Looking for the phone</string>
     <string name="nav_waiting_detail">Start LocSync Server on the phone and connect to its Wi-Fi hotspot</string>
     <string name="nav_off_title">Position is not being sent</string>
-    <string name="nav_off_detail">Tap the circle to start</string>
+    <string name="nav_off_detail">Tap Start to begin</string>
     <string name="nav_mock_title">GPS substitution is not set up</string>
     <string name="nav_mock_detail">Tap: Developer options → Select mock location app → LocSync Client</string>
     <string name="filter_in_speed_acc">Speed accuracy (phone)</string>
@@ -167,7 +167,7 @@
     <string name="ui_scale_sub">%1$s · tap to change. For screens where everything looks too small or doesn\'t fit.</string>
     <string name="ui_scale_auto">Auto (%1$s)</string>
     <string name="filter_preset">Style</string>
-    <string name="filter_preset_sub">%1$s · tap to switch: Smooth → Balanced → Responsive</string>
+    <string name="filter_preset_sub">%1$s</string>
     <string name="filter_preset_smooth">Smooth</string>
     <string name="filter_preset_balanced">Balanced (recommended)</string>
     <string name="filter_preset_responsive">Responsive</string>
@@ -209,4 +209,12 @@
     <string name="pair_sub">The phone sends its location only to a paired head unit. With the server running and both devices on the car\'s Wi-Fi, tap Pair here and in the server\'s settings within a minute.</string>
     <string name="pair_started">Pairing is open for a minute. Now tap Pair in the server\'s settings on the phone.</string>
     <string name="pair_needed">The phone is there but not paired with this head unit. Tap here, then tap Pair in the server\'s settings within a minute.</string>
+    <string name="tile_heading">Heading</string>
+    <string name="heading_format" translatable="false">%d°</string>
+    <string name="filter_preset_balanced_short">Balanced</string>
+    <!-- 8-point compass, clockwise from north -->
+    <string-array name="compass_points">
+        <item>N</item><item>NE</item><item>E</item><item>SE</item>
+        <item>S</item><item>SW</item><item>W</item><item>NW</item>
+    </string-array>
 </resources>

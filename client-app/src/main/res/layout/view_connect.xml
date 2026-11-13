@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Copyright © 2025-2026 Dezz (https://github.com/DezzK). GPLv3. See <https://www.gnu.org/licenses/>. -->
-<!-- Client override of the shared view_connect (same name → replaces it in the client app only). -->
+<!-- Client override of the shared view_connect (same name → replaces it in the client app only).
+     "Cluster" home: status strip with the Start/Stop button, speed as the hero readout, heading
+     beside it, then accuracy / satellites / data age and the phone + car cards. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -15,99 +17,65 @@
         android:layout_marginTop="6dp"
         android:background="@drawable/bg_banner"
         android:gravity="center_vertical"
+        android:minHeight="44dp"
         android:orientation="horizontal"
-        android:paddingHorizontal="11dp"
-        android:paddingVertical="10dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="4dp"
         android:visibility="gone">
 
         <ImageView
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:layout_marginEnd="8dp"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:layout_marginEnd="10dp"
             android:contentDescription="@null"
             android:src="@drawable/ic_warning_fill"
-            android:tint="@color/ls_error" />
+            android:tint="@color/ls_warn" />
 
         <TextView
             android:id="@+id/bannerText"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:paddingVertical="10dp"
             android:textColor="@color/ls_text"
-            android:textSize="11.5sp" />
+            android:textSize="12.5sp" />
 
         <ImageView
             android:id="@+id/bannerDismiss"
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:layout_marginStart="8dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:contentDescription="@string/cd_dismiss"
+            android:padding="12dp"
             android:src="@drawable/ic_x"
-            android:tint="@color/ls_text_dim" />
+            android:tint="@color/ls_text_muted" />
     </LinearLayout>
-
-    <!-- Circle fills the remaining vertical space -->
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:minHeight="264dp">
-
-        <goodvin.locsync.shared.PowerOrbView
-            android:id="@+id/powerOrb"
-            android:layout_width="264dp"
-            android:layout_height="264dp"
-            android:layout_gravity="center"
-            android:clickable="true"
-            android:focusable="true" />
-    </FrameLayout>
-
-    <!-- Status block -->
-    <TextView
-        android:id="@+id/statusLine"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:fontFamily="sans-serif-medium"
-        android:gravity="center"
-        android:paddingHorizontal="20dp"
-        android:textColor="@color/ls_text_muted"
-        android:textSize="19sp" />
-
-    <TextView
-        android:id="@+id/statusSub"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:gravity="center"
-        android:paddingHorizontal="20dp"
-        android:textColor="@color/ls_text_muted"
-        android:textSize="12sp" />
 
     <!-- "Is the navigator getting a position?" — the one thing the driver needs to know -->
     <LinearLayout
         android:id="@+id/navCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="18dp"
         android:layout_marginHorizontal="14dp"
+        android:layout_marginTop="6dp"
         android:background="@drawable/bg_card"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="11dp">
+        android:paddingStart="14dp"
+        android:paddingEnd="10dp"
+        android:paddingVertical="10dp">
 
         <View
             android:id="@+id/navDot"
             android:layout_width="10dp"
             android:layout_height="10dp"
-            android:layout_marginEnd="10dp"
+            android:layout_marginEnd="12dp"
             android:background="@drawable/dot_accent" />
 
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:layout_marginEnd="10dp"
             android:orientation="vertical">
 
             <TextView
@@ -116,7 +84,7 @@
                 android:layout_height="wrap_content"
                 android:fontFamily="sans-serif-medium"
                 android:textColor="@color/ls_text"
-                android:textSize="13.5sp" />
+                android:textSize="16sp" />
 
             <TextView
                 android:id="@+id/navDetail"
@@ -124,133 +92,271 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
                 android:textColor="@color/ls_text_muted"
-                android:textSize="11sp" />
+                android:textSize="12.5sp" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/btnPower"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_btn_outline"
+            android:contentDescription="@string/cd_power"
+            android:drawablePadding="8dp"
+            android:drawableStart="@drawable/ic_power"
+            android:drawableTint="@color/ls_text"
+            android:focusable="true"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
+            android:paddingHorizontal="16dp"
+            android:text="@string/power_stop"
+            android:textColor="@color/ls_text"
+            android:textSize="14sp" />
     </LinearLayout>
 
-    <!-- The phone's battery and heat (shown when the server reports it) -->
-    <LinearLayout
-        android:id="@+id/phoneCard"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:layout_marginHorizontal="14dp"
-        android:background="@drawable/bg_card"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="11dp"
-        android:visibility="gone">
-
-        <View
-            android:id="@+id/phoneDot"
-            android:layout_width="10dp"
-            android:layout_height="10dp"
-            android:layout_marginEnd="10dp"
-            android:background="@drawable/dot_accent" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/phoneTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="@color/ls_text"
-                android:textSize="13.5sp" />
-
-            <TextView
-                android:id="@+id/phoneDetail"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:textColor="@color/ls_text_muted"
-                android:textSize="11sp" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <!-- Car signals from the head unit: Motion / Energy / Temperatures (shown when available) -->
-    <LinearLayout
-        android:id="@+id/carCard"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:layout_marginHorizontal="14dp"
-        android:background="@drawable/bg_card"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="11dp"
-        android:visibility="gone">
-
-        <View
-            android:id="@+id/carDot"
-            android:layout_width="10dp"
-            android:layout_height="10dp"
-            android:layout_marginEnd="10dp"
-            android:background="@drawable/dot_accent" />
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/carTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="sans-serif-medium"
-                android:textColor="@color/ls_text"
-                android:textSize="13.5sp" />
-
-            <TextView
-                android:id="@+id/carDetail"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:textColor="@color/ls_text_muted"
-                android:textSize="11sp" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <!-- 2×2 tiles: speed, accuracy / satellites, data freshness. -->
+    <!-- Hero: speed fills the free height; heading beside it. Both reuse tile_stat's child ids. -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:layout_marginHorizontal="14dp"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginHorizontal="22dp"
+        android:layout_marginVertical="10dp"
         android:baselineAligned="false"
+        android:minHeight="120dp"
         android:orientation="horizontal">
 
-        <include layout="@layout/tile_stat" android:id="@+id/tileSpeed"
-            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+        <LinearLayout
+            android:id="@+id/tileSpeed"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="vertical">
 
-        <Space android:layout_width="8dp" android:layout_height="1dp" />
+            <TextView
+                android:id="@+id/tileLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:letterSpacing="0.12"
+            android:textAllCaps="true"
+            android:textColor="@color/ls_text_dim"
+            android:textSize="11sp" />
+
+            <!-- Auto-sized to the free height: 200sp on a roomy head unit, smaller where it's tight. -->
+            <TextView
+                android:id="@+id/tileValue"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:autoSizeMaxTextSize="200sp"
+                android:autoSizeMinTextSize="40sp"
+                android:autoSizeTextType="uniform"
+                android:fontFamily="sans-serif-medium"
+                android:gravity="center_vertical|start"
+                android:includeFontPadding="false"
+                android:letterSpacing="-0.03"
+                android:maxLines="1"
+                android:text="@string/value_none"
+                android:textColor="@color/ls_text_dim" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:baselineAligned="true"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/tileUnit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="10dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/ls_text_muted"
+                    android:textSize="20sp" />
+
+                <TextView
+                    android:id="@+id/tileHint"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:maxLines="2"
+                    android:textColor="@color/ls_text_muted"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:layout_marginHorizontal="18dp"
+            android:layout_marginVertical="16dp"
+            android:background="@color/ls_hairline" />
+
+        <LinearLayout
+            android:id="@+id/tileHeading"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:minWidth="96dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tileLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:letterSpacing="0.12"
+            android:textAllCaps="true"
+            android:textColor="@color/ls_text_dim"
+            android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/tileValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="sans-serif-medium"
+                android:includeFontPadding="false"
+                android:text="@string/value_none"
+                android:textColor="@color/ls_text_dim"
+                android:textSize="44sp" />
+
+            <!-- Unused by the heading; kept so setTile() can treat every tile alike. -->
+            <TextView
+                android:id="@+id/tileUnit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tileHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/ls_accent"
+                android:textSize="15sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Accuracy / satellites / data freshness -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="10dp"
+        android:baselineAligned="false"
+        android:orientation="horizontal">
 
         <include layout="@layout/tile_stat" android:id="@+id/tileAccuracy"
-            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+            android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+            android:layout_marginHorizontal="4dp" />
+
+        <include layout="@layout/tile_stat" android:id="@+id/tileSats"
+            android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+            android:layout_marginHorizontal="4dp" />
+
+        <include layout="@layout/tile_stat" android:id="@+id/tileFresh"
+            android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+            android:layout_marginHorizontal="4dp" />
     </LinearLayout>
 
+    <!-- The phone's battery and heat (when the server reports it) and the car's own signals
+         (when the head unit has them). Either may be gone; the other then takes the full width. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginHorizontal="10dp"
         android:layout_marginTop="8dp"
-        android:layout_marginHorizontal="14dp"
         android:baselineAligned="false"
         android:orientation="horizontal">
 
-        <include layout="@layout/tile_stat" android:id="@+id/tileSats"
-            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+        <LinearLayout
+            android:id="@+id/phoneCard"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginHorizontal="4dp"
+            android:background="@drawable/bg_card"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="11dp"
+            android:visibility="gone">
 
-        <Space android:layout_width="8dp" android:layout_height="1dp" />
+            <View
+                android:id="@+id/phoneDot"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/ic_phone"
+                android:backgroundTint="@color/ls_text_muted" />
 
-        <include layout="@layout/tile_stat" android:id="@+id/tileFresh"
-            android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" />
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/phoneTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/ls_text"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/phoneDetail"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/ls_text_muted"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/carCard"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:layout_marginHorizontal="4dp"
+            android:background="@drawable/bg_card"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="11dp"
+            android:visibility="gone">
+
+            <View
+                android:id="@+id/carDot"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/ic_car"
+                android:backgroundTint="@color/ls_text_muted" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/carTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="@color/ls_text"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/carDetail"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:textColor="@color/ls_text_muted"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
     </LinearLayout>
 
     <Space

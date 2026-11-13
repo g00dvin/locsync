@@ -21,9 +21,7 @@
     <string name="nav_monitor">Monitor</string>
     <string name="nav_settings">Settings</string>
     <string name="status_server_waiting">Started · waiting for client</string>
-    <string name="status_client_connecting">Connecting to server…</string>
-    <string name="status_client_connected">Connected</string>
-    <string name="status_hint_start">Tap the circle to start</string>
+    <string name="status_hint_start">Tap Start to begin</string>
     <string name="uptime_label">Uptime</string>
     <string name="signal_title">Signal</string>
     <string name="link_health_title">Link health</string>
@@ -72,7 +70,6 @@
     <string name="sub_server_waiting">Listening on %1$s:%2$d</string>
     <string name="sub_client_waiting">HELLO broadcast 1 Hz → 255.255.255.255</string>
     <string name="sub_server_connected">1 client</string>
-    <string name="sub_client_connected">protocol v3</string>
     <string name="cd_settings">Settings</string>
     <string name="cd_monitor">Monitor</string>
     <string name="cd_back">Back</string>
@@ -94,11 +91,12 @@
     <string name="update_test_build">Test build: updates are offered to release builds only</string>
     <string name="setup_title">Setup</string>
     <string name="setup_done">Done</string>
-    <string name="setup_step_done">✓ %1$d. %2$s</string>
-    <string name="setup_step_todo">%1$d. %2$s</string>
     <string name="setup_recommended">Recommended. %1$s</string>
     <string name="setup_open">Open</string>
     <string name="setup_row">Setup checklist</string>
     <string name="setup_row_sub">Step-by-step check of everything the app needs</string>
     <string name="setup_no_screen">This screen isn\'t available on this device: open it from the system settings</string>
+    <string name="power_start">Start</string>
+    <string name="power_stop">Stop</string>
+    <string name="signal_caption">Signal strength per satellite</string>
 </resources>

@@ -23,12 +23,4 @@ public class FilterPresetTest {
     public void handTunedIsCustom() {
         assertNull(FilterPreset.match(2.0f, 0.85f, 9.21f, 0.6f));
     }
-
-    @Test
-    public void cycleWrapsAndCustomGoesToBalanced() {
-        assertEquals(FilterPreset.BALANCED, FilterPreset.next(FilterPreset.SMOOTH));
-        assertEquals(FilterPreset.RESPONSIVE, FilterPreset.next(FilterPreset.BALANCED));
-        assertEquals(FilterPreset.SMOOTH, FilterPreset.next(FilterPreset.RESPONSIVE));
-        assertEquals(FilterPreset.BALANCED, FilterPreset.next(null));
-    }
 }

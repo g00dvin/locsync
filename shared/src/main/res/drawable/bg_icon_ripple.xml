@@ -9,10 +9,17 @@
   -->
 <ripple xmlns:android="http://schemas.android.com/apk/res/android"
     android:color="@color/ls_ripple">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/ls_surface" />
+            <corners android:radius="10dp" />
+            <stroke android:width="1dp" android:color="@color/ls_hairline" />
+        </shape>
+    </item>
     <item android:id="@android:id/mask">
         <shape android:shape="rectangle">
             <solid android:color="@color/ls_accent" />
-            <corners android:radius="8dp" />
+            <corners android:radius="10dp" />
         </shape>
     </item>
 </ripple>

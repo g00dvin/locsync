@@ -16,35 +16,36 @@
   ~ along with this program.  If not, see <https://www.gnu.org/licenses/>.
   -->
 
-<!-- Nocturne design tokens (dark-only). Shared by both apps via library resource merge.
+<!-- Cluster design tokens (dark-only). Shared by both apps via library resource merge.
      values/ and values-night/ hold identical values so the palette is dark regardless of
      the system night mode. -->
 <resources>
-    <color name="ls_bg">#161826</color>
-    <color name="ls_surface">#232532</color>
-    <color name="ls_surface_sunken">#1B1D2B</color>
-    <color name="ls_hairline">#292B31</color>
-    <color name="ls_divider">#12E9E9ED</color>
-    <color name="ls_text">#E9E9ED</color>
-    <color name="ls_text_muted">#8CE9E9ED</color>
-    <color name="ls_text_dim">#73E9E9ED</color>
-    <color name="ls_accent">#9184D9</color>
-    <color name="ls_accent_300">#D2CEFD</color>
-    <color name="ls_accent_400">#B5ABFC</color>
-    <color name="ls_accent_600">#796CBF</color>
-    <color name="ls_accent_700">#5D5294</color>
-    <color name="ls_accent_800">#423A6A</color>
-    <color name="ls_accent_900">#2B2741</color>
-    <color name="ls_neutral_500">#9397AB</color>
-    <color name="ls_neutral_800">#3F424D</color>
-    <color name="ls_error">#E07A72</color>
+    <color name="ls_bg">#0B0D10</color>
+    <color name="ls_surface">#14181D</color>
+    <color name="ls_surface_sunken">#0B0D10</color>
+    <color name="ls_hairline">#232A32</color>
+    <color name="ls_divider">#232A32</color>
+    <color name="ls_text">#EEF1F4</color>
+    <color name="ls_text_muted">#9AA4AF</color>
+    <color name="ls_text_dim">#8A94A0</color>
+    <color name="ls_accent">#4FD1C5</color>
+    <color name="ls_accent_300">#9BE7E0</color>
+    <color name="ls_accent_400">#4FD1C5</color>
+    <color name="ls_accent_600">#3BA79D</color>
+    <color name="ls_accent_700">#2F7F79</color>
+    <color name="ls_accent_800">#1E4D4A</color>
+    <color name="ls_accent_900">#132B2B</color>
+    <color name="ls_neutral_500">#5F6975</color>
+    <color name="ls_neutral_800">#3A444F</color>
+    <color name="ls_warn">#F2B544</color>
+    <color name="ls_error">#FF8A7A</color>
 
     <!-- Named helpers for literals the design table calls out, so layouts stay free of ad-hoc hexes -->
-    <color name="ls_bar_unlit">#2B2D3A</color>
-    <color name="ls_outline_soft">#29E9E9ED</color>
-    <color name="ls_chevron">#59E9E9ED</color>
-    <color name="ls_radio_unchecked">#47E9E9ED</color>
-    <color name="ls_ripple">#1F9184D9</color>
-    <color name="ls_knob_on">#F5F4FF</color>
-    <color name="ls_log_debug">#66E9E9ED</color>
+    <color name="ls_bar_unlit">#232A32</color>
+    <color name="ls_outline_soft">#3A444F</color>
+    <color name="ls_chevron">#9AA4AF</color>
+    <color name="ls_radio_unchecked">#5F6975</color>
+    <color name="ls_ripple">#1F4FD1C5</color>
+    <color name="ls_knob_on">#0B0D10</color>
+    <color name="ls_log_debug">#8A94A0</color>
 </resources>

@@ -21,6 +21,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.SystemClock;
@@ -146,6 +147,18 @@ public final class Ui {
         setText(row, R.id.row_sub, row.getContext().getString(R.string.clear_logs_sub));
         row.findViewById(R.id.row_button).setVisibility(View.GONE);
         row.findViewById(R.id.row_chevron).setVisibility(View.VISIBLE);
+    }
+
+    /**
+     * Home-screen power button: a filled "Start" while stopped, an outlined "Stop" while running.
+     * {@code label} carries the text and icon; it may be the button itself.
+     */
+    public static void stylePower(View button, TextView label, boolean running) {
+        button.setBackgroundResource(running ? R.drawable.bg_btn_outline : R.drawable.bg_btn_primary);
+        label.setText(running ? R.string.power_stop : R.string.power_start);
+        int color = button.getContext().getColor(running ? R.color.ls_text : R.color.ls_bg);
+        label.setTextColor(color);
+        label.setCompoundDrawableTintList(ColorStateList.valueOf(color));
     }
 
     /** Human name of a runtime permission for the "missing permissions" line. */

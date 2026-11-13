@@ -67,7 +67,6 @@ import java.util.Set;
 import goodvin.locsync.proto.LocationProto;
 import goodvin.locsync.shared.AppLog;
 import goodvin.locsync.shared.LinkState;
-import goodvin.locsync.shared.PowerOrbView;
 import goodvin.locsync.shared.Protocol;
 import goodvin.locsync.shared.SatelliteBarsView;
 import goodvin.locsync.shared.SettingsRows;
@@ -107,7 +106,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView titleText, subtitleText;
     private androidx.activity.OnBackPressedCallback backCallback;
 
-    private PowerOrbView powerOrb;
+    private View btnPower, statusDot;
     private TextView statusLine, statusSub, signalDetail, bannerText;
     private View connectBanner;
     private SatelliteBarsView satBars;
@@ -329,7 +328,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bindConnect() {
-        powerOrb = findViewById(R.id.powerOrb);
+        btnPower = findViewById(R.id.btnPower);
+        statusDot = findViewById(R.id.statusDot);
         statusLine = findViewById(R.id.statusLine);
         statusSub = findViewById(R.id.statusSub);
         signalDetail = findViewById(R.id.signalDetail);
@@ -345,7 +345,8 @@ public class MainActivity extends AppCompatActivity {
         setText(statCard2, R.id.statUnit, getString(R.string.unit_pkts));
         setText(statCard3, R.id.statLabel, getString(R.string.uptime_label));
 
-        powerOrb.setOnClickListener(v -> togglePower());
+        btnPower.setOnClickListener(v -> togglePower());
+        findViewById(R.id.btnPair).setOnClickListener(v -> startPairing());
         connectBanner.setOnClickListener(v -> {
             if (bannerAction != null) bannerAction.run();
         });
@@ -482,10 +483,7 @@ public class MainActivity extends AppCompatActivity {
                 getString(R.string.wifi_network_use_current), this::useCurrentWifiAsTrigger);
         bindActionButton(R.id.rowPair, getString(R.string.pair_row),
                 getString(Preferences.pairingKey(this) != null ? R.string.pair_sub_paired : R.string.pair_sub_unpaired),
-                getString(R.string.pair_button), () -> {
-                    GNSSServerService.openPairing();
-                    Toast.makeText(this, R.string.pair_started, Toast.LENGTH_LONG).show();
-                });
+                getString(R.string.pair_button), this::startPairing);
 
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,
@@ -521,6 +519,12 @@ public class MainActivity extends AppCompatActivity {
 
     // --- power / state ---
 
+    /** Pair button on the home screen and in Settings: opens the one-minute pairing window. */
+    private void startPairing() {
+        GNSSServerService.openPairing();
+        Toast.makeText(this, R.string.pair_started, Toast.LENGTH_LONG).show();
+    }
+
     private void togglePower() {
         if (GNSSServerService.isServiceRunning()) {
             stopGNSSService();
@@ -536,30 +540,32 @@ public class MainActivity extends AppCompatActivity {
 
     private void refreshState() {
         LinkState state = currentState();
-        powerOrb.setState(state);
+        Ui.stylePower(btnPower, findViewById(R.id.btnPowerLabel), state != LinkState.STOPPED);
         if (state == LinkState.CONNECTED) {
             if (connectedSinceElapsed == 0) connectedSinceElapsed = SystemClock.elapsedRealtime();
         } else {
             connectedSinceElapsed = 0;
         }
 
+        int dotColor;
         switch (state) {
             case CONNECTED -> {
                 statusLine.setText(R.string.notification_clients_single);
-                statusLine.setTextColor(getColor(R.color.ls_accent_400));
+                dotColor = R.color.ls_accent;
                 statusSub.setText(R.string.sub_server_connected);
             }
             case WAITING -> {
                 statusLine.setText(R.string.status_server_waiting);
-                statusLine.setTextColor(getColor(R.color.ls_accent_300));
+                dotColor = R.color.ls_warn;
                 statusSub.setText(getString(R.string.sub_server_waiting, serverIp(), Protocol.PORT));
             }
             default -> {
                 statusLine.setText(R.string.status_hint_start);
-                statusLine.setTextColor(getColor(R.color.ls_text_muted));
+                dotColor = R.color.ls_neutral_500;
                 statusSub.setText(R.string.subtitle_server);
             }
         }
+        statusDot.getBackground().mutate().setTint(getColor(dotColor));
         subtitleText.setText(statusSub.getText());
         updateBanner();
         updateConnectReadouts();
