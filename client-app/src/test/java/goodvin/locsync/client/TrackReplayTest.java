@@ -371,7 +371,7 @@ public class TrackReplayTest {
                 if (scored && f.hasSpeed && f.speed > ICON_MIN_SPEED && f.hasBearing) {
                     r.scoreIcon(f, Double.isNaN(prevBearing) ? 0 : Math.abs(wrap(f.bearing - prevBearing)) / dt);
                 }
-                double dTheta = tracker.valid(meas) && !Double.isNaN(wheel.mpsAt(meas)) ? tracker.deltaRadCcw(stateTime, stateTime + Math.round(dt * 1000)) : Double.NaN;
+                double dTheta = tracker.valid(meas) && !Double.isNaN(wheel.mpsAt(meas)) ? tracker.deltaRadCcw(stateTime - gpsLagMs, stateTime - gpsLagMs + Math.round(dt * 1000)) : Double.NaN;
                 kf.predict(dt, dTheta);
             }
             if (f.hasBearing) {

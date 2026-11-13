@@ -41,8 +41,15 @@ final class TrackRecorder {
             + "speed,bearing,spd_acc,brg_acc,age_s,latency_ms,horizon_ms,"
             + "f_lat,f_lon,f_speed,f_bearing,nis,stationary,turn_dps,sigma_a,"
             + "car_speed,car_speed_ipk,car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms,car_gear,out_src,"
-            + "w4m_tick,w4m_int,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,amb_temp,probe";
+            + "w4m_tick,w4m_int,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,amb_temp,probe,"
+            // fix rows: the phone's monotonic fix time (what dedup and FixClock see), the Wi-Fi delay FixClock found,
+            // the learned position trust, the NIS average, and the gyro heading tracker's state
+            + "fix_mono_ms,net_delay_ms,pos_r_scale,nis_avg,hdg_deg,hdg_sigma,gyro_bias";
     private static final String NO_CAR_EXTRA = ",,,,,,,,,,,,,,,,";   // the 16 car-row-only columns
+    private static final String NO_FIX_EXTRA = ",,,,,,,";            // the 7 fix-row-only columns at the end
+    // For the next fix row (see extra); NaN / MIN_VALUE = empty cell.
+    private long fixMonoMs = Long.MIN_VALUE;
+    private double netDelayMs = Double.NaN, hdgDeg = Double.NaN, hdgSigma = Double.NaN, gyroBias = Double.NaN;
 
     final GyroYaw gyro;   // the service's, fed by its sensor listener
     private final CsvLog log;
@@ -67,7 +74,7 @@ final class TrackRecorder {
              boolean hasSpeed, float speed, boolean hasBearing, float bearing, float spdAcc, float brgAcc,
              float ageS, long latencyMs, LocationKalmanFilter f, CarSignals.Snapshot car) {
         start(elapsedMs, "fix");
-        sb.append(fixTs).append(',').append(provider == null ? "" : provider).append(',').append(sats).append(',');
+        sb.append(fixTs).append(',').append(provider == null ? "" : cell(provider)).append(',').append(sats).append(',');
         num(lat, 7); num(lon, 7); num(alt, 1); num(acc, 2);
         if (hasSpeed) num(speed, 2); else sb.append(',');
         if (hasBearing) num(bearing, 1); else sb.append(',');
@@ -86,7 +93,22 @@ final class TrackRecorder {
             sb.append(",,");
         }
         tail(elapsedMs, car == null ? null : car.steerBits);
-        end(car == null ? null : car.gear, null);
+        endWith(car == null ? null : car.gear, null);
+        sb.append(NO_CAR_EXTRA).append(',');
+        if (fixMonoMs != Long.MIN_VALUE) sb.append(fixMonoMs);
+        fixed(netDelayMs, 0); fixed(f.getPositionNoiseScale(), 3); fixed(f.getNisAverage(), 2);
+        fixed(hdgDeg, 2); fixed(hdgSigma, 2); fixed(gyroBias, 4);
+        log.writeLine(sb);
+        extra(Long.MIN_VALUE, Double.NaN, Double.NaN, Double.NaN, Double.NaN);
+    }
+
+    /** What only the service knows about the fix that {@link #fix} writes next; call right before it. */
+    void extra(long fixMonoMs, double netDelayMs, double hdgDeg, double hdgSigma, double gyroBias) {
+        this.fixMonoMs = fixMonoMs;
+        this.netDelayMs = netDelayMs;
+        this.hdgDeg = hdgDeg;
+        this.hdgSigma = hdgSigma;
+        this.gyroBias = gyroBias;
     }
 
     /**
@@ -118,6 +140,7 @@ final class TrackRecorder {
         fixed(ambTempC, 1);
         sb.append(',');
         if (probe != null) sb.append(probe);
+        sb.append(NO_FIX_EXTRA);
         log.writeLine(sb);
     }
 
@@ -144,7 +167,7 @@ final class TrackRecorder {
 
     private void end(String gear, String src) {
         endWith(gear, src);
-        sb.append(NO_CAR_EXTRA);
+        sb.append(NO_CAR_EXTRA).append(NO_FIX_EXTRA);
         log.writeLine(sb);
     }
 
@@ -181,6 +204,11 @@ final class TrackRecorder {
         } else {
             sb.append(',');
         }
+    }
+
+    /** A string from the network as one CSV cell. */
+    private static String cell(String s) {
+        return s.replace(',', ';').replace('\n', ' ').replace('\r', ' ');
     }
 
     /** Like {@link #num} for a value that may be absent. */

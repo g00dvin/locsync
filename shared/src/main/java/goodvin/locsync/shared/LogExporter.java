@@ -38,8 +38,10 @@ public class LogExporter {
     private static final String TAG = "LogExporter";
     private static final String LOG_FILE_MIDDLE = "-logs--";
     private static final String LOG_FILE_EXT = ".txt";
-    private static final SimpleDateFormat DATE_FORMAT =
-            new SimpleDateFormat("yyyy-MM-dd--HH-mm-ss", Locale.US);
+    /** File-name timestamp. A new formatter each time: SimpleDateFormat isn't thread-safe. */
+    private static String stamp() {
+        return new SimpleDateFormat("yyyy-MM-dd--HH-mm-ss", Locale.US).format(new Date());
+    }
 
     /**
      * Export logs to a file in the app's cache directory
@@ -55,21 +57,14 @@ public class LogExporter {
 
         try {
             Process process = startLogcat(context, true);
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream())
-            );
-            FileOutputStream output = new FileOutputStream(logFile);
-            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(output));
-
-            String line;
-            while ((line = reader.readLine()) != null) {
-                writer.append(line).append("\n");
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                 BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(logFile)))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    writer.append(line).append("\n");
+                }
+                appendInAppLog(writer);
             }
-
-            appendInAppLog(writer);
-            writer.close();
-            output.close();
-            reader.close();
 
             if (process.waitFor() != 0) {
                 Log.e(TAG, "Failed to export logs, logcat command exited with result = " + process.exitValue());
@@ -151,7 +146,7 @@ public class LogExporter {
                 f.delete();
             }
         }
-        String ts = DATE_FORMAT.format(new Date());
+        String ts = stamp();
         File zip = new File(dir, appName + "-data--" + ts + ".zip");
         try (java.util.zip.ZipOutputStream out =
                      new java.util.zip.ZipOutputStream(new java.io.FileOutputStream(zip))) {
@@ -162,7 +157,7 @@ public class LogExporter {
                 addFile(out, log);
             }
             File[] data = dir.listFiles((d, name) -> name.endsWith(".csv") || name.endsWith(".csv.old")
-                    || name.endsWith(".csv.oldhdr"));
+                    || name.endsWith(".csv.oldhdr") || name.startsWith("crash-"));
             if (data != null) {
                 Arrays.sort(data);
                 for (File f : data) {
@@ -247,7 +242,7 @@ public class LogExporter {
      */
     private static File createLogFile(Context context, String appName) {
         try {
-            String timeStamp = DATE_FORMAT.format(new Date());
+            String timeStamp = stamp();
             String fileName = appName + LOG_FILE_MIDDLE + timeStamp + LOG_FILE_EXT;
             File logDir = getLogDir(context);
 

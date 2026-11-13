@@ -73,6 +73,11 @@ public class TrackRecorderTest {
             assertEquals(c, "", noCar[header.indexOf(c)]);
         }
         assertTrue(TrackRecorder.HEADER.contains(",car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms,car_gear,out_src,"));
+        // The fix-row extras come last; the checks below are on the columns up to "probe".
+        int core = header.indexOf("probe") + 1;
+        for (int i = 1; i < lines.size(); i++) {
+            lines.set(i, String.join(",", java.util.Arrays.copyOf(lines.get(i).split(",", -1), core)));
+        }
         // Car read at 1500, fix arrived at 2000: the car value is 500 ms older than the fix.
         assertTrue(lines.get(2), lines.get(2).endsWith(",36.00,37.80,-500,95,,,D,,,,,,,,,,,,,,,,,"));
         assertTrue(lines.get(3), lines.get(3).endsWith(",,,,,,,D,,,,,,,,,,,,,,,,,"));             // no speed: no car_dt_ms
@@ -130,8 +135,8 @@ public class TrackRecorderTest {
         r.close();
         List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
         List<String> header = java.util.Arrays.asList(TrackRecorder.HEADER.split(","));
-        assertTrue(TrackRecorder.HEADER.endsWith(
-                ",w4m_tick,w4m_int,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,amb_temp,probe"));
+        assertTrue(TrackRecorder.HEADER.contains(
+                ",w4m_tick,w4m_int,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,amb_temp,probe,"));
         String[] c = lines.get(1).split(",", -1);
         assertEquals(header.size(), c.length);
         assertEquals("123456", c[header.indexOf("w4m_tick")]);
@@ -143,5 +148,34 @@ public class TrackRecorderTest {
         assertEquals("31.5", c[header.indexOf("amb_temp")]);
         assertEquals("20", c[header.indexOf("w4m_int")]);
         assertEquals("100100=10;200200=3", c[header.indexOf("probe")]);
+    }
+
+    // What the service knows about a fix (monotonic fix time, Wi-Fi delay, heading tracker) and the filter's
+    // learned trust ride on the fix row, once: the next fix row doesn't repeat them.
+    @Test
+    public void fixRowWritesExtrasOnce() throws Exception {
+        File dir = tmp.newFolder();
+        TrackRecorder r = new TrackRecorder(dir, new GyroYaw());
+        LocationKalmanFilter f = new LocationKalmanFilter(2.0, 1.0);
+        f.update(55.75, 37.6, 10.0, 90.0, 4.0, 0.3, 5.0);
+        for (int i = 0; i < 2; i++) {
+            if (i == 0) r.extra(123456L, 35, 91.5, 1.25, -0.0123);
+            r.fix(1000 + i, 1_700_000_000_000L, "fu,sed", 17, 55.75, 37.6, 150.0, 4.0f,
+                    true, 10.0f, true, 90.0f, 0.3f, 5.0f, 0.04f, 40, f, null);
+        }
+        r.close();
+        List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
+        List<String> header = java.util.Arrays.asList(TrackRecorder.HEADER.split(","));
+        String[] c = lines.get(1).split(",", -1), next = lines.get(2).split(",", -1);
+        assertEquals(header.size(), c.length);
+        assertEquals("fu;sed", c[header.indexOf("provider")]);   // a comma from the network can't shift the columns
+        assertEquals("123456", c[header.indexOf("fix_mono_ms")]);
+        assertEquals("35", c[header.indexOf("net_delay_ms")]);
+        assertEquals("1.000", c[header.indexOf("pos_r_scale")]);
+        assertEquals("91.50", c[header.indexOf("hdg_deg")]);
+        assertEquals("-0.0123", c[header.indexOf("gyro_bias")]);
+        assertEquals("", next[header.indexOf("fix_mono_ms")]);
+        assertEquals("", next[header.indexOf("hdg_deg")]);
+        assertEquals("1.000", next[header.indexOf("pos_r_scale")]);
     }
 }

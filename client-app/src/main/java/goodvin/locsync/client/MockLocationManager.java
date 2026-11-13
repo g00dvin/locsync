@@ -49,6 +49,7 @@ public class MockLocationManager {
     private boolean isMockLocationProviderSetup = false;
     private static final long SETUP_RETRY_MS = 1000;
     private long lastSetupAttemptMs;
+    private String lastSetupError;   // logged once per distinct reason
 
     public MockLocationManager(Context context, Handler handler) {
         this.context = context.getApplicationContext();
@@ -102,9 +103,16 @@ public class MockLocationManager {
         try {
             setupMockLocationProvider();
             enableMockLocationProvider();
+            lastSetupError = null;
+            AppLog.i(TAG, "Mock location provider set up on retry");
             return true;
         } catch (RuntimeException e) {
-            return false;   // still not the mock location app; startMockLocationProvider already reported it
+            // still not the mock location app; startMockLocationProvider already told the user
+            if (!String.valueOf(e).equals(lastSetupError)) {
+                lastSetupError = String.valueOf(e);
+                AppLog.i(TAG, "Mock location provider not ready, retrying every second: " + e);
+            }
+            return false;
         }
     }
 

@@ -54,8 +54,94 @@ public final class AppLog {
 
     private AppLog() {}
 
+    // Set by install(); guarded by RING.
+    private static java.io.File dir;
+    private static String app = "app", version = "?";
+    private static boolean crashHandlerInstalled;
+    // applog-<app>.csv: every captured line, flushed at once, while debug logging is on. The ring is lost with the
+    // process, and logcat can only be exported for the current one, so nothing survived a crash or a restart.
+    private static CsvLog fileLog;
+    private static final StringBuilder fileLine = new StringBuilder(200);
+    private static final long FILE_MAX_BYTES = 2_000_000;   // rotated to .old above this
+    private static final long CRASH_MAX_BYTES = 1_000_000;
+    private static final int CRASH_LOG_TAIL = 150;
+
+    /**
+     * Call first thing in every entry point (services, activities). Tells the log where its files go (the logs
+     * directory the diagnostics export zips) and, once per process, installs a handler that appends an uncaught
+     * exception's stack trace and the last log lines to crash-<app>.txt before the app dies as usual.
+     */
+    public static void install(android.content.Context context, String appName) {
+        synchronized (RING) {
+            dir = new java.io.File(context.getCacheDir(), "logs");
+            app = appName;
+            version = VersionGetter.getAppVersionName(context);
+            if (crashHandlerInstalled) {
+                return;
+            }
+            crashHandlerInstalled = true;
+        }
+        Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
+            try {
+                writeCrash(thread, error);
+            } catch (Throwable ignored) {
+                // nothing may get in the way of the crash itself
+            }
+            if (previous != null) {
+                previous.uncaughtException(thread, error);
+            }
+        });
+    }
+
+    private static void writeCrash(Thread thread, Throwable error) throws java.io.IOException {
+        java.io.File d;
+        String a, v;
+        List<Entry> tail;
+        synchronized (RING) {
+            d = dir;
+            a = app;
+            v = version;
+            tail = new ArrayList<>(RING);
+            if (fileLog != null) {
+                fileLog.flush();
+            }
+        }
+        if (d == null) {
+            return;
+        }
+        //noinspection ResultOfMethodCallIgnored
+        d.mkdirs();
+        java.io.File f = new java.io.File(d, "crash-" + a + ".txt");
+        if (f.length() > CRASH_MAX_BYTES) {
+            //noinspection ResultOfMethodCallIgnored
+            f.delete();
+        }
+        java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US);
+        try (java.io.PrintWriter w = new java.io.PrintWriter(new java.io.FileWriter(f, true))) {
+            w.println("=== crash " + fmt.format(new java.util.Date()) + " " + a + " " + v + ", thread " + thread.getName()
+                    + ", Android " + android.os.Build.VERSION.RELEASE + " (API " + android.os.Build.VERSION.SDK_INT
+                    + "), " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL);
+            error.printStackTrace(w);
+            w.println("--- last log lines (oldest first)");
+            for (int i = Math.max(0, tail.size() - CRASH_LOG_TAIL); i < tail.size(); i++) {
+                Entry e = tail.get(i);
+                w.println(fmt.format(new java.util.Date(e.timeMillis)) + " " + e.level + " " + e.tag + ": " + e.message);
+            }
+            w.println();
+        }
+    }
+
     public static void setDebug(boolean enabled) {
         debug = enabled;
+        if (!enabled) {
+            synchronized (RING) {
+                if (fileLog != null) {
+                    fileLog.close();
+                    fileLog = null;
+                }
+            }
+        }
     }
 
     public static boolean isDebug() {
@@ -69,6 +155,17 @@ public final class AppLog {
                 RING.removeFirst();
             }
             RING.addLast(e);
+            if (debug && dir != null) {
+                if (fileLog == null) {
+                    fileLog = new CsvLog(new java.io.File(dir, "applog-" + app + ".csv"), "wall_ms,level,tag,message",
+                            FILE_MAX_BYTES);
+                }
+                fileLine.setLength(0);
+                fileLine.append(e.timeMillis).append(',').append(level).append(',').append(tag).append(',')
+                        .append(msg == null ? "" : msg.replace('\n', ' ').replace('\r', ' '));   // last column: commas stay
+                fileLog.writeLine(fileLine);
+                fileLog.flush();   // a few lines a minute; survives a kill
+            }
         }
     }
 
