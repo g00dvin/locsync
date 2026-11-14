@@ -105,6 +105,46 @@ public final class Ui {
         }).start();
     }
 
+    /**
+     * Settings → Diagnostics: the recorded track as a GPX file, then the share sheet. {@code csvs} are the
+     * app's track files, oldest first.
+     */
+    public static void exportGpx(Activity a, String appName, Supplier<File[]> csvs) {
+        new Thread(() -> {
+            File gpx = null;
+            try {
+                File dir = new File(a.getCacheDir(), "logs");
+                //noinspection ResultOfMethodCallIgnored
+                dir.mkdirs();
+                File[] old = dir.listFiles((d, name) -> name.endsWith(".gpx"));
+                if (old != null) {
+                    for (File f : old) {
+                        //noinspection ResultOfMethodCallIgnored
+                        f.delete();
+                    }
+                }
+                File out = new File(dir, appName + "-track--"
+                        + new java.text.SimpleDateFormat("yyyy-MM-dd--HH-mm", java.util.Locale.US).format(new java.util.Date()) + ".gpx");
+                if (Gpx.write(csvs.get(), out) > 0) {
+                    gpx = out;
+                } else {
+                    //noinspection ResultOfMethodCallIgnored
+                    out.delete();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error exporting GPX", e);
+            }
+            final File result = gpx;
+            a.runOnUiThread(() -> {
+                if (result != null) {
+                    shareFile(a, result, "application/gpx+xml", a.getString(R.string.export_gpx));
+                } else {
+                    Toast.makeText(a, R.string.export_gpx_empty, Toast.LENGTH_LONG).show();
+                }
+            });
+        }).start();
+    }
+
     private static void shareFile(Activity a, File file, String mime, String chooserTitle) {
         try {
             Uri uri = FileProvider.getUriForFile(a, a.getPackageName() + ".fileprovider", file);

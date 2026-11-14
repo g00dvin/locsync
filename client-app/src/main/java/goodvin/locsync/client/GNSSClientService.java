@@ -90,6 +90,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private static volatile boolean filterStatsWanted;
     /** True while MainActivity is on screen: per-fix and per-second UI broadcasts are sent only then. */
     private static volatile boolean uiVisible;
+    private static final LinkQuality LINK_QUALITY = new LinkQuality();
+    private static volatile boolean outDr;
     private volatile boolean mockFailed;   // a mock-provider (or version) error is on the banner
 
     static void setUiVisible(boolean visible) {
@@ -469,13 +471,14 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
             if (!running.get() || vehicle != null) {
                 return;
             }
+            LINK_QUALITY.reset();   // a new connection: the wait before it isn't a hole in the link
             wheelCalibration = new CarSignals.WheelCalibration(Preferences.carSpeedFactor(this));
             VehicleData v = new VehicleData(this, handler, null, VEHICLE_POLL_MS);
-            v.setSpeedListener((t, kmh, w4m, probe) -> handler.post(() -> {
+            v.setSpeedListener((t, kmh, w4m) -> handler.post(() -> {
                 TrackRecorder r = trackRecorder;
                 VehicleData car = vehicle;
                 if (r != null && car != null) {
-                    r.car(t, kmh, car.snapshot().gear, w4m, accSeen ? lastAcc : null, ambTempC, probe);
+                    r.car(t, kmh, car.snapshot().gear, w4m, accSeen ? lastAcc : null, ambTempC);
                 }
             }));
             v.setRecordAll(trackRecorder != null);
@@ -871,6 +874,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                     }
                     lastFedFixMs = fixTs;
                     metrics.recordFix();
+                    LINK_QUALITY.onFix(arrivalElapsed);   // new fixes only: a keepalive repeat doesn't fill a hole
                     inSpeedAcc = u.hasSpeedAccuracy() ? u.getSpeedAccuracy() : Double.NaN;
                     inBearingAcc = u.hasBearingAccuracy() ? u.getBearingAccuracy() : Double.NaN;
                     boolean hadWifiLocks = filterConfig.wifiLowLatency;
@@ -1246,6 +1250,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         loc.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
         lastReceivedLocation = loc;
         lastUpdateTime = System.currentTimeMillis();
+        outDr = lastOutDr;
         try {
             if (mockLocationManager.setMockLocation(loc) && mockFailed) {
                 mockFailed = false;
@@ -1517,7 +1522,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private void updateTrackRecorder() {
         boolean wanted = Preferences.trackRecording(this);
         if (wanted && trackRecorder == null) {
-            trackRecorder = new TrackRecorder(new java.io.File(getCacheDir(), "logs"), gyro);
+            trackRecorder = new TrackRecorder(new java.io.File(getCacheDir(), "logs"),
+                    android.provider.Settings.Global.getInt(getContentResolver(), android.provider.Settings.Global.BOOT_COUNT, 0), gyro);
             AppLog.i(TAG, "Track recording started");
         } else if (!wanted && trackRecorder != null) {
             closeTrackRecorder();
@@ -1613,6 +1619,16 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         PhoneSample s = phoneSample;
         if (s == null || SystemClock.elapsedRealtime() - s.elapsedMs() > PHONE_STATE_STALE_MS) return null;
         return s.state();
+    }
+
+    /** Longest wait between the phone's fixes over the last minute, ms; 0 before the first one. */
+    public static long linkMaxGapMs() {
+        return LINK_QUALITY.maxGapMs(SystemClock.elapsedRealtime());
+    }
+
+    /** True while the location handed to apps comes from dead reckoning (wheels + gyro), not straight from the filter. */
+    public static boolean isDeadReckoning() {
+        return outDr;
     }
 
     public static long getLastUpdateTime() {

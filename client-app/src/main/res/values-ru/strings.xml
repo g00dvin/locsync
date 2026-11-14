@@ -128,6 +128,9 @@
     <string name="nav_ok_detail">LocSync подменяет GPS магнитолы</string>
     <string name="nav_stale_title">Нет свежих координат</string>
     <string name="nav_stale_detail">Навигатор держит последнюю позицию — проверьте GPS на телефоне</string>
+    <string name="nav_dr_title">Веду по датчикам автомобиля</string>
+    <string name="nav_dr_detail">Телефон не присылает координаты — значок идёт по колёсам и гироскопу</string>
+    <string name="hint_link_gap">пауза %1$d с за последнюю минуту</string>
     <string name="nav_waiting_title">Ищем телефон</string>
     <string name="nav_waiting_detail">Запустите LocSync Server на телефоне и подключитесь к его точке доступа Wi-Fi</string>
     <string name="nav_off_title">Координаты не передаются</string>

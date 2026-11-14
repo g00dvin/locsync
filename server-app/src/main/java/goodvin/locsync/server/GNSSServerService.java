@@ -141,6 +141,8 @@ public class GNSSServerService extends Service {
         }
     };
     private LocationManager locationManager = null;
+    private final FixSource fixSource = new FixSource();
+    private boolean gpsBackup;   // the GPS provider runs beside Fused since Fused stalled (until updates stop)
     private FusedLocationProviderClient fusedLocationProviderClient = null;
     private final com.google.android.gms.location.LocationListener fusedLocationListener = this::handleLocationUpdate;
     private final LocationListener locationListener = new LocationListener() {
@@ -631,6 +633,8 @@ public class GNSSServerService extends Service {
             } else {
                 requestGpsUpdates(MIN_INTERVAL_MS);
             }
+            fixSource.reset(SystemClock.elapsedRealtime());
+            gpsBackup = false;
             AppLog.i(TAG, "Location updates started: " + (fusedLocationProviderClient != null ? "fused" : "gps")
                     + ", interval " + MIN_INTERVAL_MS + " ms" + (waitAccurate ? ", waiting for an accurate fix" : ""));
 
@@ -729,6 +733,11 @@ public class GNSSServerService extends Service {
             return;
         }
         updateTrackRecorder();
+        if (fusedLocationProviderClient != null && !fixSource.accept("fused".equals(location.getProvider()),
+                location.hasAccuracy() && location.getAccuracy() <= FixSource.GOOD_ACCURACY_M, receivedElapsed)) {
+            recordFix(receivedElapsed, location, false);   // GPS beside a healthy Fused, or coarse Fused beside GPS
+            return;
+        }
         if (!hadAccurateFix) {
             // "Wait for an accurate fix": hold back the coarse first fixes so the client's icon
             // doesn't start tens of metres off and then jump.
@@ -868,6 +877,14 @@ public class GNSSServerService extends Service {
                 executor.execute(() -> broadcastLocationUpdate(resp));
             }
         }
+        // Fused quiet or coarse while a client waits: call in the plain GPS provider beside it (see FixSource).
+        // ponytail: the backup stays on until location updates stop; Fused already keeps the GNSS chip awake.
+        if (dest != null && isGnssActive && !gpsBackup && fusedLocationProviderClient != null && locationManager != null
+                && fixSource.fusedStalled(SystemClock.elapsedRealtime())) {
+            gpsBackup = true;
+            AppLog.i(TAG, "Fused quiet or coarse for " + FixSource.FRESH_MS + " ms: GPS backup on");
+            requestGpsUpdates(Math.max(100, Preferences.locationIntervalMs(this)));
+        }
         // Not re-armed per send either: the client timeout above must keep being checked.
         keepaliveArmed = running && clientAddr != null;
         if (keepaliveArmed) {
@@ -875,7 +892,15 @@ public class GNSSServerService extends Service {
         }
     }
 
+    private static final long PARKED_FIX_MAX_AGE_NS = 10_000_000_000L;
+
     private void onClientGone() {
+        // The head unit went silent: most often the car was just switched off. Remember where (a fresh fix only).
+        if (lastServerResponse.hasLocationUpdate() && lastFixElapsedNanos > 0
+                && SystemClock.elapsedRealtimeNanos() - lastFixElapsedNanos < PARKED_FIX_MAX_AGE_NS) {
+            LocationProto.LocationUpdate u = lastServerResponse.getLocationUpdate();
+            Preferences.setParked(this, u.getLatitude(), u.getLongitude(), System.currentTimeMillis());
+        }
         ServerTileService.requestRefresh(this);
         long idleMs = Preferences.gpsIdleStopSeconds(this) * 1000L;
         AppLog.d(TAG, "No client; scheduling stop of location updates in " + idleMs + " ms");

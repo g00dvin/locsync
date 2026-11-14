@@ -56,14 +56,14 @@ final class VehicleData {
     private volatile CarSignals.Snapshot latest = CarSignals.Snapshot.EMPTY;
     private volatile Poller poller;
     private volatile SpeedListener speedListener;
-    private volatile boolean recordAll;   // "Record track": census, W4m and probe reads (else none of that work)
+    private volatile boolean recordAll;   // "Record track": also read the W4m group
 
     /**
      * Every wheel-speed poll (km/h, null = not readable), called on the poll thread, with the W4m group read
-     * at the same poll (null when unreadable) and, on full reads, the census probe cell (else null).
+     * at the same poll (null when unreadable).
      */
     interface SpeedListener {
-        void onSpeed(long elapsedMs, Float kmh, CarSignals.W4m w4m, String probe);
+        void onSpeed(long elapsedMs, Float kmh, CarSignals.W4m w4m);
     }
 
     /** For the track log's 5 Hz car rows; null to stop. The listener must hop to its own thread. */
@@ -71,7 +71,7 @@ final class VehicleData {
         speedListener = l;
     }
 
-    /** While true (the track is being recorded), also run the AdaptAPI census and read W4m + the probe. */
+    /** While true (the track is being recorded), also read the W4m group on every poll. */
     void setRecordAll(boolean on) {
         recordAll = on;
     }
@@ -128,15 +128,15 @@ final class VehicleData {
         }
         SpeedListener l = speedListener;
         if (l != null && recordAll) {
-            l.onSpeed(elapsedMs, kmh, w4m, null);
+            l.onSpeed(elapsedMs, kmh, w4m);
         }
     }
 
-    /** A full read's recording extras, delivered after {@link #publish} so the probe never delays the snapshot. */
-    private void notifyRecorder(Poller from, CarSignals.Snapshot snap, CarSignals.W4m w4m, String probe) {
+    /** A full read's car row for the recorder, delivered after {@link #publish}. */
+    private void notifyRecorder(Poller from, CarSignals.Snapshot snap, CarSignals.W4m w4m) {
         SpeedListener l = speedListener;
         if (l != null && recordAll && poller == from) {
-            l.onSpeed(snap.readElapsedMs, snap.speedKmh, w4m, probe);
+            l.onSpeed(snap.readElapsedMs, snap.speedKmh, w4m);
         }
     }
 
@@ -165,14 +165,11 @@ final class VehicleData {
         private Object sensorManager;   // com.ecarx.xui.adaptapi.car.sensor.ISensor
         private Method getLatest;       // ISensor#getSensorLatestValue(int) -> float
         private Method getEvent;        // ISensor#getSensorEvent(int) -> int
-        // The record-everything probe (only for a recording owner, i.e. with a speed listener):
+        // The W4m group (only for a recording owner, i.e. with a speed listener):
         private Method getGroup;        // ISensor#getSensorGroupLatestValue(int) -> ISensorGroupValue
-        private Method isSupported;     // ISensor#isSensorSupported(int) -> FunctionStatus
         private Method[] w4mGetters;    // IW4mValue: yaw, latAcc, lonAcc, vFL, vFR, vRL, vRR, steer, gear
         private Method w4mTick, w4mInterval;
-        private boolean w4mFailed, censusDone;
-        private int[] probeIds;
-        private CarSignals.ProbeDiff probe;
+        private boolean w4mFailed;
         private int emptyPolls;
         private int polls;
         private boolean loggedRaw;
@@ -203,14 +200,6 @@ final class VehicleData {
                     connect();
                     polls = 0;
                 }
-                if (recordAll && !censusDone) {
-                    censusDone = true;   // once per connection, also when recording starts mid-connection
-                    try {
-                        census(sensorManager);
-                    } catch (Exception | LinkageError e) {
-                        AppLog.i(TAG, "census failed: " + e);
-                    }
-                }
                 if (polls++ % fullEvery != 0) {
                     float raw = rawLatest(sensorManager, CarSignals.SPEED);
                     CarSignals.W4m w4m = recording() ? readW4m(sensorManager) : null;
@@ -231,7 +220,7 @@ final class VehicleData {
                 if (!stopped) {
                     publish(this, snap);
                     if (recording() && sensorManager != null) {   // null after a stale-read disconnect just above
-                        notifyRecorder(this, snap, readW4m(sensorManager), probeRow(sensorManager));
+                        notifyRecorder(this, snap, readW4m(sensorManager));
                     }
                     worker.postDelayed(this, pollMs);
                 }
@@ -286,87 +275,21 @@ final class VehicleData {
             sensorManager = mgr;
             loggedRaw = false;
             log("AdaptAPI sensor manager connected");
-            censusDone = false;
             w4mFailed = false;
             w4mGetters = null;
-            probe = null;
-            probeIds = null;
-        }
-
-        /**
-         * Once per connection, for the record-everything build: every ISensor.SENSOR_TYPE_* with its support status
-         * and current value, one log line each; the ones that may report become the 1 Hz probe. Plus the W4m
-         * group's first value and the mount angle.
-         */
-        private void census(Object mgr) throws ClassNotFoundException {
-            Class<?> iSensor = Class.forName("com.ecarx.xui.adaptapi.car.sensor.ISensor");
-            try {
-                getGroup = iSensor.getMethod("getSensorGroupLatestValue", int.class);
-            } catch (Exception | LinkageError e) {
-                getGroup = null;
-            }
-            try {
-                isSupported = iSensor.getMethod("isSensorSupported", int.class);
-            } catch (Exception | LinkageError e) {
-                isSupported = null;
-            }
-            java.util.ArrayList<Integer> ids = new java.util.ArrayList<>();
-            for (java.lang.reflect.Field f : iSensor.getFields()) {
-                if (!f.getName().startsWith("SENSOR_TYPE_") || f.getType() != int.class) {
-                    continue;
-                }
-                int id;
-                try {
-                    id = f.getInt(null);
-                } catch (Exception e) {
-                    continue;
-                }
-                String status = "?";
-                try {
-                    Object st = isSupported == null ? null : isSupported.invoke(mgr, id);
-                    status = String.valueOf(st);
-                } catch (Exception | LinkageError e) {
-                    status = "fail";
-                }
-                float latest = rawLatest(mgr, id);
-                int event = rawEvent(mgr, id);
-                AppLog.i(TAG, String.format(Locale.US, "census %s 0x%x %s latest=%s(0x%x) event=%d",
-                        f.getName(), id, status, latest, bits(latest), event));
-                String st = status.toLowerCase(Locale.US);
-                if (!st.contains("notavailable") && !st.contains("error")) {
-                    ids.add(id);
-                }
-            }
-            probeIds = new int[ids.size()];
-            for (int i = 0; i < probeIds.length; i++) probeIds[i] = ids.get(i);
-            probe = new CarSignals.ProbeDiff(probeIds);
-            CarSignals.W4m w = readW4m(mgr);
-            AppLog.i(TAG, w == null ? "census W4m: none" : String.format(Locale.US,
-                    "census W4m yaw=%s lat=%s lon=%s fl=%s fr=%s rl=%s rr=%s steer=%s gear=%d tick=%d interval=%d",
-                    w.yawRate, w.latAcc, w.lonAcc, w.vFL, w.vFR, w.vRL, w.vRR, w.steer, w.gear, w.tick, w.interval));
-            try {
-                Object ma = iSensor.getMethod("getMountAngle").invoke(mgr);
-                if (ma != null) {
-                    Class<?> c = Class.forName("com.ecarx.xui.adaptapi.car.sensor.ISensorGroup$IMountAngle");
-                    AppLog.i(TAG, "census mount angle has=" + c.getMethod("hasMountAngle").invoke(ma)
-                            + " pitch=" + c.getMethod("getPitchMountAngle").invoke(ma)
-                            + " roll=" + c.getMethod("getRollMountAngle").invoke(ma)
-                            + " yaw=" + c.getMethod("getYawMountAngle").invoke(ma));
-                } else {
-                    AppLog.i(TAG, "census mount angle: none");
-                }
-            } catch (Exception | LinkageError e) {
-                AppLog.i(TAG, "census mount angle failed: " + e);
-            }
-            AppLog.i(TAG, "census probe: " + probeIds.length + " sensors");
+            getGroup = null;
         }
 
         /** The W4m group (car yaw rate, accelerations, four wheel speeds); null when unreadable. */
         private CarSignals.W4m readW4m(Object mgr) {
-            if (getGroup == null || w4mFailed) {
+            if (w4mFailed) {
                 return null;
             }
             try {
+                if (getGroup == null) {
+                    getGroup = Class.forName("com.ecarx.xui.adaptapi.car.sensor.ISensor")
+                            .getMethod("getSensorGroupLatestValue", int.class);
+                }
                 Object v = getGroup.invoke(mgr, CarSignals.W4m.GROUP);
                 if (v == null) {
                     return null;
@@ -415,19 +338,6 @@ final class VehicleData {
             } catch (Exception e) {
                 return Double.NaN;
             }
-        }
-
-        /** The census probe cell: continuous types (0x1xxxxx) as floats, the rest as events. */
-        private String probeRow(Object mgr) {
-            int[] ids = probeIds;
-            if (ids == null || probe == null) {
-                return null;
-            }
-            double[] v = new double[ids.length];
-            for (int i = 0; i < ids.length; i++) {
-                v[i] = (ids[i] & 0xF00000) == 0x100000 ? rawLatest(mgr, ids[i]) : rawEvent(mgr, ids[i]);
-            }
-            return probe.row(SystemClock.elapsedRealtime(), v);
         }
 
         private void disconnect() {

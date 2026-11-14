@@ -620,6 +620,8 @@ public class MainActivity extends AppCompatActivity {
                 checked -> Preferences.setMetricsEnabled(this, checked));
         bindActionChevron(R.id.rowExportAll, getString(R.string.export_all),
                 getString(R.string.export_all_sub), this::exportAllData);
+        bindActionChevron(R.id.rowExportGpx, getString(R.string.export_gpx), getString(R.string.export_gpx_sub),
+                () -> Ui.exportGpx(this, "locsync-client", () -> TrackRecorder.files(new File(getCacheDir(), "logs"))));
         bindToggle(R.id.rowTrackRecording, getString(R.string.track_recording),
                 getString(R.string.track_recording_sub), Preferences.trackRecording(this),
                 checked -> Preferences.setTrackRecording(this, checked));
@@ -930,6 +932,8 @@ public class MainActivity extends AppCompatActivity {
     // A fix older than this (phone-side age + time since it arrived) is no longer "live"; matches the
     // service's GPS-loss cap, after which it stops moving the icon.
     private static final double STALE_FIX_S = 3.0;
+    private static final long LINK_LATE_MS = 1500;   // a fix a second is normal; beyond this one was late
+    private static final long LINK_DROP_MS = 3000;   // ... and beyond this the phone went quiet
     private static final long OUTPUT_ACTIVE_MS = 1500;
 
     /** Seconds since the phone took the last fix we know of (NaN if none yet). */
@@ -963,6 +967,11 @@ public class MainActivity extends AppCompatActivity {
             navTitle.setText(R.string.nav_ok_title);
             navDetail.setText(R.string.nav_ok_detail);
             dotColor = getColor(R.color.ls_accent_400);
+        } else if (connected && injecting && GNSSClientService.isDeadReckoning()) {
+            // The phone went quiet but the car's own sensors still move the icon.
+            navTitle.setText(R.string.nav_dr_title);
+            navDetail.setText(R.string.nav_dr_detail);
+            dotColor = getColor(R.color.ls_warn);
         } else if (connected) {
             navTitle.setText(R.string.nav_stale_title);
             navDetail.setText(R.string.nav_stale_detail);
@@ -1032,9 +1041,13 @@ public class MainActivity extends AppCompatActivity {
                 lastSatellites > 0 ? textColor : getColor(R.color.ls_error));
 
         // Freshness of the data
+        // ... and how evenly it has been arriving: the longest wait of the last minute, once it is worth a word.
+        long gapMs = GNSSClientService.linkMaxGapMs();
+        boolean uneven = fresh && gapMs > LINK_LATE_MS;
         setTile(tileFresh, String.format(Locale.US, "%.1f", age), getString(R.string.unit_s_ago),
-                getString(fresh ? R.string.hint_fresh : R.string.hint_stale),
-                fresh ? textColor : getColor(R.color.ls_error));
+                uneven ? getString(R.string.hint_link_gap, Math.round(gapMs / 1000.0))
+                        : getString(fresh ? R.string.hint_fresh : R.string.hint_stale),
+                !fresh ? getColor(R.color.ls_error) : gapMs > LINK_DROP_MS ? getColor(R.color.ls_warn) : textColor);
     }
 
     /** Phone tile: battery percent, with "charging · 36 °C" or a warning when it overheats or runs flat. */
@@ -1309,17 +1322,12 @@ public class MainActivity extends AppCompatActivity {
         Ui.exportAll(this, "locsync-client", appVersion, () -> Preferences.dump(this));
     }
 
-    private File trackFile() {
-        return TrackRecorder.fileFor(new File(getCacheDir(), "logs"));
-    }
-
     /** Track toggle subtitle: what it records, plus how much is recorded so far. */
     private void refreshTrackRow() {
-        File f = trackFile();
+        long bytes = TrackRecorder.totalBytes(new File(getCacheDir(), "logs"));
         TextView sub = findViewById(R.id.rowTrackRecording).findViewById(R.id.row_sub);
         String base = getString(R.string.track_recording_sub);
-        sub.setText(f.exists() && f.length() > 0
-                ? base + String.format(Locale.US, " · %.1f MB", f.length() / 1048576.0) : base);
+        sub.setText(bytes > 0 ? base + String.format(Locale.US, " · %.1f MB", bytes / 1048576.0) : base);
         sub.setVisibility(View.VISIBLE);
     }
 

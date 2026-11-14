@@ -24,8 +24,9 @@ import goodvin.locsync.shared.CsvLog;
 /**
  * Records a drive for offline analysis: every raw fix from the server (with the filter state right
  * after it) and every location handed to the mock provider. Lets a real trip be replayed through
- * the filter to tune it. Buffered and flushed ~1/s by the caller; rotated to {@code .old} above
- * {@link #MAX_BYTES} (~4 MB per hour of driving, so that is many hours).
+ * the filter to tune it. Buffered and flushed ~1/s by the caller; one file per head-unit boot, rotated
+ * to {@code .old} above {@link #MAX_BYTES} (~4 MB per hour of driving, so that is many hours); the
+ * oldest boots go once all files pass {@link #MAX_TOTAL_BYTES}.
  *
  * <p>One CSV for all row kinds ({@code type} = fix | out | car); columns that don't apply are empty.
  * {@code car} rows are the 5 Hz wheel-speed polls with the gear ({@code car_gear}), so a drive replays
@@ -41,11 +42,11 @@ final class TrackRecorder {
             + "speed,bearing,spd_acc,brg_acc,age_s,latency_ms,horizon_ms,"
             + "f_lat,f_lon,f_speed,f_bearing,nis,stationary,turn_dps,sigma_a,"
             + "car_speed,car_speed_ipk,car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms,car_gear,out_src,"
-            + "w4m_tick,w4m_int,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,amb_temp,probe,"
+            + "w4m_tick,w4m_int,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,amb_temp,"
             // fix rows: the phone's monotonic fix time (what dedup and FixClock see), the Wi-Fi delay FixClock found,
             // the learned position trust, the NIS average, and the gyro heading tracker's state
             + "fix_mono_ms,net_delay_ms,pos_r_scale,nis_avg,hdg_deg,hdg_sigma,gyro_bias";
-    private static final String NO_CAR_EXTRA = ",,,,,,,,,,,,,,,,";   // the 16 car-row-only columns
+    private static final String NO_CAR_EXTRA = ",,,,,,,,,,,,,,,";   // the 15 car-row-only columns
     private static final String NO_FIX_EXTRA = ",,,,,,,";            // the 7 fix-row-only columns at the end
     // For the next fix row (see extra); NaN / MIN_VALUE = empty cell.
     private long fixMonoMs = Long.MIN_VALUE;
@@ -55,13 +56,52 @@ final class TrackRecorder {
     private final CsvLog log;
     private final StringBuilder sb = new StringBuilder(256);   // reused: one row at a time
 
-    TrackRecorder(File dir, GyroYaw gyro) {
+    /**
+     * @param boot the head unit's boot count: one file per boot, because {@code elapsed_ms} restarts with the unit
+     *             and a replay keys everything by it (the 2026-11-14 file held six boots and had to be split by hand)
+     */
+    TrackRecorder(File dir, int boot, GyroYaw gyro) {
         this.gyro = gyro;
-        log = new CsvLog(fileFor(dir), HEADER, MAX_BYTES);
+        File file = fileFor(dir, boot);
+        prune(dir, file);
+        log = new CsvLog(file, HEADER, MAX_BYTES);
     }
 
-    static File fileFor(File dir) {
-        return new File(dir, "track-client.csv");
+    static File fileFor(File dir, int boot) {
+        return new File(dir, PREFIX + "-b" + boot + ".csv");
+    }
+
+    private static final String PREFIX = "track-client";
+    static final long MAX_TOTAL_BYTES = 60L * 1024 * 1024;
+
+    /** Every track file in {@code dir} (all boots, rotated ones too), oldest first. */
+    static File[] files(File dir) {
+        File[] all = dir.listFiles((d, name) -> name.startsWith(PREFIX) && name.contains(".csv"));
+        if (all == null) {
+            return new File[0];
+        }
+        java.util.Arrays.sort(all, java.util.Comparator.comparingLong(File::lastModified).thenComparing(File::getName));
+        return all;
+    }
+
+    static long totalBytes(File dir) {
+        long sum = 0;
+        for (File f : files(dir)) sum += f.length();
+        return sum;
+    }
+
+    /** Drops the oldest boots' files while all of them together exceed {@link #MAX_TOTAL_BYTES}; never {@code keep}. */
+    private static void prune(File dir, File keep) {
+        long total = totalBytes(dir);
+        for (File f : files(dir)) {
+            if (total <= MAX_TOTAL_BYTES) {
+                return;
+            }
+            long len = f.length();
+            if (!f.equals(keep) && f.delete()) {
+                total -= len;
+            }
+        }
     }
 
     /**
@@ -113,11 +153,10 @@ final class TrackRecorder {
 
     /**
      * One wheel-speed poll (km/h, null = not readable) and the newest gear, with what else the car and the
-     * head unit said at that moment: the W4m group, the raw accelerometer (m/s²), the ambient-temperature sensor (°C)
-     * and the AdaptAPI census probe (once a second). Any of them may be null/NaN.
+     * head unit said at that moment: the W4m group, the raw accelerometer (m/s²) and the ambient-temperature
+     * sensor (°C). Any of them may be null/NaN.
      */
-    void car(long elapsedMs, Float speedKmh, String gear, CarSignals.W4m w4m, float[] acc, float ambTempC,
-             String probe) {
+    void car(long elapsedMs, Float speedKmh, String gear, CarSignals.W4m w4m, float[] acc, float ambTempC) {
         start(elapsedMs, "car");
         sb.append(",,,,,,,,,,,,,,,,,,,,,,");   // fix_ts .. sigma_a
         optional(speedKmh, 2);
@@ -138,8 +177,6 @@ final class TrackRecorder {
             sb.append(",,,");
         }
         fixed(ambTempC, 1);
-        sb.append(',');
-        if (probe != null) sb.append(probe);
         sb.append(NO_FIX_EXTRA);
         log.writeLine(sb);
     }
