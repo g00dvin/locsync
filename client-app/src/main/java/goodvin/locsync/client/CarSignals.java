@@ -241,8 +241,8 @@ final class CarSignals {
 
     /**
      * One AdaptAPI W4m group value ({@code ISensor.getSensorGroupLatestValue(0x800400)}): the car's yaw rate,
-     * lateral/longitudinal acceleration and the four wheel speeds, as the ESC sees them. Recorded raw: units
-     * and whether the G426 fills it at all are what the next drive is for.
+     * lateral/longitudinal acceleration and the four wheel speeds, as the ESC sees them. Recorded raw: the G426
+     * leaves every value at 0 (drives of 2026-11-13 and 11-14); other units may fill it.
      */
     static final class W4m {
         static final int GROUP = 0x800400;
@@ -267,48 +267,6 @@ final class CarSignals {
                 }
             }
             return null;
-        }
-    }
-
-    /**
-     * The census probe's CSV cell: {@code hexid=value} pairs joined by ';' (never a comma) for the values that
-     * changed since the last row, and every value once a minute so a drive can be reconstructed from any point.
-     */
-    static final class ProbeDiff {
-        static final long FULL_EVERY_MS = 60_000;
-        private final int[] ids;
-        private final double[] last;
-        private long lastFullMs = Long.MIN_VALUE;
-
-        ProbeDiff(int[] ids) {
-            this.ids = ids.clone();
-            last = new double[ids.length];
-        }
-
-        String row(long nowMs, double[] values) {
-            boolean full = lastFullMs == Long.MIN_VALUE || nowMs - lastFullMs >= FULL_EVERY_MS;
-            if (full) {
-                lastFullMs = nowMs;
-            }
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < ids.length; i++) {
-                double v = values[i];
-                boolean same = Double.compare(v, last[i]) == 0;
-                last[i] = v;
-                if (!full && same) {
-                    continue;
-                }
-                if (sb.length() > 0) sb.append(';');
-                sb.append(Integer.toHexString(ids[i])).append('=');
-                if (Double.isNaN(v)) {
-                    sb.append("nan");
-                } else if (v == Math.rint(v) && Math.abs(v) < 1e15) {
-                    sb.append((long) v);
-                } else {
-                    sb.append((float) v);
-                }
-            }
-            return sb.toString();
         }
     }
 

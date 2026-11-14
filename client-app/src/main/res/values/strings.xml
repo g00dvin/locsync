@@ -132,6 +132,9 @@
     <string name="nav_ok_detail">LocSync stands in for the head unit\'s GPS</string>
     <string name="nav_stale_title">No fresh position</string>
     <string name="nav_stale_detail">The navigator keeps the last known position — check GPS on the phone</string>
+    <string name="nav_dr_title">Driving on the car\'s sensors</string>
+    <string name="nav_dr_detail">The phone sends no positions — the icon follows the wheels and the gyro</string>
+    <string name="hint_link_gap">a %1$d s pause in the last minute</string>
     <string name="nav_waiting_title">Looking for the phone</string>
     <string name="nav_waiting_detail">Start LocSync Server on the phone and connect to its Wi-Fi hotspot</string>
     <string name="nav_off_title">Position is not being sent</string>
@@ -210,6 +213,10 @@
     <string name="tile_phone">Phone</string>
     <string name="tile_fuel">Fuel</string>
     <string name="tile_odometer">Odometer, km</string>
+    <string name="tile_smoothness">Smoothness today</string>
+    <string name="smoothness_hint">hard brake %1$d · accel %2$d · turn %3$d · %4$d km</string>
+    <string name="filter_gps_pauses">GPS pauses today</string>
+    <string name="filter_gps_pauses_fmt">%1$d · longest %2$.0f s · off by %3$.0f m avg, %4$.0f m max</string>
     <string name="unit_l">L</string>
     <string name="phone_hint_charging">charging</string>
     <string name="phone_hint_battery">on battery</string>

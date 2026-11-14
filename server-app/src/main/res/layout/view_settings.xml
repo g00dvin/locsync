@@ -63,6 +63,8 @@
             <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowExportAll" />
             <View style="@style/LsDivider" />
+            <include layout="@layout/row_setting_action" android:id="@+id/rowExportGpx" />
+            <View style="@style/LsDivider" />
             <include layout="@layout/row_setting_action" android:id="@+id/rowClearLogs" />
         </LinearLayout>
 

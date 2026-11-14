@@ -347,6 +347,7 @@ public class MainActivity extends AppCompatActivity {
 
         btnPower.setOnClickListener(v -> togglePower());
         findViewById(R.id.btnPair).setOnClickListener(v -> startPairing());
+        findViewById(R.id.btnParked).setOnClickListener(v -> showParked());
         connectBanner.setOnClickListener(v -> {
             if (bannerAction != null) bannerAction.run();
         });
@@ -498,6 +499,11 @@ public class MainActivity extends AppCompatActivity {
                 checked -> Preferences.setTrackRecording(this, checked));
         bindActionChevron(R.id.rowExportAll, getString(R.string.export_all),
                 getString(R.string.export_all_sub), this::exportAllData);
+        bindActionChevron(R.id.rowExportGpx, getString(R.string.export_gpx), getString(R.string.export_gpx_sub),
+                () -> Ui.exportGpx(this, "locsync-server", () -> {
+                    java.io.File track = ServerTrackRecorder.fileFor(new java.io.File(getCacheDir(), "logs"));
+                    return new java.io.File[]{new java.io.File(track.getPath() + ".old"), track};
+                }));
         bindActionChevron(R.id.rowClearLogs, getString(R.string.clear_logs),
                 getString(R.string.clear_logs_sub), this::confirmClearLogs);
 
@@ -538,8 +544,31 @@ public class MainActivity extends AppCompatActivity {
         return LinkState.of(GNSSServerService.isServiceRunning(), GNSSServerService.isClientConnected());
     }
 
+    /** Opens the remembered parking spot in whatever map app the phone has. */
+    private void showParked() {
+        double[] p = Preferences.parked(this);
+        if (p == null) {
+            return;
+        }
+        String at = p[0] + "," + p[1];
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(
+                    "geo:" + at + "?q=" + at + "(" + android.net.Uri.encode(getString(R.string.parked_label)) + ")")));
+        } catch (android.content.ActivityNotFoundException e) {
+            Toast.makeText(this, R.string.parked_no_map, Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void refreshState() {
         LinkState state = currentState();
+        // "Where did I park": offered whenever the car isn't connected right now.
+        double[] parked = state == LinkState.CONNECTED ? null : Preferences.parked(this);
+        TextView btnParked = findViewById(R.id.btnParked);
+        btnParked.setVisibility(parked == null ? View.GONE : View.VISIBLE);
+        if (parked != null) {
+            btnParked.setText(getString(R.string.parked_button,
+                    android.text.format.DateFormat.format("d MMM, HH:mm", (long) parked[2])));
+        }
         Ui.stylePower(btnPower, findViewById(R.id.btnPowerLabel), state != LinkState.STOPPED);
         if (state == LinkState.CONNECTED) {
             if (connectedSinceElapsed == 0) connectedSinceElapsed = SystemClock.elapsedRealtime();

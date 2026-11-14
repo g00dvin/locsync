@@ -29,6 +29,9 @@
     <string name="export_all_short">Export all data</string>
     <string name="export_all_in_progress">Preparing the archive…</string>
     <string name="export_all_failed">Could not create the archive</string>
+    <string name="export_gpx">Export track (GPX)</string>
+    <string name="export_gpx_sub">The recorded route as a file any map app opens. Needs “Record track”.</string>
+    <string name="export_gpx_empty">No track recorded yet: turn on “Record track” and drive</string>
     <string name="permission_fine_location">Fine Location</string>
     <string name="permission_coarse_location">Coarse Location</string>
     <string name="permission_background_location">Background Location</string>

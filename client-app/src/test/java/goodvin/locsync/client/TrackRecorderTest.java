@@ -18,6 +18,7 @@
 package goodvin.locsync.client;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Rule;
@@ -38,7 +39,7 @@ public class TrackRecorderTest {
     @Test
     public void rowsMatchHeaderColumns() throws Exception {
         File dir = tmp.newFolder();
-        TrackRecorder r = new TrackRecorder(dir, new GyroYaw());
+        TrackRecorder r = new TrackRecorder(dir, 7, new GyroYaw());
         LocationKalmanFilter f = new LocationKalmanFilter(2.0, 1.0);
         f.update(55.75, 37.6, 10.0, 90.0, 4.0, 0.3, 5.0);
         r.fix(1000, 1_700_000_000_000L, "fused", 17, 55.75, 37.6, 150.0, 4.0f,
@@ -59,7 +60,7 @@ public class TrackRecorderTest {
         r.out(2200, 55.75, 37.6, false, 0.1, 0, 6.0, Double.NaN, Double.NaN, 200, "kf");
         r.close();
 
-        List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
+        List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir, 7).toPath());
         assertEquals(TrackRecorder.HEADER, lines.get(0));
         int cols = TrackRecorder.HEADER.split(",", -1).length;
         assertEquals(7, lines.size());
@@ -73,19 +74,19 @@ public class TrackRecorderTest {
             assertEquals(c, "", noCar[header.indexOf(c)]);
         }
         assertTrue(TrackRecorder.HEADER.contains(",car_dt_ms,car_steer_bits,gyro_yaw_deg,gyro_dt_ms,car_gear,out_src,"));
-        // The fix-row extras come last; the checks below are on the columns up to "probe".
-        int core = header.indexOf("probe") + 1;
+        // The fix-row extras come last; the checks below are on the columns up to "amb_temp".
+        int core = header.indexOf("amb_temp") + 1;
         for (int i = 1; i < lines.size(); i++) {
             lines.set(i, String.join(",", java.util.Arrays.copyOf(lines.get(i).split(",", -1), core)));
         }
         // Car read at 1500, fix arrived at 2000: the car value is 500 ms older than the fix.
-        assertTrue(lines.get(2), lines.get(2).endsWith(",36.00,37.80,-500,95,,,D,,,,,,,,,,,,,,,,,"));
-        assertTrue(lines.get(3), lines.get(3).endsWith(",,,,,,,D,,,,,,,,,,,,,,,,,"));             // no speed: no car_dt_ms
+        assertTrue(lines.get(2), lines.get(2).endsWith(",36.00,37.80,-500,95,,,D,,,,,,,,,,,,,,,,"));
+        assertTrue(lines.get(3), lines.get(3).endsWith(",,,,,,,D,,,,,,,,,,,,,,,,"));             // no speed: no car_dt_ms
         // Newest gyro sample at 2040, fix at 2060.
-        assertTrue(lines.get(4), lines.get(4).endsWith(",,37.80,-500,,2.292,-20,D,,,,,,,,,,,,,,,,,"));
+        assertTrue(lines.get(4), lines.get(4).endsWith(",,37.80,-500,,2.292,-20,D,,,,,,,,,,,,,,,,"));
         assertTrue(lines.get(5).contains(",out,"));
-        assertTrue(lines.get(5), lines.get(5).endsWith(",,,2.292,-60,,dr,,,,,,,,,,,,,,,,"));
-        assertTrue(lines.get(6), lines.get(6).endsWith(",kf,,,,,,,,,,,,,,,,"));
+        assertTrue(lines.get(5), lines.get(5).endsWith(",,,2.292,-60,,dr,,,,,,,,,,,,,,,"));
+        assertTrue(lines.get(6), lines.get(6).endsWith(",kf,,,,,,,,,,,,,,,"));
     }
 
     // Recording is appended across service restarts; the header is written only once.
@@ -95,11 +96,11 @@ public class TrackRecorderTest {
         LocationKalmanFilter f = new LocationKalmanFilter(2.0, 1.0);
         f.update(55.75, 37.6, 0, 0, 4.0, 0.3, 5.0);
         for (int i = 0; i < 2; i++) {
-            TrackRecorder r = new TrackRecorder(dir, new GyroYaw());
+            TrackRecorder r = new TrackRecorder(dir, 7, new GyroYaw());
             r.out(i, 55.75, 37.6, false, 0, 0, 5, Double.NaN, Double.NaN, 0, "kf");
             r.close();
         }
-        List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
+        List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir, 7).toPath());
         assertEquals(3, lines.size());
     }
 
@@ -107,11 +108,11 @@ public class TrackRecorderTest {
     @Test
     public void carRowWritesSpeedAndGear() throws Exception {
         File dir = tmp.newFolder();
-        TrackRecorder r = new TrackRecorder(dir, new GyroYaw());
-        r.car(3000, 12.5f, "R", null, null, Float.NaN, null);
-        r.car(3200, null, null, null, null, Float.NaN, null);
+        TrackRecorder r = new TrackRecorder(dir, 7, new GyroYaw());
+        r.car(3000, 12.5f, "R", null, null, Float.NaN);
+        r.car(3200, null, null, null, null, Float.NaN);
         r.close();
-        List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
+        List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir, 7).toPath());
         List<String> header = java.util.Arrays.asList(TrackRecorder.HEADER.split(","));
         String[] c = lines.get(1).split(",", -1);
         assertEquals(header.size(), c.length);
@@ -124,19 +125,18 @@ public class TrackRecorderTest {
         assertEquals("", none[header.indexOf("car_speed")]);
     }
 
-    // The record-everything build: the car's W4m group, the raw accelerometer, the gyro temperature and the
-    // AdaptAPI census probe ride on the 5 Hz car rows.
+    // The car's W4m group, the raw accelerometer and the gyro temperature ride on the 5 Hz car rows.
     @Test
-    public void carRowWritesW4mImuAndProbe() throws Exception {
+    public void carRowWritesW4mAndImu() throws Exception {
         File dir = tmp.newFolder();
-        TrackRecorder r = new TrackRecorder(dir, new GyroYaw());
+        TrackRecorder r = new TrackRecorder(dir, 7, new GyroYaw());
         CarSignals.W4m w = CarSignals.W4m.of(0.05f, -1.25f, 0.5f, 10f, 10.1f, 9.9f, 10f, 12f, 3, 123456L, 20);
-        r.car(3000, 36f, "D", w, new float[]{0.1f, -9.6f, 2.2f}, 31.5f, "100100=10;200200=3");
+        r.car(3000, 36f, "D", w, new float[]{0.1f, -9.6f, 2.2f}, 31.5f);
         r.close();
-        List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
+        List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir, 7).toPath());
         List<String> header = java.util.Arrays.asList(TrackRecorder.HEADER.split(","));
         assertTrue(TrackRecorder.HEADER.contains(
-                ",w4m_tick,w4m_int,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,amb_temp,probe,"));
+                ",w4m_tick,w4m_int,yaw_rate,lat_acc,lon_acc,v_fl,v_fr,v_rl,v_rr,w4m_steer,w4m_gear,acc_x,acc_y,acc_z,amb_temp,"));
         String[] c = lines.get(1).split(",", -1);
         assertEquals(header.size(), c.length);
         assertEquals("123456", c[header.indexOf("w4m_tick")]);
@@ -147,7 +147,6 @@ public class TrackRecorderTest {
         assertEquals("-9.600", c[header.indexOf("acc_y")]);
         assertEquals("31.5", c[header.indexOf("amb_temp")]);
         assertEquals("20", c[header.indexOf("w4m_int")]);
-        assertEquals("100100=10;200200=3", c[header.indexOf("probe")]);
     }
 
     // What the service knows about a fix (monotonic fix time, Wi-Fi delay, heading tracker) and the filter's
@@ -155,7 +154,7 @@ public class TrackRecorderTest {
     @Test
     public void fixRowWritesExtrasOnce() throws Exception {
         File dir = tmp.newFolder();
-        TrackRecorder r = new TrackRecorder(dir, new GyroYaw());
+        TrackRecorder r = new TrackRecorder(dir, 7, new GyroYaw());
         LocationKalmanFilter f = new LocationKalmanFilter(2.0, 1.0);
         f.update(55.75, 37.6, 10.0, 90.0, 4.0, 0.3, 5.0);
         for (int i = 0; i < 2; i++) {
@@ -164,7 +163,7 @@ public class TrackRecorderTest {
                     true, 10.0f, true, 90.0f, 0.3f, 5.0f, 0.04f, 40, f, null);
         }
         r.close();
-        List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir).toPath());
+        List<String> lines = Files.readAllLines(TrackRecorder.fileFor(dir, 7).toPath());
         List<String> header = java.util.Arrays.asList(TrackRecorder.HEADER.split(","));
         String[] c = lines.get(1).split(",", -1), next = lines.get(2).split(",", -1);
         assertEquals(header.size(), c.length);
@@ -177,5 +176,26 @@ public class TrackRecorderTest {
         assertEquals("", next[header.indexOf("fix_mono_ms")]);
         assertEquals("", next[header.indexOf("hdg_deg")]);
         assertEquals("1.000", next[header.indexOf("pos_r_scale")]);
+    }
+
+    // One file per head-unit boot; the oldest boots' files go once all of them pass the total cap.
+    @Test
+    public void oneFilePerBootAndOldestPruned() throws Exception {
+        File dir = tmp.newFolder();
+        for (int boot = 1; boot <= 2; boot++) {
+            TrackRecorder r = new TrackRecorder(dir, boot, new GyroYaw());
+            r.car(1000, 36f, "D", null, null, Float.NaN);
+            r.close();
+        }
+        assertEquals(2, TrackRecorder.files(dir).length);
+        assertTrue(TrackRecorder.fileFor(dir, 1).exists() && TrackRecorder.fileFor(dir, 2).exists());
+        // An old boot's file bigger than the cap: opening the next boot's recorder drops it.
+        try (java.io.RandomAccessFile big = new java.io.RandomAccessFile(TrackRecorder.fileFor(dir, 1), "rw")) {
+            big.setLength(TrackRecorder.MAX_TOTAL_BYTES + 1);
+        }
+        assertTrue(TrackRecorder.fileFor(dir, 1).setLastModified(1000));
+        new TrackRecorder(dir, 3, new GyroYaw()).close();
+        assertFalse(TrackRecorder.fileFor(dir, 1).exists());
+        assertTrue(TrackRecorder.fileFor(dir, 2).exists());
     }
 }

@@ -249,6 +249,23 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_TRACK_RECORDING, false);
     }
 
+    private static final String PREF_PARKED = "parked";
+
+    /** Where the car was when the head unit was last heard: remembered for "where did I park". */
+    public static void setParked(Context context, double lat, double lon, long timeMs) {
+        getPrefs(context).edit().putString(PREF_PARKED, lat + "," + lon + "," + timeMs).apply();
+    }
+
+    /** {latitude, longitude, wall time ms}, or null when nothing is remembered. */
+    public static double[] parked(Context context) {
+        try {
+            String[] p = getPrefs(context).getString(PREF_PARKED, "").split(",");
+            return p.length == 3 ? new double[]{Double.parseDouble(p[0]), Double.parseDouble(p[1]), Double.parseDouble(p[2])} : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     /** All stored settings, for the diagnostics export. */
     public static java.util.Map<String, ?> dump(Context context) {
         java.util.Map<String, Object> all = new java.util.TreeMap<>(getPrefs(context).getAll());

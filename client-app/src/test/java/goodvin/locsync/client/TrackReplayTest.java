@@ -498,7 +498,8 @@ public class TrackReplayTest {
         List<Fix> fixes = load(Path.of(path));
         if (System.getenv("LOCSYNC_SWEEP") != null) {
             // The position-trust floor's calibration: LOCSYNC_SWEEP=0.57,0.2,0.1 prints each one's figures.
-            // One boot per file: elapsed_ms restarts with the head unit, and the motion lookup is keyed by it.
+            // One boot per file (as recorded since v4.2): elapsed_ms restarts with the head unit, and the motion
+            // lookup is keyed by it.
             double shipped = LocationKalmanFilter.MIN_POS_R_SCALE;
             Motion mo = loadMotion(Path.of(path));
             for (String v : System.getenv("LOCSYNC_SWEEP").split(",")) {
@@ -566,12 +567,12 @@ public class TrackReplayTest {
     @Test
     public void loadMotionReadsCarRows() throws Exception {
         Path dir = Files.createTempDirectory("track");
-        TrackRecorder r = new TrackRecorder(dir.toFile(), new GyroYaw());
-        r.car(1000, 36f, "D", null, null, Float.NaN, null);
-        r.car(1200, 36f, "R", null, null, Float.NaN, null);
-        r.car(1400, 18f, "R", null, null, Float.NaN, null);
+        TrackRecorder r = new TrackRecorder(dir.toFile(), 1, new GyroYaw());
+        r.car(1000, 36f, "D", null, null, Float.NaN);
+        r.car(1200, 36f, "R", null, null, Float.NaN);
+        r.car(1400, 18f, "R", null, null, Float.NaN);
         r.close();
-        Motion m = loadMotion(TrackRecorder.fileFor(dir.toFile()).toPath());
+        Motion m = loadMotion(TrackRecorder.fileFor(dir.toFile(), 1).toPath());
         org.junit.Assert.assertEquals(600, m.maxGapMs);
         org.junit.Assert.assertEquals(0, m.yawT.length);
         org.junit.Assert.assertEquals(36 * WHEEL_FACTOR / 3.6, wheelAt(m, 1100), 1e-9);
