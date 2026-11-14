@@ -208,6 +208,10 @@
     <string name="tile_phone">Телефон</string>
     <string name="tile_fuel">Топливо</string>
     <string name="tile_odometer">Пробег, км</string>
+    <string name="tile_smoothness">Плавность сегодня</string>
+    <string name="smoothness_hint">торм. %1$d · разг. %2$d · повор. %3$d · %4$d км</string>
+    <string name="filter_gps_pauses">Паузы GPS сегодня</string>
+    <string name="filter_gps_pauses_fmt">%1$d · до %2$.0f с · промах %3$.0f м в среднем, до %4$.0f м</string>
     <string name="unit_l">л</string>
     <string name="phone_hint_charging">заряжается</string>
     <string name="phone_hint_battery">от батареи</string>

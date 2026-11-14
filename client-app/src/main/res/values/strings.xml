@@ -213,6 +213,10 @@
     <string name="tile_phone">Phone</string>
     <string name="tile_fuel">Fuel</string>
     <string name="tile_odometer">Odometer, km</string>
+    <string name="tile_smoothness">Smoothness today</string>
+    <string name="smoothness_hint">hard brake %1$d · accel %2$d · turn %3$d · %4$d km</string>
+    <string name="filter_gps_pauses">GPS pauses today</string>
+    <string name="filter_gps_pauses_fmt">%1$d · longest %2$.0f s · off by %3$.0f m avg, %4$.0f m max</string>
     <string name="unit_l">L</string>
     <string name="phone_hint_charging">charging</string>
     <string name="phone_hint_battery">on battery</string>

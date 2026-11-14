@@ -185,6 +185,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
     private final LocationKalmanFilter.Estimate drOut = new LocationKalmanFilter.Estimate();
     private boolean lastOutDr;               // the last injected location came from dead reckoning
     private long lastOutElapsedMs;
+    private DriveStats driveStats;   // service thread; today's smoothness and GPS pauses
     private int biasSavedAt;
     private static final int BIAS_SAVE_EVERY = 60;      // standstill bias updates between saves
     // Record-everything: the newest raw accelerometer sample and the gyro chip's temperature, for the car rows.
@@ -472,6 +473,8 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                 return;
             }
             LINK_QUALITY.reset();   // a new connection: the wait before it isn't a hole in the link
+            // ponytail: the day is fixed at connect; a drive through midnight stays on yesterday's count
+            driveStats = DriveStats.decode(Preferences.driveStats(this), DriveStats.today());
             wheelCalibration = new CarSignals.WheelCalibration(Preferences.carSpeedFactor(this));
             VehicleData v = new VehicleData(this, handler, null, VEHICLE_POLL_MS);
             v.setSpeedListener((t, kmh, w4m) -> handler.post(() -> {
@@ -931,6 +934,16 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                         double lat = drOut.latitude - back * Math.cos(br) / 111320.0;
                         double lon = drOut.longitude - back * Math.sin(br) / (111320.0 * Math.cos(Math.toRadians(lat)));
                         kalman.setState(lat, lon, drOut.speed, drOut.bearingDeg, drOut.accuracy, 0.5);
+                        // How far dead reckoning had drifted from where GPS now says the car was at that moment.
+                        double errN = (u.getLatitude() - lat) * 111320.0;
+                        double errE = (u.getLongitude() - lon) * 111320.0 * Math.cos(Math.toRadians(lat));
+                        double errM = Math.hypot(errN, errE);
+                        AppLog.i(TAG, String.format(java.util.Locale.US, "Dead reckoning was %.1f m off after %d ms without GPS",
+                                errM, nowElapsed - lastFixElapsedMs));
+                        if (driveStats != null) {
+                            driveStats.onGap(nowElapsed - lastFixElapsedMs, errM);
+                            Preferences.setDriveStats(this, driveStats.encode());
+                        }
                     } else if (resumingAfterGap) {
                         // Fresh start, or the first real fix after a GPS gap (e.g. tunnel exit): re-anchor so
                         // the estimate snaps to the new position instead of lurching from stale state.
@@ -1045,6 +1058,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         HeadingTracker t = tracker;
         if (t != null) {
             t.onWheel(nowElapsed, wheelMps(nowElapsed));
+            if (driveStats != null && driveStats.onMotion(nowElapsed, wheelMps(nowElapsed),
+                    t.valid(nowElapsed) ? t.headingDeg() : Double.NaN)) {
+                Preferences.setDriveStats(this, driveStats.encode());
+            }
             if (t.biasUpdates() - biasSavedAt >= BIAS_SAVE_EVERY) {
                 saveGyroBias();
             }
@@ -1574,6 +1591,10 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                 kalman.isInitialized() ? kalman.getProcessNoise() : Double.NaN, "%.2f m/s²");
         addStat(labels, values, R.string.filter_outliers, kalman.getOutlierCount(), "%.0f");
         addStat(labels, values, R.string.filter_reinits, kalman.getReinitCount(), "%.0f");
+        DriveStats ds = driveStats;
+        labels.add(getString(R.string.filter_gps_pauses));
+        values.add(ds == null || ds.gaps == 0 ? "—" : getString(R.string.filter_gps_pauses_fmt, ds.gaps,
+                ds.gapMsMax / 1000.0, ds.gapErrSum / ds.gaps, ds.gapErrMax));
         sendBroadcast(new Intent("goodvin.locsync.FILTER_STATS")
                 .setPackage(getPackageName())
                 .putExtra("labels", labels.toArray(new String[0]))

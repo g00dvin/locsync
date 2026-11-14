@@ -116,6 +116,17 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_DEBUG_LOGGING, false);
     }
 
+    private static final String PREF_DRIVE_STATS = "driveStats";
+
+    /** Today's {@link DriveStats}, encoded; kept so a day's figures survive the head unit switching off. */
+    public static void setDriveStats(Context context, String encoded) {
+        getPrefs(context).edit().putString(PREF_DRIVE_STATS, encoded).apply();
+    }
+
+    public static String driveStats(Context context) {
+        return getPrefs(context).getString(PREF_DRIVE_STATS, null);
+    }
+
     private static final String PREF_TRACK_RECORDING = "trackRecording";
 
     /** Record raw fixes and filter output to a CSV for offline analysis. Off by default. */

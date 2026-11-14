@@ -1079,8 +1079,18 @@ public class MainActivity extends AppCompatActivity {
         CarSignals.Snapshot s = vehicleData == null ? null : vehicleData.snapshot();
         boolean fuel = s != null && s.fuelLitres != null;
         boolean odo = s != null && s.odometerKm != null;
+        // A car without a readable odometer lends its tile to today's driving smoothness.
+        DriveStats day = odo ? null : DriveStats.decode(Preferences.driveStats(this), DriveStats.today());
+        boolean smooth = day != null && day.score() >= 0;
         tileFuel.setVisibility(fuel ? View.VISIBLE : View.GONE);
-        tileOdo.setVisibility(odo ? View.VISIBLE : View.GONE);
+        tileOdo.setVisibility(odo || smooth ? View.VISIBLE : View.GONE);
+        setText(tileOdo, R.id.tileLabel, getString(smooth ? R.string.tile_smoothness : R.string.tile_odometer));
+        if (smooth) {
+            int score = day.score();
+            setTile(tileOdo, String.valueOf(score), "",
+                    getString(R.string.smoothness_hint, day.brakes, day.accels, day.turns, Math.round(day.distM / 1000)),
+                    getColor(score >= 50 ? R.color.ls_text : R.color.ls_warn));
+        }
         if (s != null) {
             int textColor = getColor(R.color.ls_text);
             StringBuilder motion = new StringBuilder();
@@ -1103,7 +1113,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         // The row holds the phone and car tiles; hide it when none of them has data.
-        findViewById(R.id.rowDevices).setVisibility(tilePhone.getVisibility() == View.VISIBLE || fuel || odo
+        findViewById(R.id.rowDevices).setVisibility(tilePhone.getVisibility() == View.VISIBLE || fuel || odo || smooth
                 ? View.VISIBLE : View.GONE);
     }
 
