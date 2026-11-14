@@ -354,7 +354,6 @@ public class MainActivity extends AppCompatActivity {
         if (vehicleData == null) {
             vehicleData = new VehicleData(this, uiHandler, this::updateCarCard, 1000);
         }
-        vehicleData.setVendor(Preferences.vendorSignals(this));
         vehicleData.start();
     }
 
@@ -608,12 +607,6 @@ public class MainActivity extends AppCompatActivity {
         bindToggle(R.id.rowSendSpeed, getString(R.string.filter_send_speed),
                 getString(R.string.filter_send_speed_sub), Preferences.filterSendSpeed(this),
                 checked -> Preferences.setFilterSendSpeed(this, checked));
-        bindToggle(R.id.rowVendorSignals, getString(R.string.vendor_signals),
-                getString(R.string.vendor_signals_sub), Preferences.vendorSignals(this),
-                checked -> {
-                    Preferences.setVendorSignals(this, checked);
-                    if (vehicleData != null) vehicleData.setVendor(checked);
-                });
 
         // Diagnostics
         bindToggle(R.id.rowDebug, getString(R.string.debug_logging), null,
@@ -1072,21 +1065,9 @@ public class MainActivity extends AppCompatActivity {
     private void updateCarCard() {
         CarSignals.Snapshot s = vehicleData == null ? null : vehicleData.snapshot();
         boolean fuel = s != null && s.fuelLitres != null;
-        // "Extra car signals" takes the odometer's tile: steering angle, with the four wheel speeds below.
-        boolean extra = Preferences.vendorSignals(this);
-        boolean odo = !extra && s != null && s.odometerKm != null;
+        boolean odo = s != null && s.odometerKm != null;
         tileFuel.setVisibility(fuel ? View.VISIBLE : View.GONE);
-        tileOdo.setVisibility(odo || extra ? View.VISIBLE : View.GONE);
-        setText(tileOdo, R.id.tileLabel, getString(extra ? R.string.tile_steering : R.string.tile_odometer));
-        if (extra) {
-            CarSignals.Vendor v = vehicleData == null ? null : vehicleData.vendor();
-            boolean angle = v != null && !Float.isNaN(v.steerDeg);
-            String hint = v == null ? getString(R.string.car_vendor_none)
-                    : v.denied ? getString(R.string.car_vendor_denied)
-                    : getString(R.string.car_wheels_fmt, wheel(v.vFL), wheel(v.vFR), wheel(v.vRL), wheel(v.vRR));
-            setTile(tileOdo, angle ? String.format(Locale.US, "%.0f°", v.steerDeg) : getString(R.string.value_none),
-                    "", hint, getColor(R.color.ls_text));
-        }
+        tileOdo.setVisibility(odo ? View.VISIBLE : View.GONE);
         if (s != null) {
             int textColor = getColor(R.color.ls_text);
             StringBuilder motion = new StringBuilder();
@@ -1109,12 +1090,8 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         // The row holds the phone and car tiles; hide it when none of them has data.
-        findViewById(R.id.rowDevices).setVisibility(tilePhone.getVisibility() == View.VISIBLE || fuel || odo || extra
+        findViewById(R.id.rowDevices).setVisibility(tilePhone.getVisibility() == View.VISIBLE || fuel || odo
                 ? View.VISIBLE : View.GONE);
-    }
-
-    private String wheel(float kmh) {
-        return Float.isNaN(kmh) ? getString(R.string.value_none) : String.valueOf(Math.round(kmh));
     }
 
     private static void append(StringBuilder sb, String piece) {

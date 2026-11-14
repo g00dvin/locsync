@@ -128,8 +128,6 @@
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowSpeedRamp" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowOutput1Hz" />
             <include layout="@layout/row_setting_toggle" android:id="@+id/rowSendSpeed" />
-            <View style="@style/LsDivider" />
-            <include layout="@layout/row_setting_toggle" android:id="@+id/rowVendorSignals" />
         </LinearLayout>
 
         <!-- Diagnostics -->

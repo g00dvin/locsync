@@ -102,12 +102,6 @@
     <string name="filter_output_1hz_sub">Hand the location to apps once a second instead of 10 times. For testing navigator speed display.</string>
     <string name="filter_send_speed">Send speed to apps</string>
     <string name="filter_send_speed_sub">Off: apps get position and direction only and must work out the speed themselves. For testing.</string>
-    <string name="vendor_signals">Extra car signals</string>
-    <string name="vendor_signals_sub">Steering angle and the four wheel speeds straight from the car: shown on the home screen and written to the track. Works only if the app is installed as a system (privileged) app; otherwise the car refuses.</string>
-    <string name="tile_steering">Steering</string>
-    <string name="car_vendor_denied">no access</string>
-    <string name="car_vendor_none">no data</string>
-    <string name="car_wheels_fmt">wheels %1$s %2$s %3$s %4$s km/h</string>
     <string name="filter_process_noise_base">Base process noise σa, m/s² (lower = smoother)</string>
     <string name="filter_nis_avg">Innovation average (≈2 is ideal)</string>
     <string name="filter_process_noise">Process noise σa</string>
