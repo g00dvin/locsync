@@ -173,8 +173,6 @@ final class VehicleData {
         private boolean w4mFailed, censusDone;
         private int[] probeIds;
         private CarSignals.ProbeDiff probe;
-        private double[] baseline, vMin, vMax;   // per supported sensor, captured at census, for scanMoved
-        private long lastScanMs;
         private int emptyPolls;
         private int polls;
         private boolean loggedRaw;
@@ -221,9 +219,6 @@ final class VehicleData {
                         worker.postDelayed(this, pollMs);
                     }
                     return;
-                }
-                if (recordAll) {
-                    scanMoved(sensorManager);
                 }
                 CarSignals.Snapshot snap = read();
                 if (snap.hasAny()) {
@@ -296,7 +291,6 @@ final class VehicleData {
             w4mGetters = null;
             probe = null;
             probeIds = null;
-            baseline = null;
         }
 
         /**
@@ -346,15 +340,6 @@ final class VehicleData {
             probeIds = new int[ids.size()];
             for (int i = 0; i < probeIds.length; i++) probeIds[i] = ids.get(i);
             probe = new CarSignals.ProbeDiff(probeIds);
-            baseline = new double[probeIds.length];
-            vMin = new double[probeIds.length];
-            vMax = new double[probeIds.length];
-            for (int i = 0; i < probeIds.length; i++) {
-                baseline[i] = probeValue(mgr, probeIds[i]);
-                vMin[i] = baseline[i];
-                vMax[i] = baseline[i];
-            }
-            lastScanMs = 0;
             CarSignals.W4m w = readW4m(mgr);
             AppLog.i(TAG, w == null ? "census W4m: none" : String.format(Locale.US,
                     "census W4m yaw=%s lat=%s lon=%s fl=%s fr=%s rl=%s rr=%s steer=%s gear=%d tick=%d interval=%d",
@@ -429,44 +414,6 @@ final class VehicleData {
                 return ((Number) m.invoke(v)).doubleValue();
             } catch (Exception e) {
                 return Double.NaN;
-            }
-        }
-
-        /** One sensor's current value: continuous ids (0x1xxxxx) as a float, the rest as an event int. */
-        private double probeValue(Object mgr, int id) {
-            return (id & 0xF00000) == 0x100000 ? rawLatest(mgr, id) : rawEvent(mgr, id);
-        }
-
-        /**
-         * Item-2 diagnostic: every ~15 s, re-read every supported sensor and log the ones whose value has
-         * moved more than a hair since the census baseline, with the range seen so far. A cell that tracks
-         * steering, the odometer or a wheel speed shows up here by its motion, whatever its id.
-         */
-        private void scanMoved(Object mgr) {
-            if (baseline == null || probeIds == null) {
-                return;
-            }
-            long now = SystemClock.elapsedRealtime();
-            if (now - lastScanMs < 15000) {
-                return;
-            }
-            lastScanMs = now;
-            StringBuilder movers = new StringBuilder();
-            for (int i = 0; i < probeIds.length; i++) {
-                double v = probeValue(mgr, probeIds[i]);
-                if (Double.isNaN(v)) {
-                    continue;
-                }
-                if (v < vMin[i]) vMin[i] = v;
-                if (v > vMax[i]) vMax[i] = v;
-                // "Moved" = the range seen over the drive is bigger than sensor noise.
-                if (vMax[i] - vMin[i] > 0.5 && movers.length() < 900) {
-                    movers.append(String.format(Locale.US, " 0x%x=%.3f[%.3f..%.3f]",
-                            probeIds[i], v, vMin[i], vMax[i]));
-                }
-            }
-            if (movers.length() > 0) {
-                AppLog.i(TAG, "moved" + movers);
             }
         }
 
