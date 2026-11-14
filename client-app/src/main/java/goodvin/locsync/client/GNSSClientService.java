@@ -479,6 +479,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                 }
             }));
             v.setRecordAll(trackRecorder != null);
+            v.setVendor(Preferences.vendorSignals(this));
             v.start();
             vehicle = v;
             tracker = new HeadingTracker(Preferences.gyroBiasDps(this));
@@ -1526,6 +1527,7 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
         VehicleData v = vehicle;
         if (v != null) {
             v.setRecordAll(trackRecorder != null);
+            v.setVendor(Preferences.vendorSignals(this));
         }
         updateGnssRecording();
         updateImu();   // also follows the "Use car motion" switch, re-read on every fix

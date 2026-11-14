@@ -271,6 +271,48 @@ final class CarSignals {
     }
 
     /**
+     * The vendor VHAL readout ({@link CarVendor}): steering wheel angle in degrees and the four wheel speeds
+     * in km/h (NaN = that one didn't read), or {@link #DENIED} when the app may not read them.
+     */
+    static final class Vendor {
+        static final Vendor DENIED = new Vendor(true, Float.NaN, Float.NaN, Float.NaN, Float.NaN, Float.NaN);
+        final boolean denied;
+        final float steerDeg, vFL, vFR, vRL, vRR;
+
+        Vendor(boolean denied, float steerDeg, float vFL, float vFR, float vRL, float vRR) {
+            this.denied = denied;
+            this.steerDeg = steerDeg;
+            this.vFL = vFL; this.vFR = vFR; this.vRL = vRL; this.vRR = vRR;
+        }
+
+        /** For the track's W4m columns (v_* in km/h, w4m_steer in degrees); null when there is nothing to write. */
+        W4m asW4m(long elapsedMs) {
+            return denied ? null : W4m.of(Float.NaN, Float.NaN, Float.NaN, vFL, vFR, vRL, vRR, steerDeg, -1, elapsedMs, 0);
+        }
+    }
+
+    /**
+     * STEERWHLSNSRAG → degrees. Recon 2026-11-07: a signed 15-bit count, ~95 straight ahead, +8987 / −8583
+     * at the locks; 1/1024 rad per count fits (±500°). Scale and sign are unverified against a real angle,
+     * and the straight-ahead offset is left in: this is a readout, nothing steers by it.
+     */
+    static float vendorSteerDeg(double raw) {
+        if (Double.isNaN(raw)) {
+            return Float.NaN;
+        }
+        int v = (int) raw;
+        if (v >= 0x4000 && v < 0x8000) {
+            v -= 0x8000;   // the 15-bit value arrived unsigned
+        }
+        return (float) Math.toDegrees(v / 1024.0);
+    }
+
+    /** WHLSPDCIRCUML* → km/h: 1/256 m/s per count, like the cluster speed (confirmed by the driver). */
+    static float vendorWheelKmh(double raw) {
+        return Double.isNaN(raw) ? Float.NaN : (float) (raw / 256 * 3.6);
+    }
+
+    /**
      * The census probe's CSV cell: {@code hexid=value} pairs joined by ';' (never a comma) for the values that
      * changed since the last row, and every value once a minute so a drive can be reconstructed from any point.
      */

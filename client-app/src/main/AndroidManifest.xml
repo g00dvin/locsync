@@ -21,7 +21,7 @@
 
     <!-- Vendor car signals (steering, wheel speeds, odometer) via CarPropertyManager. Protection level
          signature|privileged: granted only to a platform-signed or privileged install; a normal install
-         is simply denied. Declaring it lets such a build reach signals AdaptAPI leaves at 0 (CarVendorProbe). -->
+         is simply denied. Declaring it lets such a build reach signals AdaptAPI leaves at 0 (CarVendor, the "Extra car signals" setting). -->
     <uses-permission android:name="android.car.permission.CAR_VENDOR_EXTENSION" />
 
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

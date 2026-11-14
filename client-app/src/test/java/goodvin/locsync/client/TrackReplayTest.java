@@ -496,6 +496,26 @@ public class TrackReplayTest {
         String path = System.getenv("LOCSYNC_TRACK");
         assumeTrue("set LOCSYNC_TRACK to a recorded track-client.csv", path != null);
         List<Fix> fixes = load(Path.of(path));
+        if (System.getenv("LOCSYNC_SWEEP") != null) {
+            // The position-trust floor's calibration: LOCSYNC_SWEEP=0.57,0.2,0.1 prints each one's figures.
+            // One boot per file: elapsed_ms restarts with the head unit, and the motion lookup is keyed by it.
+            double shipped = LocationKalmanFilter.MIN_POS_R_SCALE;
+            Motion mo = loadMotion(Path.of(path));
+            for (String v : System.getenv("LOCSYNC_SWEEP").split(",")) {
+                LocationKalmanFilter.MIN_POS_R_SCALE = Double.parseDouble(v);
+                String n = "floor " + v;
+                LocationKalmanFilter[] ref = new LocationKalmanFilter[1];
+                Result sh = replay(fixes, mo, true, true, 0, -1, Long.MIN_VALUE, Long.MAX_VALUE, kf -> ref[0] = kf);
+                System.out.println(sh.summary(n + " wheel"));
+                System.out.println(n + " end scale=" + ref[0].getPositionNoiseScale() + " outliers=" + ref[0].getOutlierCount() + " reinit=" + ref[0].getReinitCount() + " of " + sh.fixes);
+                System.out.println(replayFused(fixes, mo, 0, -1, Long.MIN_VALUE, Long.MAX_VALUE, 200).iconSummary(n + " fused"));
+                List<Double> f30 = gapErrors(fixes, Long.MIN_VALUE, Long.MAX_VALUE, g -> replayFused(fixes, mo, 30, g, Long.MIN_VALUE, Long.MAX_VALUE, 200));
+                List<Double> f60 = gapErrors(fixes, Long.MIN_VALUE, Long.MAX_VALUE, g -> replayFused(fixes, mo, 60, g, Long.MIN_VALUE, Long.MAX_VALUE, 200));
+                System.out.println(gapSummary(n + " fused", f30, f60));
+            }
+            LocationKalmanFilter.MIN_POS_R_SCALE = shipped;
+            return;
+        }
         System.out.println(replay(fixes, false, TrackReplayTest::v34).summary("v3.4 (age only)"));
         System.out.println(replay(fixes, true, TrackReplayTest::v34).summary("+ Wi-Fi delay sync"));
         System.out.println(replay(fixes, true, kf -> {
