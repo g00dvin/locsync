@@ -98,12 +98,6 @@
     <string name="filter_output_1hz_sub">Передавать местоположение приложениям раз в секунду, а не 10 раз. Для проверки скорости в навигаторе.</string>
     <string name="filter_send_speed">Передавать скорость приложениям</string>
     <string name="filter_send_speed_sub">Выкл.: приложения получают только позицию и направление и считают скорость сами. Для проверки.</string>
-    <string name="vendor_signals">Доп. сигналы автомобиля</string>
-    <string name="vendor_signals_sub">Угол руля и скорости четырёх колёс напрямую от автомобиля: на главном экране и в записи трека. Работает, только если приложение установлено как системное (привилегированное); иначе автомобиль отказывает.</string>
-    <string name="tile_steering">Руль</string>
-    <string name="car_vendor_denied">нет доступа</string>
-    <string name="car_vendor_none">нет данных</string>
-    <string name="car_wheels_fmt">колёса %1$s %2$s %3$s %4$s км/ч</string>
     <string name="filter_process_noise_base">Базовый шум процесса σa, м/с² (меньше = плавнее)</string>
     <string name="filter_nis_avg">Средняя невязка (идеал ≈2)</string>
     <string name="filter_process_noise">Шум процесса σa</string>

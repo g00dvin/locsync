@@ -70,23 +70,6 @@ public class CarSignalsTest {
         assertTrue(CarSignals.fromRaw(0f, S, -1, S, S, S, S, S, 1L).hasAny());               // standing still is data
     }
 
-    // The vendor VHAL counts of the 2026-11-07 recon: steering ~95 straight, +8987 / −8583 at the locks.
-    @Test
-    public void vendorDecoding() {
-        assertEquals(5.3f, CarSignals.vendorSteerDeg(95), 0.05f);
-        assertEquals(502.8f, CarSignals.vendorSteerDeg(8987), 0.1f);
-        assertEquals(-480.2f, CarSignals.vendorSteerDeg(-8583), 0.1f);
-        assertEquals(-480.2f, CarSignals.vendorSteerDeg(0x8000 - 8583), 0.1f);   // the same lock, sent unsigned
-        assertTrue(Float.isNaN(CarSignals.vendorSteerDeg(Double.NaN)));
-        assertEquals(94.2f, CarSignals.vendorWheelKmh(6697), 0.05f);              // the drive's top speed
-        assertTrue(Float.isNaN(CarSignals.vendorWheelKmh(Double.NaN)));
-        CarSignals.W4m w = new CarSignals.Vendor(false, 5.3f, 50f, 51f, 49f, Float.NaN).asW4m(1234);
-        assertEquals(51f, w.vFR, 0f);
-        assertEquals(5.3f, w.steer, 0f);
-        assertTrue(Float.isNaN(w.vRR) && Float.isNaN(w.yawRate));
-        assertNull(CarSignals.Vendor.DENIED.asW4m(1234));
-    }
-
     // Steering is kept as the raw float bits: its encoding is unknown (fuel turned out to be an
     // integer in the bits). It reads 0 parked, like the dead odometer, so alone it isn't data.
     @Test
