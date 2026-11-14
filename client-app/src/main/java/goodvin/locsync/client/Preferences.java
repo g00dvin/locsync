@@ -116,6 +116,17 @@ public class Preferences {
         return getPrefs(context).getBoolean(PREF_DEBUG_LOGGING, false);
     }
 
+    private static final String PREF_VENDOR_SIGNALS = "vendorSignals";
+
+    /** Read steering and wheel speeds from the car's vendor properties (needs a privileged install). Off by default. */
+    public static void setVendorSignals(Context context, boolean enabled) {
+        getPrefs(context).edit().putBoolean(PREF_VENDOR_SIGNALS, enabled).apply();
+    }
+
+    public static boolean vendorSignals(Context context) {
+        return getPrefs(context).getBoolean(PREF_VENDOR_SIGNALS, false);
+    }
+
     private static final String PREF_TRACK_RECORDING = "trackRecording";
 
     /** Record raw fixes and filter output to a CSV for offline analysis. Off by default. */

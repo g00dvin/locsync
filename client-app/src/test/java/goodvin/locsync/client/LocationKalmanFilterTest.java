@@ -457,8 +457,7 @@ public class LocationKalmanFilterTest {
     }
 
     // A source whose positions are far steadier than the accuracy it claims (like Fused): the filter
-    // must learn to trust them more, down to its floor: half the reported 68% radius as sigma, which is
-    // 0.25 · 1.51² = 0.57 of the variance the report itself stands for.
+    // must learn to trust them more, down to its floor: 0.2 of the variance the report itself stands for.
     @Test
     public void adaptivePositionTightensForOverstatedAccuracy() {
         LocationKalmanFilter f = newFilter();
@@ -471,7 +470,7 @@ public class LocationKalmanFilterTest {
             f.update(59.0 + (n + noise) / M_PER_DEG_LAT, 30.0, 10.0, 0.0, 5.0, 0.2, 2.0);
             n += 10.0;
         }
-        assertEquals("should trust positions as much as allowed", 0.57, f.getPositionNoiseScale(), 0.005);
+        assertEquals("should trust positions as much as allowed", 0.2, f.getPositionNoiseScale(), 0.005);
     }
 
     // Accuracy that matches reality must leave the trust unchanged.

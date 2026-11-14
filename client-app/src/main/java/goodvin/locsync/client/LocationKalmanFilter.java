@@ -87,10 +87,11 @@ public class LocationKalmanFilter {
     // Adaptive position noise (see adaptPositionNoise).
     private static final double POS_NIS_ALPHA = 0.1;
     private static final double POS_R_RATE = 0.1;
-    // Trust positions at most this much more than claimed. 0.57 of the variance from a proper sigma is the same
-    // floor as before (0.25 of the 68% radius taken as sigma: half the reported accuracy), where Fused sat on
-    // the recorded drives, so those behave as they did.
-    private static final double MIN_POS_R_SCALE = 0.25 * RADIUS68_PER_SIGMA * RADIUS68_PER_SIGMA;
+    // Trust positions at most this much more than claimed. Was 0.57; the adaptation sat on that floor for 92–95%
+    // of two drives (NIS mean 0.23 where 2 is expected) and the icon trailed the fixes. Replay of the
+    // 2026-11-14 drive (3 boots, 159 km): 0.2 cuts the icon error p50 by 15–29% with no re-anchor; from 0.15
+    // down the gate starts re-anchoring. Not final: TrackReplayTest sweeps it (LOCSYNC_SWEEP).
+    static double MIN_POS_R_SCALE = 0.2;
     private boolean adaptivePosition = true;
     private double posRScale = 1.0;
     private double posNisEma = 2.0;
@@ -229,7 +230,7 @@ public class LocationKalmanFilter {
         }
     }
 
-    /** Factor applied to the reported position variance (1 = as reported, down to 0.57 = 1.3x tighter σ). */
+    /** Factor applied to the reported position variance (1 = as reported, down to 0.2 = 2.2x tighter σ). */
     public double getPositionNoiseScale() {
         return posRScale;
     }

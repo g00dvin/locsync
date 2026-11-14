@@ -57,6 +57,8 @@ final class VehicleData {
     private volatile Poller poller;
     private volatile SpeedListener speedListener;
     private volatile boolean recordAll;   // "Record track": census, W4m and probe reads (else none of that work)
+    private volatile boolean vendorOn;    // "Extra car signals": also read the vendor VHAL (CarVendor)
+    private volatile CarSignals.Vendor vendor;
 
     /**
      * Every wheel-speed poll (km/h, null = not readable), called on the poll thread, with the W4m group read
@@ -74,6 +76,16 @@ final class VehicleData {
     /** While true (the track is being recorded), also run the AdaptAPI census and read W4m + the probe. */
     void setRecordAll(boolean on) {
         recordAll = on;
+    }
+
+    /** The "Extra car signals" setting: read steering and wheel speeds from the vendor VHAL on every poll. */
+    void setVendor(boolean on) {
+        vendorOn = on;
+    }
+
+    /** The latest vendor readout; null while the setting is off, nothing was read yet, or there is no android.car. */
+    CarSignals.Vendor vendor() {
+        return vendor;
     }
 
     private boolean recording() {
@@ -111,6 +123,7 @@ final class VehicleData {
             p = poller;
             poller = null;
             latest = CarSignals.Snapshot.EMPTY;
+            vendor = null;
             speeds.add(0, null);
         }
         if (p != null) {
@@ -173,6 +186,7 @@ final class VehicleData {
         private boolean w4mFailed, censusDone;
         private int[] probeIds;
         private CarSignals.ProbeDiff probe;
+        private CarVendor vendorReader;
         private double[] baseline, vMin, vMax;   // per supported sensor, captured at census, for scanMoved
         private long lastScanMs;
         private int emptyPolls;
@@ -212,11 +226,11 @@ final class VehicleData {
                     } catch (Exception | LinkageError e) {
                         AppLog.i(TAG, "census failed: " + e);
                     }
-                    CarVendorProbe.run(context);   // the privileged VHAL path, for the signals AdaptAPI zeroes
                 }
+                CarSignals.Vendor vd = readVendor();
                 if (polls++ % fullEvery != 0) {
                     float raw = rawLatest(sensorManager, CarSignals.SPEED);
-                    CarSignals.W4m w4m = recording() ? readW4m(sensorManager) : null;
+                    CarSignals.W4m w4m = recording() ? w4m(vd) : null;
                     if (!stopped) {
                         addSpeed(this, SystemClock.elapsedRealtime(), CarSignals.speedKmh(CarSignals.latest(raw)), w4m);
                         worker.postDelayed(this, pollMs);
@@ -237,7 +251,7 @@ final class VehicleData {
                 if (!stopped) {
                     publish(this, snap);
                     if (recording() && sensorManager != null) {   // null after a stale-read disconnect just above
-                        notifyRecorder(this, snap, readW4m(sensorManager), probeRow(sensorManager));
+                        notifyRecorder(this, snap, w4m(vd), probeRow(sensorManager));
                     }
                     worker.postDelayed(this, pollMs);
                 }
@@ -267,6 +281,38 @@ final class VehicleData {
                     worker.postDelayed(this, RETRY_MS);
                 }
             }
+        }
+
+        /** The vendor VHAL readout while the setting is on; published only by the current poller, like the snapshot. */
+        private CarSignals.Vendor readVendor() {
+            CarSignals.Vendor v = null;
+            if (vendorOn) {
+                if (vendorReader == null) {
+                    vendorReader = new CarVendor(context);
+                }
+                v = vendorReader.read();
+            } else {
+                closeVendor();
+            }
+            synchronized (VehicleData.this) {
+                if (poller == this) {
+                    vendor = v;
+                }
+            }
+            return v;
+        }
+
+        private void closeVendor() {
+            if (vendorReader != null) {
+                vendorReader.close();
+                vendorReader = null;
+            }
+        }
+
+        /** The track's W4m columns: the vendor wheel speeds and steering when readable, else AdaptAPI's group. */
+        private CarSignals.W4m w4m(CarSignals.Vendor vd) {
+            CarSignals.W4m w = vd == null ? null : vd.asW4m(SystemClock.elapsedRealtime());
+            return w != null ? w : readW4m(sensorManager);
         }
 
         private void connect() throws Exception {
@@ -485,6 +531,7 @@ final class VehicleData {
         }
 
         private void disconnect() {
+            closeVendor();
             Object c = car;
             car = null;
             sensorManager = null;
