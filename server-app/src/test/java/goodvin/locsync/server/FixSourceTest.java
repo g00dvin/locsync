@@ -19,18 +19,21 @@ public class FixSourceTest {
         assertFalse(s.accept(false, true, 8000));           // Fused quiet for exactly the limit: not yet
         assertTrue(s.fusedStalled(8001));
         assertTrue(s.accept(false, true, 9000));            // ... and now GPS fills in
-        assertFalse(s.accept(true, false, 9500));           // a coarse Fused fix loses to fresh GPS
+        assertFalse(s.accept(true, false, 9500));           // a coarse Fused fix is never sent
         assertTrue(s.accept(false, true, 10_000));
         assertTrue(s.accept(true, true, 10_500));           // Fused is back
         assertFalse(s.accept(false, true, 11_000));
     }
 
-    // In a garage GPS has nothing: the coarse Fused position is still better than none.
+    // Network positions and cold-start guesses hop around by hundreds of metres: the last good fix stands.
     @Test
-    public void coarseFusedPassesWithoutGps() {
+    public void coarseFixesAreNeverSent() {
         FixSource s = new FixSource();
         s.reset(0);
-        assertTrue(s.accept(true, false, 1000));
-        assertTrue(s.accept(true, false, 8000));
+        assertFalse(s.accept(true, false, 1000));
+        assertFalse(s.accept(true, false, 8000));
+        assertFalse(s.accept(false, false, 9000));          // GPS too
+        assertTrue(s.fusedStalled(9000));                   // coarse Fused doesn't count as alive
+        assertTrue(s.accept(false, true, 10_000));
     }
 }

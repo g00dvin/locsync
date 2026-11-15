@@ -50,6 +50,7 @@ public class TrackReplayTest {
 
     static final class Result {
         int fixes, outputs, jumps;
+        long reinits, outliers;                  // the filter's own counts at the end of the run
         List<Double> predErr = new ArrayList<>(), predErrTurn = new ArrayList<>(), headingErrTurn = new ArrayList<>();
         List<Double> along = new ArrayList<>(), cross = new ArrayList<>();
         List<Double> snap = new ArrayList<>();   // icon shift beyond normal motion at each fix arrival
@@ -86,9 +87,9 @@ public class TrackReplayTest {
 
         String iconSummary(String name) {
             return String.format(Locale.US,
-                    "%-28s ICON err p50=%.2f p90=%.2f m | turns p50=%.2f m, heading p50=%.1f° p90=%.1f° (n=%d) | snap p90=%.2f | jumps=%d of %d",
-                    name, pct(iconErr, 50), pct(iconErr, 90), pct(iconErrTurn, 50), pct(iconHeadTurn, 50),
-                    pct(iconHeadTurn, 90), iconHeadTurn.size(), pct(snap, 90), jumps, outputs);
+                    "%-28s ICON err p50=%.2f p90=%.2f p99=%.2f m | turns p50=%.2f m, heading p50=%.1f° p90=%.1f° (n=%d) | snap p90=%.2f | jumps=%d of %d | outliers=%d re-anchors=%d",
+                    name, pct(iconErr, 50), pct(iconErr, 90), pct(iconErr, 99), pct(iconErrTurn, 50), pct(iconHeadTurn, 50),
+                    pct(iconHeadTurn, 90), iconHeadTurn.size(), pct(snap, 90), jumps, outputs, outliers, reinits);
         }
 
         String summary(String name) {
@@ -379,12 +380,19 @@ public class TrackReplayTest {
                 tracker.onGpsBearing(meas - gpsLagMs, f.speed, f.bearing + (kf.isBearingQuantized() ? 0.5 : 0), reverse);
             }
             double w = wheelAt(m, meas);
+            boolean rev = "R".equals(gearAt(m, meas));
+            double course = HeadingTracker.courseFor(f.hasBearing ? f.bearing : Double.NaN,
+                    tracker.valid(meas) ? tracker.headingAt(meas - gpsLagMs) : Double.NaN, rev);
+            boolean hasCourse = !Double.isNaN(course);
             if (!Double.isNaN(w)) {
-                kf.update(f.lat, f.lon, w, f.bearing, f.acc, CAR_SPEED_ACC, f.brgAcc, true, f.hasBearing);
+                kf.update(f.lat, f.lon, w, hasCourse ? course : 0, f.acc, CAR_SPEED_ACC, f.brgAcc, hasCourse || !rev, hasCourse);
             } else {
-                kf.update(f.lat, f.lon, f.speed, f.bearing, f.acc, f.spdAcc, f.brgAcc, f.hasSpeed, f.hasBearing);
+                kf.update(f.lat, f.lon, f.speed, hasCourse ? course : 0, f.acc, f.spdAcc, f.brgAcc,
+                        f.hasSpeed && (hasCourse || !rev), hasCourse);
             }
             r.fixes++;
+            r.reinits = kf.getReinitCount();
+            r.outliers = kf.getOutlierCount();
             lastTs = f.ts;
             lastArrival = f.arrival;
             stateTime = meas;
@@ -510,6 +518,9 @@ public class TrackReplayTest {
                 System.out.println(sh.summary(n + " wheel"));
                 System.out.println(n + " end scale=" + ref[0].getPositionNoiseScale() + " outliers=" + ref[0].getOutlierCount() + " reinit=" + ref[0].getReinitCount() + " of " + sh.fixes);
                 System.out.println(replayFused(fixes, mo, 0, -1, Long.MIN_VALUE, Long.MAX_VALUE, 200).iconSummary(n + " fused"));
+                HeadingTracker.courseFix = false;
+                System.out.println(replayFused(fixes, mo, 0, -1, Long.MIN_VALUE, Long.MAX_VALUE, 200).iconSummary(n + " fused, phone course"));
+                HeadingTracker.courseFix = true;
                 List<Double> f30 = gapErrors(fixes, Long.MIN_VALUE, Long.MAX_VALUE, g -> replayFused(fixes, mo, 30, g, Long.MIN_VALUE, Long.MAX_VALUE, 200));
                 List<Double> f60 = gapErrors(fixes, Long.MIN_VALUE, Long.MAX_VALUE, g -> replayFused(fixes, mo, 60, g, Long.MIN_VALUE, Long.MAX_VALUE, 200));
                 System.out.println(gapSummary(n + " fused", f30, f60));

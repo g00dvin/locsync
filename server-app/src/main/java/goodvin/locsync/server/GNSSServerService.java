@@ -733,9 +733,11 @@ public class GNSSServerService extends Service {
             return;
         }
         updateTrackRecorder();
-        if (fusedLocationProviderClient != null && !fixSource.accept("fused".equals(location.getProvider()),
-                location.hasAccuracy() && location.getAccuracy() <= FixSource.GOOD_ACCURACY_M, receivedElapsed)) {
-            recordFix(receivedElapsed, location, false);   // GPS beside a healthy Fused, or coarse Fused beside GPS
+        // Without Fused the GPS provider is the only source: nothing is "beside" it, but coarse fixes still go.
+        boolean fusedFix = fusedLocationProviderClient == null || "fused".equals(location.getProvider());
+        if (!fixSource.accept(fusedFix, location.hasAccuracy() && location.getAccuracy() <= FixSource.GOOD_ACCURACY_M,
+                receivedElapsed)) {
+            recordFix(receivedElapsed, location, false);   // too coarse to help, or GPS beside a healthy Fused
             return;
         }
         if (!hadAccurateFix) {
