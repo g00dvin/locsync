@@ -221,6 +221,36 @@ final class HeadingTracker {
         return Double.NaN;
     }
 
+    static final double MAX_COURSE_DISAGREE_DEG = 30;
+    static boolean courseFix = true;   // off only in TrackReplayTest, to compare with the behaviour before it
+
+    /**
+     * The course to hand the filter with a fix: the phone's bearing, unless the car knows better.
+     * <ul>
+     * <li>In reverse the car travels against its nose, while the phone goes on reporting the nose's direction
+     * (drive of 2026-11-15: bearing 273° while backing out towards 85°), so the filter drove the wrong way at
+     * walking pace until it was 24 m off and jumped back. The course is the gyro heading turned around.</li>
+     * <li>A bearing more than {@link #MAX_COURSE_DISAGREE_DEG} off the gyro heading is the phone's glitch (same
+     * drive: two late fixes repeated a bearing 5 s old in the middle of a turn, 60° off, and threw the filter
+     * 27 m sideways): the heading stands in.</li>
+     * </ul>
+     * {@code headingDeg} is the tracker's heading at the fix's time, NaN when it has none; then the phone's
+     * bearing is all there is, except in reverse, where it is known to be wrong. NaN = no course for this fix.
+     */
+    static double courseFor(double gpsBearingDeg, double headingDeg, boolean reverse) {
+        if (!courseFix) {
+            return gpsBearingDeg;
+        }
+        if (Double.isNaN(headingDeg)) {
+            return reverse ? Double.NaN : gpsBearingDeg;
+        }
+        if (reverse) {
+            return wrap360(headingDeg + 180);
+        }
+        return Double.isNaN(gpsBearingDeg) || Math.abs(wrap180(gpsBearingDeg - headingDeg)) > MAX_COURSE_DISAGREE_DEG
+                ? wrap360(headingDeg) : gpsBearingDeg;
+    }
+
     private static double wrap180(double a) {
         return ((a % 360) + 540) % 360 - 180;
     }

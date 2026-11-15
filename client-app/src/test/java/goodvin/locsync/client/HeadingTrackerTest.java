@@ -148,4 +148,19 @@ public class HeadingTrackerTest {
         }
         assertEquals(0, angleDiff(h.headingDeg(), 120), 1e-6);
     }
+
+    // The course handed to the filter: the phone's bearing, unless the car knows better.
+    @Test
+    public void courseFromTheCarInReverseAndOnBearingGlitches() {
+        double none = Double.NaN;
+        assertEquals(100, HeadingTracker.courseFor(100, 95, false), 0);        // agree: the phone's
+        assertEquals(253, HeadingTracker.courseFor(192, 253, false), 0);       // a stale bearing in a turn: the gyro's
+        assertEquals(10, HeadingTracker.courseFor(10, 355, false), 0);         // 15° apart across north: still the phone's
+        assertEquals(86, HeadingTracker.courseFor(273, 266, true), 0);         // backing out: against the nose
+        assertEquals(10, HeadingTracker.courseFor(none, 190, true), 0);
+        assertEquals(190, HeadingTracker.courseFor(none, 190, false), 0);      // no bearing at all: the gyro's
+        assertEquals(100, HeadingTracker.courseFor(100, none, false), 0);      // no gyro: the phone's
+        assertTrue(Double.isNaN(HeadingTracker.courseFor(100, none, true)));   // reverse without a gyro: no course
+        assertTrue(Double.isNaN(HeadingTracker.courseFor(none, none, false)));
+    }
 }

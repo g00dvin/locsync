@@ -970,9 +970,9 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                                 : Double.NaN;
                         kalman.predict(dt, dTheta);
                     }
+                    VehicleData gearCar = vehicle;
+                    boolean reverse = gearCar != null && "R".equals(gearCar.snapshot().gear);
                     if (tracker != null && u.hasBearing()) {
-                        VehicleData gearCar = vehicle;
-                        boolean reverse = gearCar != null && "R".equals(gearCar.snapshot().gear);
                         tracker.onGpsBearing(measElapsed - HeadingTracker.GPS_LAG_MS, u.getSpeed(),
                                 u.getBearing() + (filterConfig.bearingCompensation && kalman.isBearingQuantized() ? 0.5 : 0),
                                 reverse);
@@ -998,7 +998,14 @@ public class GNSSClientService extends Service implements ConnectionManager.Conn
                             fHasSpd = true;
                         }
                     }
-                    kalman.update(u.getLatitude(), u.getLongitude(), fSpd, u.getBearing(), u.getAccuracy(), fSpdAcc, u.getBearingAccuracy(), fHasSpd, u.hasBearing());
+                    // The course: the phone's bearing unless the car knows better (reverse, a bearing glitch).
+                    double course = HeadingTracker.courseFor(u.hasBearing() ? u.getBearing() : Double.NaN,
+                            motionOn() && tracker != null && tracker.valid(measElapsed)
+                                    ? tracker.headingAt(measElapsed - HeadingTracker.GPS_LAG_MS) : Double.NaN,
+                            reverse);
+                    boolean hasCourse = !Double.isNaN(course);
+                    kalman.update(u.getLatitude(), u.getLongitude(), fSpd, hasCourse ? course : 0, u.getAccuracy(), fSpdAcc,
+                            u.getBearingAccuracy(), fHasSpd && (hasCourse || !reverse), hasCourse);
                     if (kalman.getReinitCount() != lastReinitCount) {
                         lastReinitCount = kalman.getReinitCount();
                         AppLog.i(TAG, "Filter re-anchored on the fixes after consecutive outliers (" + lastReinitCount

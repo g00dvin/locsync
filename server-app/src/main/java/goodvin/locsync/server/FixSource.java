@@ -10,35 +10,36 @@
 package goodvin.locsync.server;
 
 /**
- * Chooses between Fused and the plain GPS provider running beside it as a backup. Fused is the first
- * choice; on the 2026-11-14 drive it went quiet for 3–15 s six times and once answered only with ±104 m
- * network positions, while the client waited. GPS fixes fill in whenever Fused has had no good fix for
- * {@link #FRESH_MS}; a coarse Fused fix is passed on only when GPS has nothing either.
+ * Decides which of the phone's fixes go to the car. Fused is the first choice, with the plain GPS provider
+ * running beside it as a backup: its fixes fill in whenever Fused has had no good fix for {@link #FRESH_MS}.
+ *
+ * <p>A fix worse than {@link #GOOD_ACCURACY_M} is never sent, whatever its source. Those are network
+ * positions and cold-start guesses: leaving an underground car park on 2026-11-15 they hopped between
+ * points 300 m apart with claimed accuracies up to 1.8 km, and each one reset the car's filter. Holding the
+ * last good position (and letting the car dead-reckon from it) is better than any of them.
  * Times are SystemClock.elapsedRealtime() ms. Main thread only.
  */
 final class FixSource {
     static final long FRESH_MS = 3000;
     static final float GOOD_ACCURACY_M = 50;
     private static final long NEVER = Long.MIN_VALUE / 2;
-    private long lastGoodFused = NEVER, lastGps = NEVER;
+    private long lastGoodFused = NEVER;
 
     /** Location updates (re)started: Fused gets {@link #FRESH_MS} to deliver before the backup is called in. */
     void reset(long nowMs) {
         lastGoodFused = nowMs;
-        lastGps = NEVER;
     }
 
     /** True when this fix should go to the client. */
     boolean accept(boolean fused, boolean goodAccuracy, long nowMs) {
-        if (!fused) {
-            lastGps = nowMs;
-            return nowMs - lastGoodFused > FRESH_MS;
+        if (!goodAccuracy) {
+            return false;
         }
-        if (goodAccuracy) {
+        if (fused) {
             lastGoodFused = nowMs;
             return true;
         }
-        return nowMs - lastGps > FRESH_MS;
+        return nowMs - lastGoodFused > FRESH_MS;
     }
 
     /** True when Fused has gone quiet or coarse: time to start the GPS backup. */
